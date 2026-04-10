@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
@@ -22,6 +23,10 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
   CameraController? _cameraController;
   int _cameraIndex = -1;
 
+  Timer? _timer;
+  int _elapsedSeconds = 0;
+  double _accuracyRate = 0.0;
+
   @override
   void initState() {
     super.initState();
@@ -33,10 +38,22 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
       _cameraIndex = 0;
     }
     _startLiveFeed();
+    _startTimer();
+  }
+
+  void _startTimer() {
+    _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) {
+        setState(() {
+          _elapsedSeconds++;
+        });
+      }
+    });
   }
 
   @override
   void dispose() {
+    _timer?.cancel();
     _canProcess = false;
     _poseDetector.close();
     _cameraController?.dispose();
@@ -118,6 +135,14 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
     setState(() => _text = '');
     
     final poses = await _poseDetector.processImage(inputImage);
+    
+    // Placeholder logic for UI display
+    if (poses.isNotEmpty) {
+      _accuracyRate = 85.5; // Simulate a good detection accuracy
+    } else {
+      _accuracyRate = 0.0;
+    }
+
     if (inputImage.metadata?.size != null && inputImage.metadata?.rotation != null) {
       final painter = PosePainter(
         poses,
@@ -158,7 +183,99 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
             ),
           ),
           if (_customPaint != null) _customPaint!,
+          _buildDetectionOverlay(),
         ],
+      ),
+    );
+  }
+
+  Widget _buildDetectionOverlay() {
+    final String minutes = (_elapsedSeconds ~/ 60).toString().padLeft(2, '0');
+    final String seconds = (_elapsedSeconds % 60).toString().padLeft(2, '0');
+
+    return Positioned(
+      top: 50,
+      left: 16,
+      right: 16,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        decoration: BoxDecoration(
+          color: Colors.black.withOpacity(0.7),
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.2),
+              blurRadius: 10,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            // Time Section
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const Text(
+                  '運動時間',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '$minutes:$seconds',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            Container(width: 1, height: 40, color: Colors.white24),
+            // Accuracy Section
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const Text(
+                  '準確率',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${_accuracyRate.toStringAsFixed(1)}%',
+                  style: TextStyle(
+                    color: _accuracyRate > 80 ? Colors.greenAccent : Colors.orangeAccent,
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            // Stop Button
+            GestureDetector(
+              onTap: () {
+                Navigator.pop(context);
+              },
+              child: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: const BoxDecoration(
+                  color: Colors.redAccent,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.stop_rounded, color: Colors.white, size: 28),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
