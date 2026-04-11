@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'exercise_selection_screen.dart';
+import 'package:show_on_move/main_screen.dart';
+import 'exercise_selection_screen.dart'; // 檢查這裡引用的檔案是否為舊版
 import 'login_screen.dart';
 
 class OnboardingSetupScreen extends StatefulWidget {
@@ -54,12 +55,16 @@ class _OnboardingSetupScreenState extends State<OnboardingSetupScreen> {
         currentStep++;
       });
     } else {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const ExerciseSelectionScreen(),
-        ),
-      );
+      // 這裡決定了設定完後去哪裡。
+      // 如果 ExerciseSelectionScreen 就是你所謂的「舊版」，請將其替換為新版的 Class Name
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const MainScreen(), 
+          ),
+        );
+      }
     }
   }
 
@@ -69,12 +74,14 @@ class _OnboardingSetupScreenState extends State<OnboardingSetupScreen> {
         currentStep--;
       });
     } else {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const LoginScreen(),
-        ),
-      );
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const LoginScreen(),
+          ),
+        );
+      }
     }
   }
 

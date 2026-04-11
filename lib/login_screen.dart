@@ -23,7 +23,7 @@ class LoginScreen extends StatelessWidget {
               '在繼續登入前，請先閱讀並同意我們的服務條款與隱私權政策。\n\n'
               '1. 您同意依照本平台規範使用服務。\n'
               '2. 我們將依隱私權政策蒐集與使用必要資料。\n'
-              '3. 若您繼續登入，即表示您已閱讀並同意相關條款。',
+              '3. 若您繼續登入，即表示您已閱讀並同意相關條款面。',
               style: TextStyle(height: 1.6),
             ),
           ),
@@ -49,15 +49,16 @@ class LoginScreen extends StatelessWidget {
       },
     );
 
-    // 模擬第一次註冊
-    const bool isFirstTimeUser = true;
+    // 模擬第一次註冊 (如果是測試舊版跳轉，請檢查這裡是否被改動)
+    const bool isFirstTimeUser = true; 
+
     if (agreed == true && context.mounted) {
-      // 目前先不串真正外部登入
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('$loginType 登入成功')),
       );
 
       if (isFirstTimeUser) {
+        // 跳轉到新手設定頁面
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -65,6 +66,7 @@ class LoginScreen extends StatelessWidget {
           ),
         );
       } else {
+        // 如果不是第一次，直接跳到運動選擇頁面
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -80,7 +82,6 @@ class LoginScreen extends StatelessWidget {
     return Scaffold(
       body: Stack(
         children: [
-          // 背景圖
           Positioned.fill(
             child: ClipRRect(
               borderRadius: const BorderRadius.only(
@@ -96,8 +97,6 @@ class LoginScreen extends StatelessWidget {
               ),
             ),
           ),
-
-          // 白色霧化漸層，做出你要的「往下融進白底」
           Positioned.fill(
             child: Container(
               decoration: const BoxDecoration(
@@ -117,8 +116,6 @@ class LoginScreen extends StatelessWidget {
               ),
             ),
           ),
-
-          // 內容層
           SafeArea(
             child: SingleChildScrollView(
               child: SizedBox(
@@ -126,8 +123,6 @@ class LoginScreen extends StatelessWidget {
                 child: Column(
                   children: [
                     const Spacer(flex: 5),
-
-                    // 文字內容直接浮在漸層上，不再放白卡片
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 28),
                       child: Column(
