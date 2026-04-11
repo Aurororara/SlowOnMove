@@ -22,3 +22,19 @@ Pods/
 .idea/
 .vscode/
 *.iml
+
+# macOS 系統檔
+.DS_Store
+.DS_Store?
+**/ .DS_Store
+**/.DS_Store
+
+# Flutter 產生的暫存檔
+.flutter-plugins
+.flutter-plugins-dependencies
+.dart_tool/
+build/
+
+# Python 虛擬環境 (如果妳專案裡有這個資料夾)
+venv/
+.venv/
