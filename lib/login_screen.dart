@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'onboarding_setup_screen.dart';
-import 'exercise_selection_screen.dart';
+import 'main_screen.dart';
 
 class LoginScreen extends StatelessWidget {
   const LoginScreen({super.key});
@@ -23,7 +23,7 @@ class LoginScreen extends StatelessWidget {
               '在繼續登入前，請先閱讀並同意我們的服務條款與隱私權政策。\n\n'
               '1. 您同意依照本平台規範使用服務。\n'
               '2. 我們將依隱私權政策蒐集與使用必要資料。\n'
-              '3. 若您繼續登入，即表示您已閱讀並同意相關條款面。',
+              '3. 若您繼續登入，即表示您已閱讀並同意相關條款。',
               style: TextStyle(height: 1.6),
             ),
           ),
@@ -49,16 +49,16 @@ class LoginScreen extends StatelessWidget {
       },
     );
 
-    // 模擬第一次註冊 (如果是測試舊版跳轉，請檢查這裡是否被改動)
-    const bool isFirstTimeUser = true; 
+    const bool isFirstTimeUser = true;
 
     if (agreed == true && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$loginType 登入成功')),
+        SnackBar(
+          content: Text('$loginType 登入成功'),
+        ),
       );
 
       if (isFirstTimeUser) {
-        // 跳轉到新手設定頁面
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
@@ -66,11 +66,10 @@ class LoginScreen extends StatelessWidget {
           ),
         );
       } else {
-        // 如果不是第一次，直接跳到運動選擇頁面
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) => const ExerciseSelectionScreen(),
+            builder: (context) => const MainScreen(),
           ),
         );
       }
@@ -92,8 +91,9 @@ class LoginScreen extends StatelessWidget {
                 'assets/background1.png',
                 fit: BoxFit.cover,
                 alignment: Alignment.topCenter,
-                errorBuilder: (context, error, stackTrace) =>
-                    Container(color: Colors.grey[300]),
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(color: Colors.grey[300]);
+                },
               ),
             ),
           ),
@@ -245,7 +245,10 @@ class LoginScreen extends StatelessWidget {
           ),
           Text(
             label,
-            style: const TextStyle(fontSize: 12, color: Colors.grey),
+            style: const TextStyle(
+              fontSize: 12,
+              color: Colors.grey,
+            ),
           ),
         ],
       ),
