@@ -56,7 +56,9 @@ class ExerciseSelectionScreen extends StatelessWidget {
                   onStart: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => const PoseDetectorView()),
+                      MaterialPageRoute(
+                        builder: (context) => const PoseDetectorView(exerciseTitle: '超慢跑'),
+                      ),
                     );
                   },
                 ),
@@ -68,7 +70,14 @@ class ExerciseSelectionScreen extends StatelessWidget {
                   titleIcon: Icons.fitness_center_outlined,
                   subtitle: '下肢力量訓練，強化核心穩定',
                   bulletPoints: ['增強腿部肌力', '提升核心穩定', '改善下肢線條', '提高代謝率'],
-                  onStart: () {},
+                  onStart: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => const PoseDetectorView(exerciseTitle: '深蹲'),
+                      ),
+                    );
+                  },
                 ),
                 const SizedBox(height: 20),
                 _buildTipCard(),

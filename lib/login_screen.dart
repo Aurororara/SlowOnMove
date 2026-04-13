@@ -118,11 +118,11 @@ class LoginScreen extends StatelessWidget {
           ),
           SafeArea(
             child: SingleChildScrollView(
-              child: SizedBox(
-                height: MediaQuery.of(context).size.height,
+              child: Padding(
+                padding: const EdgeInsets.only(bottom: 20),
                 child: Column(
                   children: [
-                    const Spacer(flex: 5),
+                    SizedBox(height: MediaQuery.of(context).size.height * 0.4),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 28),
                       child: Column(

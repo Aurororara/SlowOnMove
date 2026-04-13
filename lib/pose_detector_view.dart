@@ -8,7 +8,8 @@ import 'main.dart';
 import 'pose_painter.dart';
 
 class PoseDetectorView extends StatefulWidget {
-  const PoseDetectorView({super.key});
+  final String exerciseTitle;
+  const PoseDetectorView({super.key, this.exerciseTitle = '超慢跑'});
 
   @override
   State<StatefulWidget> createState() => _PoseDetectorViewState();
@@ -161,11 +162,26 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
 
   @override
   Widget build(BuildContext context) {
-    if (_cameraController?.value.isInitialized == false || _cameraIndex == -1) {
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
+    if (_cameraController == null ||
+        _cameraController?.value.isInitialized == false ||
+        _cameraIndex == -1) {
+      // In simulator or no camera, show a black background but still show the overlay
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: Stack(
+          children: [
+            const Center(
+              child: Text(
+                '相機不可用',
+                style: TextStyle(color: Colors.white54),
+              ),
+            ),
+            _buildDetectionOverlay(),
+          ],
+        ),
       );
     }
+    
     final size = MediaQuery.of(context).size;
     var scale = size.aspectRatio * _cameraController!.value.aspectRatio;
     if (scale < 1) scale = 1 / scale;
@@ -177,9 +193,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
           Transform.scale(
             scale: scale,
             child: Center(
-              child: _cameraController != null
-                  ? CameraPreview(_cameraController!)
-                  : Container(),
+              child: CameraPreview(_cameraController!),
             ),
           ),
           if (_customPaint != null) _customPaint!,
@@ -217,9 +231,9 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                const Text(
-                  '運動時間',
-                  style: TextStyle(
+                Text(
+                  widget.exerciseTitle,
+                  style: const TextStyle(
                     color: Colors.white70,
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
