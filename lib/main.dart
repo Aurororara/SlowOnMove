@@ -7,18 +7,15 @@ List<CameraDescription> cameras = [];
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  debugPrint('--- App Starting ---');
   try {
     cameras = await availableCameras();
+    debugPrint('--- Cameras initialized: ${cameras.length} ---');
   } catch (e) {
     debugPrint('Camera error: $e');
   }
 
-  runApp(
-    DevicePreview(
-      enabled: true,
-      builder: (context) => const MyApp(),
-    ),
-  );
+  runApp(const MyApp());
 }
 
 class MyApp extends StatelessWidget {
@@ -26,9 +23,8 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    debugPrint('--- Building MyApp ---');
     return MaterialApp(
-      locale: DevicePreview.locale(context),
-      builder: DevicePreview.appBuilder,
       debugShowCheckedModeBanner: false,
       title: 'Slow On Move',
       theme: ThemeData(

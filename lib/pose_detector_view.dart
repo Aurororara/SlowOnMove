@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import 'main.dart';
 import 'pose_painter.dart';
+import 'pose_analyzer.dart';
+import 'results_screen.dart';
 
 class PoseDetectorView extends StatefulWidget {
   final String exerciseTitle;
@@ -26,7 +28,13 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
 
   Timer? _timer;
   int _elapsedSeconds = 0;
+  
+  final PoseAnalyzer _poseAnalyzer = PoseAnalyzer();
   double _accuracyRate = 0.0;
+  int _stepCount = 0;
+  List<String> _feedback = [];
+  double _totalAccuracySum = 0.0;
+  int _accuracySamples = 0;
 
   @override
   void initState() {
@@ -137,11 +145,22 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
     
     final poses = await _poseDetector.processImage(inputImage);
     
-    // Placeholder logic for UI display
+    // Analyze poses
+    final analysisResult = _poseAnalyzer.analyze(poses);
+    _accuracyRate = analysisResult.accuracy;
+    
+    // Smooth the feedback list to avoid flickering, just append latest
+    for (var f in analysisResult.feedback) {
+      if (!_feedback.contains(f)) {
+         _feedback.add(f);
+      }
+    }
+    _stepCount = analysisResult.stepCount;
+
+    // Track for average
     if (poses.isNotEmpty) {
-      _accuracyRate = 85.5; // Simulate a good detection accuracy
-    } else {
-      _accuracyRate = 0.0;
+      _totalAccuracySum += _accuracyRate;
+      _accuracySamples++;
     }
 
     if (inputImage.metadata?.size != null && inputImage.metadata?.rotation != null) {
@@ -277,7 +296,23 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
             // Stop Button
             GestureDetector(
               onTap: () {
-                Navigator.pop(context);
+                _timer?.cancel();
+                _poseDetector.close();
+                _cameraController?.dispose();
+                
+                double avgAcc = _accuracySamples > 0 ? (_totalAccuracySum / _accuracySamples) : 0.0;
+
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ResultsScreen(
+                      timeSeconds: _elapsedSeconds,
+                      averageAccuracy: avgAcc,
+                      stepCount: _stepCount,
+                      finalFeedback: _feedback,
+                    ),
+                  ),
+                );
               },
               child: Container(
                 padding: const EdgeInsets.all(12),
