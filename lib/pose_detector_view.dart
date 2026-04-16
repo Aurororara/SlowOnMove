@@ -8,6 +8,8 @@ import 'main.dart';
 import 'pose_painter.dart';
 import 'pose_analyzer.dart';
 import 'results_screen.dart';
+import 'models/training_log_model.dart';
+import 'repositories/data_repository.dart';
 
 class PoseDetectorView extends StatefulWidget {
   final String exerciseTitle;
@@ -295,24 +297,44 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
             ),
             // Stop Button
             GestureDetector(
-              onTap: () {
+              onTap: () async {
                 _timer?.cancel();
                 _poseDetector.close();
                 _cameraController?.dispose();
                 
                 double avgAcc = _accuracySamples > 0 ? (_totalAccuracySum / _accuracySamples) : 0.0;
 
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => ResultsScreen(
-                      timeSeconds: _elapsedSeconds,
-                      averageAccuracy: avgAcc,
-                      stepCount: _stepCount,
-                      finalFeedback: _feedback,
-                    ),
-                  ),
+                // Create and save training log to Firestore
+                int caloriesBurned = ((_elapsedSeconds / 60.0) * 8.0).round();
+                final log = TrainingLogModel(
+                  memberId: 'test_user_001', // TODO: Replace with real Auth UID later
+                  startTime: DateTime.now().subtract(Duration(seconds: _elapsedSeconds)),
+                  endTime: DateTime.now(),
+                  totalMins: _elapsedSeconds ~/ 60,
+                  postureScore: avgAcc.round(),
+                  calories: caloriesBurned,
                 );
+                
+                // Fire and forget (don't block UI navigation)
+                DataRepository().saveTrainingLog(log).then((_) {
+                  debugPrint('Training log saved successfully to Firestore!');
+                }).catchError((e) {
+                  debugPrint('Failed to save training log: $e');
+                });
+
+                if (mounted) {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ResultsScreen(
+                        timeSeconds: _elapsedSeconds,
+                        averageAccuracy: avgAcc,
+                        stepCount: _stepCount,
+                        finalFeedback: _feedback,
+                      ),
+                    ),
+                  );
+                }
               },
               child: Container(
                 padding: const EdgeInsets.all(12),

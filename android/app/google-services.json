@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "722778633635",
+    "project_id": "slowonmove",
+    "storage_bucket": "slowonmove.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:722778633635:android:1a877e7ac8a2e27639d616",
+        "android_client_info": {
+          "package_name": "com.showonmove.show_on_move"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCZ7m3TVbX2ynHX2ZYLdjY8f0UiX0zScsY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
