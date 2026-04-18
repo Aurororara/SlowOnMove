@@ -3,6 +3,7 @@ import 'exercise_selection_screen.dart';
 import 'profile.dart';
 import 'bottom_nav_bar.dart';
 import 'home_page.dart';
+import 'leaderboard_page.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -18,7 +19,7 @@ class _MainScreenState extends State<MainScreen> {
     const HomePage(),
     const Center(child: Text('Community')),
     const ExerciseSelectionScreen(),
-    const Center(child: Text('Ranking')),
+    LeaderboardPage(),
     const ProfileScreen(),
   ];
 

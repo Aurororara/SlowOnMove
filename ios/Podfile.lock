@@ -1515,7 +1515,7 @@ SPEC CHECKSUMS:
   FirebaseFirestore: 01e964d312cf17e56925c955b19798848775a7fd
   FirebaseFirestoreInternal: 9d9fd7eadbe0f19310fd7df06470a04baeaf3f36
   FirebaseSharedSwift: bccaff90721d14bafc14be34f28b77fdd7c91dc9
-  Flutter: e0871f40cf51350855a761d2e70bf5af5b9b5de7
+  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
   google_mlkit_commons: 2abe6a70e1824e431d16a51085cb475b672c8aab
   google_mlkit_pose_detection: 64eea6255886f73e8d80265f0c87ac5fb61fa7f5
   GoogleDataTransport: aae35b7ea0c09004c3797d53c8c41f66f219d6a7

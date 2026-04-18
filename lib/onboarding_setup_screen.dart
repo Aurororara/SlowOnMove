@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:show_on_move/main_screen.dart';
-import 'exercise_selection_screen.dart'; // 檢查這裡引用的檔案是否為舊版
 import 'login_screen.dart';
 
 class OnboardingSetupScreen extends StatefulWidget {
@@ -16,7 +15,7 @@ class _OnboardingSetupScreenState extends State<OnboardingSetupScreen> {
   String? selectedFrequency;
   List<String> selectedGoals = [];
   String? selectedLevel;
-  String? selectedTime;
+  List<String> selectedTime = [];
 
   final List<Map<String, String>> frequencyOptions = [
     {'title': '從不 / 剛開始', 'subtitle': '我是運動新手'},
@@ -61,7 +60,7 @@ class _OnboardingSetupScreenState extends State<OnboardingSetupScreen> {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(
-            builder: (context) => const MainScreen(), 
+            builder: (context) => const MainScreen(),
           ),
         );
       }
@@ -94,7 +93,7 @@ class _OnboardingSetupScreenState extends State<OnboardingSetupScreen> {
       case 2:
         return selectedLevel != null;
       case 3:
-        return selectedTime != null;
+        return selectedTime.isNotEmpty;
       default:
         return false;
     }
@@ -340,20 +339,84 @@ class _OnboardingSetupScreenState extends State<OnboardingSetupScreen> {
   Widget _buildTimeStep() {
     return Column(
       children: [
-        _buildTitle('你偏好什麼時段運動？', '這能幫助我們安排更適合的訓練時間'),
-        ...timeOptions.map((item) {
-          final selected = selectedTime == item['title'];
-          return _buildSingleChoiceCard(
-            title: item['title']!,
-            subtitle: item['subtitle']!,
-            selected: selected,
-            onTap: () {
-              setState(() {
-                selectedTime = item['title'];
-              });
-            },
-          );
-        }),
+        _buildTitle('你偏好什麼時段運動？', '可多選'),
+        Column(
+          children: timeOptions.map((item) {
+            final selected = selectedTime.contains(item['title']);
+
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: GestureDetector(
+                onTap: () {
+                  setState(() {
+                    if (selected) {
+                      selectedTime.remove(item['title']);
+                    } else {
+                      selectedTime.add(item['title']!);
+                    }
+                  });
+                },
+                child: Container(
+                  width: double.infinity, // ⭐ 一列一個
+                  padding:
+                      const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
+                  decoration: BoxDecoration(
+                    color: selected ? Colors.black : Colors.white,
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: selected ? Colors.black : Colors.grey.shade300,
+                      width: 2,
+                    ),
+                  ),
+                  child: Row(
+                    // 改成橫向排
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item['title']!,
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: selected ? Colors.white : Colors.black,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              item['subtitle']!,
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: selected
+                                    ? Colors.white70
+                                    : const Color(0xFF6B7280),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        selected
+                            ? Icons.check_circle
+                            : Icons.radio_button_unchecked,
+                        color: selected ? Colors.white : Colors.grey,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+        const SizedBox(height: 20),
+        Text(
+          '已選擇 ${selectedTime.length} 個時段',
+          style: const TextStyle(
+            fontSize: 16,
+            color: Color(0xFF4B5563),
+          ),
+        ),
       ],
     );
   }

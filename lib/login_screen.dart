@@ -55,6 +55,7 @@ class LoginScreen extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('$loginType 登入成功'),
+          duration: const Duration(seconds: 1),
         ),
       );
 
