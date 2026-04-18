@@ -4,6 +4,8 @@ import 'profile.dart';
 import 'bottom_nav_bar.dart';
 import 'home_page.dart';
 import 'leaderboard_page.dart';
+import 'community_screen.dart';
+
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -17,7 +19,7 @@ class _MainScreenState extends State<MainScreen> {
 
   final List<Widget> _pages = [
     const HomePage(),
-    const Center(child: Text('Community')),
+    const CommunityScreen(),
     const ExerciseSelectionScreen(),
     LeaderboardPage(),
     const ProfileScreen(),
