@@ -190,7 +190,7 @@ class _StreakHeader extends StatelessWidget {
           onTap: () {
             showDialog(
               context: context,
-              barrierColor: Colors.black.withValues(alpha: 0.72),
+              barrierColor: Colors.black.withOpacity(0.72),
               builder: (context) => const _MonthlyCheckInDialog(),
             );
           },

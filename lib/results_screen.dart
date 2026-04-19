@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:confetti/confetti.dart';
+import 'services/ai_coach_service.dart';
 
 class ResultsScreen extends StatefulWidget {
   final int timeSeconds;
@@ -22,6 +23,9 @@ class ResultsScreen extends StatefulWidget {
 
 class _ResultsScreenState extends State<ResultsScreen> {
   late ConfettiController _confettiController;
+  
+  String? _dynamicAiFeedback;
+  bool _isLoadingAi = true;
 
   @override
   void initState() {
@@ -29,6 +33,24 @@ class _ResultsScreenState extends State<ResultsScreen> {
     _confettiController = ConfettiController(duration: const Duration(seconds: 3));
     // Start the celebration!
     _confettiController.play();
+    
+    _fetchAiFeedback();
+  }
+
+  Future<void> _fetchAiFeedback() async {
+    final feedback = await AiCoachService.generateFeedback(
+      timeSeconds: widget.timeSeconds,
+      averageAccuracy: widget.averageAccuracy,
+      stepCount: widget.stepCount,
+      calories: caloriesBurned,
+    );
+    
+    if (mounted) {
+      setState(() {
+        _dynamicAiFeedback = feedback;
+        _isLoadingAi = false;
+      });
+    }
   }
 
   @override
@@ -139,25 +161,34 @@ class _ResultsScreenState extends State<ResultsScreen> {
                             const Icon(Icons.tips_and_updates, color: Colors.amber),
                             const SizedBox(width: 8),
                             const Text(
-                              '姿勢修正建議',
+                              'AI 教練悄悄話',
                               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                             ),
                           ],
                         ),
                         const SizedBox(height: 16),
-                        if (widget.finalFeedback.isEmpty)
-                          const Text('你的姿勢非常標準，繼續保持！', style: TextStyle(fontSize: 16, color: Colors.green))
+                        if (_isLoadingAi)
+                          const Center(
+                            child: Padding(
+                              padding: EdgeInsets.all(12.0),
+                              child: Column(
+                                children: [
+                                  CircularProgressIndicator(color: Colors.amber),
+                                  SizedBox(height: 12),
+                                  Text('教練正在撰寫你的量身建議...', style: TextStyle(color: Colors.black54)),
+                                ],
+                              ),
+                            ),
+                          )
                         else
-                          ...widget.finalFeedback.map((tip) => Padding(
-                                padding: const EdgeInsets.only(bottom: 8.0),
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const Text('• ', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                                    Expanded(child: Text(tip, style: const TextStyle(fontSize: 16, color: Colors.black87, height: 1.5))),
-                                  ],
-                                ),
-                              )).toList(),
+                          Text(
+                            _dynamicAiFeedback ?? '沒有建議',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              color: Colors.black87,
+                              height: 1.6,
+                            ),
+                          ),
                       ],
                     ),
                   ),
