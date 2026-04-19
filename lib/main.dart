@@ -4,7 +4,6 @@ import 'package:device_preview/device_preview.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'login_screen.dart';
-import 'main_screen.dart';
 
 List<CameraDescription> cameras = [];
 
@@ -43,7 +42,7 @@ class MyApp extends StatelessWidget {
         scaffoldBackgroundColor: Colors.white,
       ),
       // App 一啟動就進入登入畫面
-      home: const MainScreen(),
+      home: const LoginScreen(),
     );
   }
 }
