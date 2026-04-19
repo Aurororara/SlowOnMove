@@ -70,95 +70,91 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
 
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: _buildAppBar(context),
-      body: Center(
-        child: Container(
-          width: 390,
-          decoration: const BoxDecoration(
-            color: Color(0xFFF7F7F9),
-            borderRadius: BorderRadius.vertical(
-              top: Radius.circular(34),
-            ),
-          ),
-          child: Column(
-            children: [
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 28),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildTimeTabs(),
-                      const SizedBox(height: 20),
-                      const _ScoreInfoCard(),
-                      const SizedBox(height: 20),
-                      _PodiumCard(
-                        first: topThree.firstWhere((e) => e.rank == 1),
-                        second: topThree.firstWhere((e) => e.rank == 2),
-                        third: topThree.firstWhere((e) => e.rank == 3),
-                      ),
-                      const SizedBox(height: 28),
-                      const Text(
-                        '完整排行榜',
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF6B7280),
-                          letterSpacing: 0.8,
-                        ),
-                      ),
-                      const SizedBox(height: 14),
-                      ...rankings.map(
-                        (user) => Padding(
-                          padding: const EdgeInsets.only(bottom: 14),
-                          child: RankingListCard(user: user),
-                        ),
-                      ),
-                      const SizedBox(height: 22),
-                      _PerformanceCard(user: currentUser),
-                      const SizedBox(height: 18),
-                      _MotivationCard(user: currentUser),
-                    ],
+      body: SafeArea(
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 16),
+                _buildHeader(),
+                const SizedBox(height: 24),
+                _buildTimeTabs(),
+                const SizedBox(height: 24),
+                const _ScoreInfoCard(),
+                const SizedBox(height: 24),
+                _buildSectionTitle('前三名'),
+                const SizedBox(height: 16),
+                _PodiumCard(
+                  first: topThree.firstWhere((e) => e.rank == 1),
+                  second: topThree.firstWhere((e) => e.rank == 2),
+                  third: topThree.firstWhere((e) => e.rank == 3),
+                ),
+                const SizedBox(height: 32),
+                _buildSectionTitle('完整排行榜'),
+                const SizedBox(height: 16),
+                ...rankings.map(
+                  (user) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: RankingListCard(user: user),
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 24),
+                _OriginalPerformanceCard(user: currentUser),
+                const SizedBox(height: 18),
+                _OriginalMotivationCard(user: currentUser),
+                const SizedBox(height: 40),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  PreferredSizeWidget _buildAppBar(BuildContext context) {
-    return AppBar(
-      backgroundColor: Colors.white,
-      elevation: 0,
-      scrolledUnderElevation: 0,
-      centerTitle: true,
-      title: const Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          CircleAvatar(
-            radius: 12,
-            backgroundColor: Color(0xFFE2E8F0),
-            child: Icon(
-              Icons.emoji_events_outlined,
-              size: 14,
-              color: Colors.blueGrey,
-            ),
+  Widget _buildHeader() {
+    return Stack(
+      children: [
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 20),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0F1522),
+            borderRadius: BorderRadius.circular(24),
           ),
-          SizedBox(width: 8),
-          Text(
-            '排行榜',
-            style: TextStyle(
-              color: Color(0xFF1A202C),
-              fontSize: 16,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 1.2,
-            ),
+          child: const Column(
+            children: [
+              CircleAvatar(
+                radius: 34,
+                backgroundColor: Colors.white,
+                child: Icon(
+                  Icons.emoji_events_outlined,
+                  size: 34,
+                  color: Colors.black,
+                ),
+              ),
+              SizedBox(height: 16),
+              Text(
+                '排行榜',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
+              ),
+              SizedBox(height: 6),
+              Text(
+                '查看你的排名、分數與運動表現',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey,
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -207,6 +203,17 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
       ),
     );
   }
+
+  Widget _buildSectionTitle(String title) {
+    return Text(
+      title,
+      style: const TextStyle(
+        fontSize: 14,
+        fontWeight: FontWeight.bold,
+        color: Color(0xFF2C4364),
+      ),
+    );
+  }
 }
 
 class _ScoreInfoCard extends StatelessWidget {
@@ -215,24 +222,28 @@ class _ScoreInfoCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 22),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF020817),
-        borderRadius: BorderRadius.circular(24),
+        color: const Color(0xFFFFF9F0),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: const Color(0xFFF6AD55).withOpacity(0.5),
+        ),
       ),
       child: const Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.workspace_premium_outlined, color: Colors.white, size: 24),
-          SizedBox(width: 12),
+          Icon(
+            Icons.workspace_premium_outlined,
+            color: Color(0xFFF6AD55),
+          ),
+          SizedBox(width: 16),
           Expanded(
             child: Text(
               '排名分數 = 姿勢準確度 + 距離',
               style: TextStyle(
-                fontSize: 16,
-                height: 1.4,
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF1A202C),
               ),
             ),
           ),
@@ -258,9 +269,9 @@ class _PodiumCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(18, 20, 18, 14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF4F1E8),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFE5E7EB), width: 2),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey[200]!),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
@@ -268,8 +279,8 @@ class _PodiumCard extends StatelessWidget {
           Expanded(
             child: _PodiumPerson(
               user: second,
-              avatarSize: 92,
-              podiumHeight: 118,
+              avatarSize: 84,
+              podiumHeight: 110,
               podiumColor: const Color(0xFFC9CED6),
             ),
           ),
@@ -277,8 +288,8 @@ class _PodiumCard extends StatelessWidget {
           Expanded(
             child: _PodiumPerson(
               user: first,
-              avatarSize: 116,
-              podiumHeight: 168,
+              avatarSize: 104,
+              podiumHeight: 150,
               podiumColor: const Color(0xFFF6B300),
             ),
           ),
@@ -286,8 +297,8 @@ class _PodiumCard extends StatelessWidget {
           Expanded(
             child: _PodiumPerson(
               user: third,
-              avatarSize: 92,
-              podiumHeight: 94,
+              avatarSize: 84,
+              podiumHeight: 90,
               podiumColor: const Color(0xFFC86400),
             ),
           ),
@@ -323,43 +334,40 @@ class _PodiumPerson extends StatelessWidget {
         CircleAvatar(
           radius: avatarSize / 2,
           backgroundColor: user.avatarColor,
-          child: CircleAvatar(
-            radius: avatarSize / 2 - 4,
-            backgroundColor: user.avatarColor,
-            child: Text(
-              user.avatarLetter,
-              style: const TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w900,
-                color: Colors.white,
-              ),
+          child: Text(
+            user.avatarLetter,
+            style: const TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
             ),
           ),
         ),
         const SizedBox(height: 8),
-        Text(medalEmoji, style: const TextStyle(fontSize: 24)),
+        Text(medalEmoji, style: const TextStyle(fontSize: 22)),
         const SizedBox(height: 8),
         Text(
           user.name,
           textAlign: TextAlign.center,
+          overflow: TextOverflow.ellipsis,
           style: const TextStyle(
-            fontSize: 14,
+            fontSize: 13,
             fontWeight: FontWeight.w800,
             color: Colors.black,
           ),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 6),
         Text(
           user.score.toStringAsFixed(1),
           style: TextStyle(
-            fontSize: 16,
+            fontSize: 15,
             fontWeight: FontWeight.w900,
             color: user.rank == 1
                 ? const Color(0xFFC96A00)
                 : const Color(0xFF111827),
           ),
         ),
-        const SizedBox(height: 16),
+        const SizedBox(height: 14),
         Container(
           width: double.infinity,
           height: podiumHeight,
@@ -369,13 +377,6 @@ class _PodiumPerson extends StatelessWidget {
             borderRadius: const BorderRadius.vertical(
               top: Radius.circular(20),
             ),
-            boxShadow: const [
-              BoxShadow(
-                blurRadius: 16,
-                offset: Offset(0, 8),
-                color: Color(0x1A000000),
-              ),
-            ],
           ),
           child: Text(
             '${user.rank}',
@@ -401,11 +402,11 @@ class RankingListCard extends StatelessWidget {
     final isFirst = user.rank == 1;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFE5E7EB), width: 2),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.grey[200]!),
       ),
       child: Row(
         children: [
@@ -422,12 +423,12 @@ class RankingListCard extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           CircleAvatar(
-            radius: 28,
+            radius: 26,
             backgroundColor: const Color(0xFF1F2A44),
             child: Text(
               user.avatarLetter,
               style: const TextStyle(
-                fontSize: 24,
+                fontSize: 22,
                 fontWeight: FontWeight.w800,
                 color: Colors.white,
               ),
@@ -475,18 +476,6 @@ class RankingListCard extends StatelessWidget {
                         ),
                       ),
                     ),
-                    Flexible(
-                      child: Text(
-                        '姿勢 ${user.accuracy}%',
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF4B5563),
-                        ),
-                      ),
-                    ),
                     const SizedBox(width: 12),
                     Flexible(
                       child: Text(
@@ -505,28 +494,32 @@ class RankingListCard extends StatelessWidget {
               ],
             ),
           ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                user.score.toStringAsFixed(1),
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.black,
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 68,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  user.score.toStringAsFixed(1),
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.black,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                '分數',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF6B7280),
-                  letterSpacing: 0.8,
+                const SizedBox(height: 4),
+                const Text(
+                  '分數',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF6B7280),
+                    letterSpacing: 0.8,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),
@@ -534,10 +527,10 @@ class RankingListCard extends StatelessWidget {
   }
 }
 
-class _PerformanceCard extends StatelessWidget {
+class _OriginalPerformanceCard extends StatelessWidget {
   final LeaderboardUser user;
 
-  const _PerformanceCard({required this.user});
+  const _OriginalPerformanceCard({required this.user});
 
   @override
   Widget build(BuildContext context) {
@@ -573,14 +566,14 @@ class _PerformanceCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: _statBox(
+                child: _StatBox(
                   title: '目前排名',
                   value: '#${user.rank}',
                 ),
               ),
               const SizedBox(width: 14),
               Expanded(
-                child: _statBox(
+                child: _StatBox(
                   title: '總分',
                   value: user.score.toStringAsFixed(1),
                 ),
@@ -591,14 +584,14 @@ class _PerformanceCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: _statBox(
+                child: _StatBox(
                   title: '姿勢準確度',
                   value: '${user.accuracy}%',
                 ),
               ),
               const SizedBox(width: 14),
               Expanded(
-                child: _statBox(
+                child: _StatBox(
                   title: '總距離',
                   value: '${user.distance.toStringAsFixed(1)}km',
                 ),
@@ -633,8 +626,19 @@ class _PerformanceCard extends StatelessWidget {
       ),
     );
   }
+}
 
-  Widget _statBox({required String title, required String value}) {
+class _StatBox extends StatelessWidget {
+  final String title;
+  final String value;
+
+  const _StatBox({
+    required this.title,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
       decoration: BoxDecoration(
@@ -671,10 +675,10 @@ class _PerformanceCard extends StatelessWidget {
   }
 }
 
-class _MotivationCard extends StatelessWidget {
+class _OriginalMotivationCard extends StatelessWidget {
   final LeaderboardUser user;
 
-  const _MotivationCard({required this.user});
+  const _OriginalMotivationCard({required this.user});
 
   @override
   Widget build(BuildContext context) {
@@ -734,13 +738,6 @@ class _MedalBadge extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: color,
-        boxShadow: const [
-          BoxShadow(
-            blurRadius: 8,
-            offset: Offset(0, 3),
-            color: Color(0x22000000),
-          ),
-        ],
       ),
       alignment: Alignment.center,
       child: Text(
