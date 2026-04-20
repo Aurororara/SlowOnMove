@@ -100,7 +100,7 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
                 height: 56,
                 child: ElevatedButton(
                   onPressed: () {
-                    // TODO: Firebase Update Logic
+                    // TODO: Django API Update Logic
                     Navigator.pop(context);
                   },
                   style: ElevatedButton.styleFrom(

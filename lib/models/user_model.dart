@@ -1,5 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 class UserModel {
   final String uid;
   final String username;
@@ -18,7 +16,7 @@ class UserModel {
       uid: uid,
       username: json['username'] as String? ?? 'New User',
       email: json['email'] as String? ?? '',
-      joinDate: (json['join_date'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      joinDate: json['join_date'] != null ? DateTime.parse(json['join_date']) : DateTime.now(),
     );
   }
 
@@ -26,7 +24,7 @@ class UserModel {
     return {
       'username': username,
       'email': email,
-      'join_date': Timestamp.fromDate(joinDate),
+      'join_date': joinDate.toIso8601String(),
     };
   }
 }

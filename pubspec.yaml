@@ -39,9 +39,8 @@ dependencies:
   google_mlkit_pose_detection: ^0.14.0
   device_preview: ^1.1.0
   confetti: ^0.8.0
-  firebase_core: ^4.7.0
-  firebase_auth: ^6.4.0
-  cloud_firestore: ^6.3.0
+  dio: ^5.4.0
+  flutter_secure_storage: ^9.0.0
   google_generative_ai: ^0.4.7
 
 dev_dependencies:

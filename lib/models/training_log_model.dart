@@ -1,5 +1,3 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-
 class TrainingLogModel {
   final String? logId;
   final String memberId;
@@ -22,9 +20,9 @@ class TrainingLogModel {
   factory TrainingLogModel.fromJson(Map<String, dynamic> json, String id) {
     return TrainingLogModel(
       logId: id,
-      memberId: json['member_id'] as String? ?? '',
-      startTime: (json['start_time'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      endTime: (json['end_time'] as Timestamp?)?.toDate() ?? DateTime.now(),
+      memberId: json['member_id']?.toString() ?? '',
+      startTime: json['start_time'] != null ? DateTime.parse(json['start_time']) : DateTime.now(),
+      endTime: json['end_time'] != null ? DateTime.parse(json['end_time']) : DateTime.now(),
       totalMins: json['total_mins'] as int? ?? 0,
       postureScore: json['posture_score'] as int? ?? 0,
       calories: json['calories'] as int? ?? 0,
@@ -34,8 +32,8 @@ class TrainingLogModel {
   Map<String, dynamic> toJson() {
     return {
       'member_id': memberId,
-      'start_time': Timestamp.fromDate(startTime),
-      'end_time': Timestamp.fromDate(endTime),
+      'start_time': startTime.toIso8601String(),
+      'end_time': endTime.toIso8601String(),
       'total_mins': totalMins,
       'posture_score': postureScore,
       'calories': calories,
