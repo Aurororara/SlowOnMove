@@ -2,6 +2,7 @@ import 'package:google_generative_ai/google_generative_ai.dart';
 
 class AiCoachService {
   // TODO: 使用者必須在此填上他們自己的 Gemini API Key
+  // 您可以在 https://aistudio.google.com/ 申請免費的 API Key
   static const String _apiKey = 'AIzaSyCWPFBKIdEGUYV8hfzPeyMB-yGP7j6F14o';
 
   /// 產生針對超慢跑運動表現的專屬教練回饋
@@ -11,8 +12,10 @@ class AiCoachService {
     required int stepCount,
     required int calories,
   }) async {
-    if (_apiKey == 'AIzaSyCWPFBKIdEGUYV8hfzPeyMB-yGP7j6F14o' || _apiKey.isEmpty) {
-      return '【系統提示】請前往 aistudio.google.com 申請 Gemini API Key，並貼入 ai_coach_service.dart 中以啟用 AI 教練功能！';
+    // 檢查是否仍為預設的 Placeholder 或為空
+    if (_apiKey.isEmpty || _apiKey == 'AIzaSyCWPFBKIdEGUYV8hfzPeyMB-yGP7j6F14o') {
+      return '【系統提示】偵測到尚未設定有效的 Gemini API Key。\n\n'
+             '請前往 aistudio.google.com 申請 Key，並將其貼入 lib/services/ai_coach_service.dart 的 _apiKey 變數中！';
     }
 
     try {
@@ -20,7 +23,7 @@ class AiCoachService {
         model: 'gemini-1.5-flash',
         apiKey: _apiKey,
         generationConfig: GenerationConfig(
-          temperature: 0.7, // 稍微帶有一點創意與溫暖語氣
+          temperature: 0.7,
         ),
       );
 
@@ -46,9 +49,20 @@ class AiCoachService {
 ''';
 
       final response = await model.generateContent([Content.text(prompt)]);
-      return response.text ?? '幹得好！繼續保持超慢跑的習慣喔！💪';
+      final text = response.text;
+      
+      if (text == null || text.isEmpty) {
+        return '教練正在思考中，請稍後再試！或者是剛才的運動數據讓教練太驚訝了。😅';
+      }
+      
+      return text;
+    } on GenerativeAIException catch (e) {
+      if (e.message.contains('API_KEY_INVALID')) {
+        return '【API 錯誤】您的 Gemini API Key 似乎無效，請重新檢查設定。';
+      }
+      return 'AI 服務發生異常：${e.message}';
     } catch (e) {
-      return '連線到 AI 教練失敗，請檢查網路連線後再試一次！\n錯誤: $e';
+      return '連線到 AI 教練失敗，請檢查網路連線或 API Key 是否正確！\n錯誤類型: ${e.runtimeType}';
     }
   }
 }
