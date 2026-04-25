@@ -38,10 +38,12 @@ build/
 # Python 虛擬環境
 venv/
 .venv/
-__pycache__/
+__pycache__
+__pycache__/g
 *.pyc
 *.pyo
 *.pyd
 .pytest_cache/
 .coverage
 htmlcov/
+.vscode
