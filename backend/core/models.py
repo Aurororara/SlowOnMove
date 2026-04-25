@@ -34,5 +34,14 @@ class TrainingLog(models.Model):
     start_time = models.DateTimeField()
     end_time = models.DateTimeField()
     total_mins = models.IntegerField()
+    exercise_type = models.CharField(
+        max_length=20,
+        choices=[
+            ("slow_jogging", "超慢跑"),
+            ("squat", "深蹲"),
+        ],
+        default="slow_jogging",
+    )
     posture_score = models.IntegerField()
     calories = models.IntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)

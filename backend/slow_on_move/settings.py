@@ -10,23 +10,26 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
+import os
 from pathlib import Path
+from datetime import timedelta
+from dotenv import load_dotenv
 
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+load_dotenv(BASE_DIR / ".env")
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-ythsa0clex=a5(u^a@p!*daqnw7=me6zmmm1z9ofx(gl-o=^lg'
+SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = os.getenv("DEBUG", "False")
 
-ALLOWED_HOSTS = []
-
+ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "").split(",")
 
 # Application definition
 
@@ -83,16 +86,15 @@ WSGI_APPLICATION = 'slow_on_move.wsgi.application'
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'slowonmove',
-        'USER': 'aurororara',
-        'PASSWORD': '',
-        'HOST': 'localhost',
-        'PORT': '5433',
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.getenv("DB_NAME"),
+        "USER": os.getenv("DB_USER"),
+        "PASSWORD": os.getenv("DB_PASSWORD"),
+        "HOST": os.getenv("DB_HOST", "localhost"),
+        "PORT": os.getenv("DB_PORT", "5432"),
     }
 }
-
 
 # Password validation
 # https://docs.djangoproject.com/en/6.0/ref/settings/#auth-password-validators
@@ -134,7 +136,7 @@ STATIC_URL = 'static/'
 AUTH_USER_MODEL = 'core.Member'
 
 # CORS
-CORS_ALLOW_ALL_ORIGINS = True
+CORS_ALLOW_ALL_ORIGINS = os.getenv("CORS_ALLOW_ALL_ORIGINS", "False") == "True"
 
 # Django REST Framework
 REST_FRAMEWORK = {

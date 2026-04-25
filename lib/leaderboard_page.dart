@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 
 class LeaderboardPage extends StatefulWidget {
   const LeaderboardPage({super.key});
@@ -8,70 +10,96 @@ class LeaderboardPage extends StatefulWidget {
 }
 
 class _LeaderboardPageState extends State<LeaderboardPage> {
-  int selectedTab = 0; // 0: 本週, 1: 本月, 2: 全部時間
+  int selectedCategory = 0;
+  int selectedPeriod = 0;
 
-  final List<LeaderboardUser> rankings = [
-    const LeaderboardUser(
-      name: 'Sarah Chen',
-      score: 237.5,
-      accuracy: 95,
-      distance: 142.5,
-      rank: 1,
-      avatarLetter: 'S',
-      avatarColor: Color(0xFFF4A000),
-      medalColor: Color(0xFFFFC107),
-    ),
-    const LeaderboardUser(
-      name: 'Mike Johnson',
-      score: 220.3,
-      accuracy: 92,
-      distance: 132.3,
-      rank: 2,
-      avatarLetter: 'M',
-      avatarColor: Color(0xFF9CA3AF),
-      medalColor: Color(0xFFBDBDBD),
-    ),
-    const LeaderboardUser(
-      name: 'Emma Wilson',
-      score: 203.8,
-      accuracy: 89,
-      distance: 120.4,
-      rank: 3,
-      avatarLetter: 'E',
-      avatarColor: Color(0xFFC96A00),
-      medalColor: Color(0xFFCD7F32),
-    ),
-    const LeaderboardUser(
-      name: 'Olivia Brown',
-      score: 198.6,
-      accuracy: 87,
-      distance: 115.9,
-      rank: 4,
-      avatarLetter: 'O',
-      avatarColor: Color(0xFF1F2A44),
-      medalColor: Color(0xFFE5E7EB),
-    ),
-    const LeaderboardUser(
-      name: 'James Lee',
-      score: 192.4,
-      accuracy: 85,
-      distance: 111.2,
-      rank: 5,
-      avatarLetter: 'J',
-      avatarColor: Color(0xFF1F2A44),
-      medalColor: Color(0xFFE5E7EB),
-    ),
+  // TODO: 之後請改成登入者自己的 member_id
+  final int currentMemberId = 1;
+
+  List<LeaderboardUser> rankings = [];
+  bool isLoading = true;
+  String? errorMessage;
+
+  final List<Map<String, String>> categories = const [
+    {'label': '超慢跑', 'value': 'slow_jogging'},
+    {'label': '深蹲', 'value': 'squat'},
+  ];
+
+  final List<Map<String, String>> periods = const [
+    {'label': '本週', 'value': 'week'},
+    {'label': '本月', 'value': 'month'},
+    {'label': '全部時間', 'value': 'all'},
   ];
 
   @override
-  Widget build(BuildContext context) {
-    final topThree = [...rankings]..sort((a, b) => a.rank.compareTo(b.rank));
-    final currentUser = rankings.firstWhere((e) => e.rank == 4);
+  void initState() {
+    super.initState();
+    fetchLeaderboard();
+  }
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
+  Future<void> fetchLeaderboard() async {
+    setState(() {
+      isLoading = true;
+      errorMessage = null;
+    });
+
+    try {
+      final exerciseType = categories[selectedCategory]['value'];
+      final period = periods[selectedPeriod]['value'];
+
+      final url = Uri.parse(
+        'http://127.0.0.1:8000/api/members/leaderboard/'
+        '?exercise_type=$exerciseType&period=$period',
+      );
+
+      final response = await http.get(url);
+
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        final List data = decoded['data'];
+
+        setState(() {
+          rankings =
+              data.map((item) => LeaderboardUser.fromJson(item)).toList();
+          isLoading = false;
+          errorMessage = null;
+        });
+      } else {
+        setState(() {
+          errorMessage = '取得排行榜失敗：${response.statusCode}';
+          isLoading = false;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        errorMessage = '連線失敗：$e';
+        isLoading = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    Widget body;
+
+    if (isLoading) {
+      body = const Center(child: CircularProgressIndicator());
+    } else if (errorMessage != null) {
+      body = Center(child: Text(errorMessage!));
+    } else if (rankings.isEmpty) {
+      body = const Center(child: Text('目前沒有排行榜資料'));
+    } else {
+      final topThree = [...rankings]..sort((a, b) => a.rank.compareTo(b.rank));
+
+      final currentUser = rankings.firstWhere(
+        (user) => user.memberId == currentMemberId,
+        orElse: () => rankings.first,
+      );
+
+      body = RefreshIndicator(
+        onRefresh: fetchLeaderboard,
         child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20.0),
             child: Column(
@@ -84,20 +112,25 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
                 const SizedBox(height: 24),
                 const _ScoreInfoCard(),
                 const SizedBox(height: 24),
-                _buildSectionTitle('前三名'),
-                const SizedBox(height: 16),
-                _PodiumCard(
-                  first: topThree.firstWhere((e) => e.rank == 1),
-                  second: topThree.firstWhere((e) => e.rank == 2),
-                  third: topThree.firstWhere((e) => e.rank == 3),
-                ),
-                const SizedBox(height: 32),
+                if (topThree.length >= 3) ...[
+                  _buildSectionTitle('前三名'),
+                  const SizedBox(height: 16),
+                  _PodiumCard(
+                    first: topThree[0],
+                    second: topThree[1],
+                    third: topThree[2],
+                  ),
+                  const SizedBox(height: 32),
+                ],
                 _buildSectionTitle('完整排行榜'),
                 const SizedBox(height: 16),
                 ...rankings.map(
                   (user) => Padding(
                     padding: const EdgeInsets.only(bottom: 12),
-                    child: RankingListCard(user: user),
+                    child: RankingListCard(
+                      user: user,
+                      isCurrentUser: user.memberId == currentMemberId,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 24),
@@ -109,98 +142,142 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
             ),
           ),
         ),
-      ),
+      );
+    }
+
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: SafeArea(child: body),
     );
   }
 
   Widget _buildHeader() {
-    return Stack(
-      children: [
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 20),
-          decoration: BoxDecoration(
-            color: const Color(0xFF0F1522),
-            borderRadius: BorderRadius.circular(24),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 32, horizontal: 20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F1522),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      child: const Column(
+        children: [
+          CircleAvatar(
+            radius: 34,
+            backgroundColor: Colors.white,
+            child: Icon(
+              Icons.emoji_events_outlined,
+              size: 34,
+              color: Colors.black,
+            ),
           ),
-          child: const Column(
-            children: [
-              CircleAvatar(
-                radius: 34,
-                backgroundColor: Colors.white,
-                child: Icon(
-                  Icons.emoji_events_outlined,
-                  size: 34,
-                  color: Colors.black,
-                ),
-              ),
-              SizedBox(height: 16),
-              Text(
-                '排行榜',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                ),
-              ),
-              SizedBox(height: 6),
-              Text(
-                '查看你的排名、分數與運動表現',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.grey,
-                ),
-              ),
-            ],
+          SizedBox(height: 16),
+          Text(
+            '排行榜',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
           ),
-        ),
-      ],
+          SizedBox(height: 6),
+          Text(
+            '查看你的排名、分數與運動表現',
+            style: TextStyle(
+              fontSize: 14,
+              color: Colors.grey,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildTimeTabs() {
-    final tabs = ['本週', '本月', '全部時間'];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF3F4F6),
+            borderRadius: BorderRadius.circular(30),
+          ),
+          child: Row(
+            children: List.generate(categories.length, (index) {
+              final isSelected = selectedCategory == index;
 
-    return Container(
-      padding: const EdgeInsets.all(6),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF7F7F8),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFD8DADF), width: 2),
-      ),
-      child: Row(
-        children: List.generate(tabs.length, (index) {
-          final isSelected = selectedTab == index;
-          return Expanded(
-            child: GestureDetector(
-              onTap: () {
-                setState(() {
-                  selectedTab = index;
-                });
-              },
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                decoration: BoxDecoration(
-                  color: isSelected ? Colors.black : Colors.transparent,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Center(
-                  child: Text(
-                    tabs[index],
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color:
-                          isSelected ? Colors.white : const Color(0xFF4B5563),
+              return Expanded(
+                child: GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      selectedCategory = index;
+                    });
+                    fetchLeaderboard();
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    padding: const EdgeInsets.symmetric(vertical: 18),
+                    decoration: BoxDecoration(
+                      color: isSelected ? Colors.black : Colors.transparent,
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    child: Center(
+                      child: Text(
+                        categories[index]['label']!,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: isSelected
+                              ? Colors.white
+                              : const Color(0xFF4B5563),
+                        ),
+                      ),
                     ),
                   ),
                 ),
-              ),
-            ),
-          );
-        }),
-      ),
+              );
+            }),
+          ),
+        ),
+        const SizedBox(height: 20),
+        Center(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: List.generate(periods.length, (index) {
+              final isSelected = selectedPeriod == index;
+
+              return GestureDetector(
+                onTap: () {
+                  setState(() {
+                    selectedPeriod = index;
+                  });
+                  fetchLeaderboard();
+                },
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 6),
+                  padding: const EdgeInsets.symmetric(
+                    vertical: 10,
+                    horizontal: 18,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isSelected ? Colors.black : const Color(0xFFF3F4F6),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    periods[index]['label']!,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color:
+                          isSelected ? Colors.white : const Color(0xFF6B7280),
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+        ),
+      ],
     );
   }
 
@@ -239,7 +316,7 @@ class _ScoreInfoCard extends StatelessWidget {
           SizedBox(width: 16),
           Expanded(
             child: Text(
-              '排名分數 = 姿勢準確度 + 距離',
+              '排名分數 = 姿勢準確度 70% + 熱量相對分數 30%',
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
@@ -394,132 +471,175 @@ class _PodiumPerson extends StatelessWidget {
 
 class RankingListCard extends StatelessWidget {
   final LeaderboardUser user;
+  final bool isCurrentUser;
 
-  const RankingListCard({super.key, required this.user});
+  const RankingListCard({
+    super.key,
+    required this.user,
+    this.isCurrentUser = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     final isFirst = user.rank == 1;
 
-    return Container(
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 180),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.grey[200]!),
+        color: isCurrentUser ? const Color(0xFFF3E8FF) : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: isCurrentUser ? const Color(0xFF7C3AED) : Colors.grey[200]!,
+          width: isCurrentUser ? 2.5 : 1,
+        ),
+        boxShadow: isCurrentUser
+            ? [
+                BoxShadow(
+                  color: const Color(0xFF7C3AED).withOpacity(0.18),
+                  blurRadius: 16,
+                  offset: const Offset(0, 8),
+                ),
+              ]
+            : [],
       ),
-      child: Row(
+      child: Stack(
         children: [
-          SizedBox(
-            width: 34,
-            child: Icon(
-              isFirst
-                  ? Icons.workspace_premium_outlined
-                  : Icons.military_tech_outlined,
-              color:
-                  isFirst ? const Color(0xFFF59E0B) : const Color(0xFF9CA3AF),
-              size: 28,
-            ),
-          ),
-          const SizedBox(width: 12),
-          CircleAvatar(
-            radius: 26,
-            backgroundColor: const Color(0xFF1F2A44),
-            child: Text(
-              user.avatarLetter,
-              style: const TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w800,
-                color: Colors.white,
+          Row(
+            children: [
+              SizedBox(
+                width: 34,
+                child: Icon(
+                  isCurrentUser
+                      ? Icons.person_pin_circle
+                      : isFirst
+                          ? Icons.workspace_premium_outlined
+                          : Icons.military_tech_outlined,
+                  color: isCurrentUser
+                      ? const Color(0xFF7C3AED)
+                      : isFirst
+                          ? const Color(0xFFF59E0B)
+                          : const Color(0xFF9CA3AF),
+                  size: 30,
+                ),
               ),
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        user.name,
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF111827),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    _MedalBadge(
-                      rank: user.rank,
-                      color: user.medalColor,
-                      small: true,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    Flexible(
-                      child: Text(
-                        '姿勢 ${user.accuracy}%',
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF4B5563),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Flexible(
-                      child: Text(
-                        '距離 ${user.distance.toStringAsFixed(1)} km',
-                        overflow: TextOverflow.ellipsis,
-                        maxLines: 1,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF4B5563),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          SizedBox(
-            width: 68,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  user.score.toStringAsFixed(1),
+              const SizedBox(width: 12),
+              CircleAvatar(
+                radius: isCurrentUser ? 29 : 26,
+                backgroundColor:
+                    isCurrentUser ? const Color(0xFF7C3AED) : user.avatarColor,
+                child: Text(
+                  user.avatarLetter,
                   style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.black,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  '分數',
-                  style: TextStyle(
-                    fontSize: 12,
+                    fontSize: 22,
                     fontWeight: FontWeight.w800,
-                    color: Color(0xFF6B7280),
-                    letterSpacing: 0.8,
+                    color: Colors.white,
                   ),
                 ),
-              ],
-            ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(right: isCurrentUser ? 28 : 0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              user.name,
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                              style: TextStyle(
+                                fontSize: isCurrentUser ? 17 : 16,
+                                fontWeight: FontWeight.w900,
+                                color: isCurrentUser
+                                    ? const Color(0xFF4C1D95)
+                                    : const Color(0xFF111827),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          _MedalBadge(
+                            rank: user.rank,
+                            color: isCurrentUser
+                                ? const Color(0xFF7C3AED)
+                                : user.medalColor,
+                            small: true,
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              '姿勢 ${user.accuracy}%',
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: isCurrentUser
+                                    ? const Color(0xFF6D28D9)
+                                    : const Color(0xFF4B5563),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Flexible(
+                            child: Text(
+                              '熱量 ${user.totalCalories.toStringAsFixed(0)} kcal',
+                              overflow: TextOverflow.ellipsis,
+                              maxLines: 1,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: isCurrentUser
+                                    ? const Color(0xFF6D28D9)
+                                    : const Color(0xFF4B5563),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              SizedBox(
+                width: 68,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      user.score.toStringAsFixed(1),
+                      style: TextStyle(
+                        fontSize: isCurrentUser ? 21 : 18,
+                        fontWeight: FontWeight.w900,
+                        color: isCurrentUser
+                            ? const Color(0xFF4C1D95)
+                            : Colors.black,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '分數',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: isCurrentUser
+                            ? const Color(0xFF7C3AED)
+                            : const Color(0xFF6B7280),
+                        letterSpacing: 0.8,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -549,8 +669,11 @@ class _OriginalPerformanceCard extends StatelessWidget {
         children: [
           const Row(
             children: [
-              Icon(Icons.workspace_premium_outlined,
-                  color: Colors.white, size: 28),
+              Icon(
+                Icons.workspace_premium_outlined,
+                color: Colors.white,
+                size: 28,
+              ),
               SizedBox(width: 10),
               Text(
                 '我的表現',
@@ -592,32 +715,8 @@ class _OriginalPerformanceCard extends StatelessWidget {
               const SizedBox(width: 14),
               Expanded(
                 child: _StatBox(
-                  title: '總距離',
-                  value: '${user.distance.toStringAsFixed(1)}km',
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          const Divider(color: Color(0x22FFFFFF), height: 1),
-          const SizedBox(height: 18),
-          const Row(
-            children: [
-              Text(
-                '距離第 3 名還差：',
-                style: TextStyle(
-                  color: Color(0xFFD1D5DB),
-                  fontSize: 16,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              Spacer(),
-              Text(
-                '20.2 分',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w800,
+                  title: '消耗熱量',
+                  value: '${user.totalCalories.toStringAsFixed(0)} kcal',
                 ),
               ),
             ],
@@ -704,7 +803,7 @@ class _OriginalMotivationCard extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           const Text(
-            '持續提升姿勢準確度與累積距離，排名還能再往上衝！',
+            '持續提升姿勢準確度與累積消耗熱量，排名還能再往上衝！',
             textAlign: TextAlign.center,
             style: TextStyle(
               color: Color(0xFF7C3AED),
@@ -753,23 +852,49 @@ class _MedalBadge extends StatelessWidget {
 }
 
 class LeaderboardUser {
+  final int memberId;
   final String name;
   final double score;
   final int accuracy;
-  final double distance;
+  final double totalCalories;
   final int rank;
   final String avatarLetter;
   final Color avatarColor;
   final Color medalColor;
 
   const LeaderboardUser({
+    required this.memberId,
     required this.name,
     required this.score,
     required this.accuracy,
-    required this.distance,
+    required this.totalCalories,
     required this.rank,
     required this.avatarLetter,
     required this.avatarColor,
     required this.medalColor,
   });
+
+  factory LeaderboardUser.fromJson(Map<String, dynamic> json) {
+    final username = (json['username'] ?? 'User').toString();
+    final rank = ((json['rank'] ?? 0) as num).toInt();
+
+    return LeaderboardUser(
+      memberId: ((json['member_id'] ?? 0) as num).toInt(),
+      name: username,
+      score: ((json['score'] ?? 0) as num).toDouble(),
+      accuracy:
+          ((json['posture_score'] ?? json['posture'] ?? 0) as num).round(),
+      totalCalories: ((json['total_calories'] ?? 0) as num).toDouble(),
+      rank: rank,
+      avatarLetter: username.isNotEmpty ? username[0].toUpperCase() : 'U',
+      avatarColor: const Color(0xFF1F2A44),
+      medalColor: rank == 1
+          ? const Color(0xFFFFC107)
+          : rank == 2
+              ? const Color(0xFFBDBDBD)
+              : rank == 3
+                  ? const Color(0xFFCD7F32)
+                  : const Color(0xFFE5E7EB),
+    );
+  }
 }
