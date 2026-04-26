@@ -16,3 +16,22 @@ subprojects {
 tasks.register("clean", Delete) {
     delete rootProject.buildDir
 }
+
+// ⭐ 這是更強大的補丁，會自動判斷狀態，不會導致崩潰
+subprojects {
+    def setNamespace = { prj ->
+        if (prj.hasProperty('android')) {
+            prj.android {
+                if (namespace == null) {
+                    namespace prj.group
+                }
+            }
+        }
+    }
+    // 如果專案已經評估完了就直接執行，否則等評估完再執行
+    if (project.state.executed) {
+        setNamespace(project)
+    } else {
+        project.afterEvaluate { setNamespace(it) }
+    }
+}

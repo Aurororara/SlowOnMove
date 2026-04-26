@@ -53,12 +53,14 @@ class MemberViewSet(viewsets.ModelViewSet):
 class BodyRecordViewSet(viewsets.ModelViewSet):
     queryset = BodyRecord.objects.all()
     serializer_class = BodyRecordSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
+   # permission_classes = [IsAuthenticated]
 
 class BoardRankingViewSet(viewsets.ModelViewSet):
     queryset = BoardRanking.objects.all()
     serializer_class = BoardRankingSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
+   # permission_classes = [IsAuthenticated]
 
 class CommunityPostViewSet(viewsets.ModelViewSet):
     queryset = CommunityPost.objects.all()
@@ -73,4 +75,5 @@ class FavoriteViewSet(viewsets.ModelViewSet):
 class TrainingLogViewSet(viewsets.ModelViewSet):
     queryset = TrainingLog.objects.all()
     serializer_class = TrainingLogSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
+    #permission_classes = [IsAuthenticated]

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart'; // ⭐ 已經匯入了
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import 'main.dart';
 import 'pose_painter.dart';
@@ -20,7 +21,8 @@ class PoseDetectorView extends StatefulWidget {
 }
 
 class _PoseDetectorViewState extends State<PoseDetectorView> {
-  final PoseDetector _poseDetector = PoseDetector(options: PoseDetectorOptions());
+  // ⭐ 網頁版不支援 PoseDetector，所以我們只在非網頁環境初始化它
+  late final PoseDetector _poseDetector;
   bool _canProcess = true;
   bool _isBusy = false;
   CustomPaint? _customPaint;
@@ -41,6 +43,12 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
   @override
   void initState() {
     super.initState();
+    
+    // ⭐ 初始化 PoseDetector 前先檢查是否為網頁
+    if (!kIsWeb) {
+      _poseDetector = PoseDetector(options: PoseDetectorOptions());
+    }
+
     if (cameras.any((element) => element.lensDirection == CameraLensDirection.front)) {
       _cameraIndex = cameras.indexOf(
         cameras.firstWhere((element) => element.lensDirection == CameraLensDirection.front),
@@ -66,7 +74,9 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
   void dispose() {
     _timer?.cancel();
     _canProcess = false;
-    _poseDetector.close();
+    if (!kIsWeb) {
+      _poseDetector.close();
+    }
     _cameraController?.dispose();
     super.dispose();
   }
@@ -74,22 +84,29 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
   Future _startLiveFeed() async {
     if (_cameraIndex == -1 || cameras.isEmpty) return;
     final camera = cameras[_cameraIndex];
+
+    // ⭐ 這裡改動了：Platform 檢查前先加上 !kIsWeb
     _cameraController = CameraController(
       camera,
       ResolutionPreset.high,
       enableAudio: false,
-      imageFormatGroup: Platform.isAndroid
+      imageFormatGroup: (!kIsWeb && Platform.isAndroid)
           ? ImageFormatGroup.nv21
           : ImageFormatGroup.bgra8888,
     );
+
     _cameraController?.initialize().then((_) {
       if (!mounted) return;
-      _cameraController?.startImageStream(_processCameraImage);
+      // ⭐ 只有非網頁版才去跑影像串流偵測，因為網頁版跑不動 ML Kit
+      if (!kIsWeb) {
+        _cameraController?.startImageStream(_processCameraImage);
+      }
       setState(() {});
     });
   }
 
   void _processCameraImage(CameraImage image) {
+    if (kIsWeb) return; // 網頁版不執行
     final inputImage = _inputImageFromCameraImage(image);
     if (inputImage == null) return;
     _processImage(inputImage);
@@ -103,13 +120,16 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
   };
 
   InputImage? _inputImageFromCameraImage(CameraImage image) {
-    if (_cameraController == null) return null;
+    if (kIsWeb || _cameraController == null) return null; // ⭐ 網頁版直接跳過
+
     final camera = cameras[_cameraIndex];
     final sensorOrientation = camera.sensorOrientation;
     InputImageRotation? rotation;
-    if (Platform.isIOS) {
+
+    // ⭐ 所有的 Platform 檢查都要包在 !kIsWeb 裡面
+    if (!kIsWeb && Platform.isIOS) {
       rotation = InputImageRotationValue.fromRawValue(sensorOrientation);
-    } else if (Platform.isAndroid) {
+    } else if (!kIsWeb && Platform.isAndroid) {
       var rotationCompensation = _orientations[_cameraController!.value.deviceOrientation];
       if (rotationCompensation == null) return null;
       if (camera.lensDirection == CameraLensDirection.front) {
@@ -119,12 +139,15 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
       }
       rotation = InputImageRotationValue.fromRawValue(rotationCompensation);
     }
+    
     if (rotation == null) return null;
 
     final format = InputImageFormatValue.fromRawValue(image.format.raw as int);
+    
+    // ⭐ 這裡也是：檢查 Platform 前先確定不是 Web
     if (format == null ||
-        (Platform.isAndroid && format != InputImageFormat.nv21) ||
-        (Platform.isIOS && format != InputImageFormat.bgra8888)) return null;
+        (!kIsWeb && Platform.isAndroid && format != InputImageFormat.nv21) ||
+        (!kIsWeb && Platform.isIOS && format != InputImageFormat.bgra8888)) return null;
 
     if (image.planes.isEmpty) return null;
 
@@ -140,18 +163,15 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
   }
 
   Future<void> _processImage(InputImage inputImage) async {
-    if (!_canProcess) return;
-    if (_isBusy) return;
+    if (kIsWeb || !_canProcess || _isBusy) return; // ⭐ 網頁版不執行
     _isBusy = true;
     setState(() => _text = '');
     
     final poses = await _poseDetector.processImage(inputImage);
     
-    // Analyze poses
     final analysisResult = _poseAnalyzer.analyze(poses);
     _accuracyRate = analysisResult.accuracy;
     
-    // Smooth the feedback list to avoid flickering, just append latest
     for (var f in analysisResult.feedback) {
       if (!_feedback.contains(f)) {
          _feedback.add(f);
@@ -159,7 +179,6 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
     }
     _stepCount = analysisResult.stepCount;
 
-    // Track for average
     if (poses.isNotEmpty) {
       _totalAccuracySum += _accuracyRate;
       _accuracySamples++;
@@ -183,49 +202,48 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
 
   @override
   Widget build(BuildContext context) {
+    // ⭐ 如果是網頁版，顯示一個友善提示
+    if (kIsWeb) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.computer, color: Colors.white54, size: 64),
+              const SizedBox(height: 16),
+              const Text(
+                '網頁版目前不支援 AI 動作偵測',
+                style: TextStyle(color: Colors.white, fontSize: 18),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                '請使用安卓模擬器或實體手機測試',
+                style: TextStyle(color: Colors.white54),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('返回'),
+              )
+            ],
+          ),
+        ),
+      );
+    }
+
     if (_cameraController == null ||
         _cameraController?.value.isInitialized == false ||
         _cameraIndex == -1) {
-      // In simulator or no camera, show a black background but still show the overlay
       return Scaffold(
         backgroundColor: Colors.black,
         body: Stack(
           children: [
-            Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(
-                  Icons.videocam_off_outlined,
-                  color: Colors.white54,
-                  size: 48,
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  '相機不可用 (模擬器)',
-                  style: TextStyle(color: Colors.white54, fontSize: 18),
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton.icon(
-                  onPressed: () {
-                    // Simulate some progress
-                    setState(() {
-                      _elapsedSeconds = 900; // 15 mins
-                      _accuracyRate = 92.5;
-                      _stepCount = 1200;
-                      _totalAccuracySum = 92.5;
-                      _accuracySamples = 1;
-                      _feedback = ['模擬動作：姿勢非常標準！', '維持呼吸。'];
-                    });
-                  },
-                  icon: const Icon(Icons.play_arrow),
-                  label: const Text('生成模擬數據 (測試用)'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.blueAccent,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  ),
-                ),
-              ],
+            const Center(
+              child: Text(
+                '相機啟動中...',
+                style: TextStyle(color: Colors.white54),
+              ),
             ),
             _buildDetectionOverlay(),
           ],
@@ -278,42 +296,25 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            // Time Section
             Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 Text(
                   widget.exerciseTitle,
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
+                  style: const TextStyle(color: Colors.white70, fontSize: 14),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   '$minutes:$seconds',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
                 ),
               ],
             ),
             Container(width: 1, height: 40, color: Colors.white24),
-            // Accuracy Section
             Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                const Text(
-                  '準確率',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
+                const Text('準確率', style: TextStyle(color: Colors.white70, fontSize: 14)),
                 const SizedBox(height: 4),
                 Text(
                   '${_accuracyRate.toStringAsFixed(1)}%',
@@ -325,33 +326,16 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
                 ),
               ],
             ),
-            // Stop Button
             GestureDetector(
               onTap: () async {
                 _timer?.cancel();
-                _poseDetector.close();
+                if (!kIsWeb) _poseDetector.close();
                 _cameraController?.dispose();
                 
                 double avgAcc = _accuracySamples > 0 ? (_totalAccuracySum / _accuracySamples) : 0.0;
-
-                // Create and save training log to Firestore
                 int caloriesBurned = ((_elapsedSeconds / 60.0) * 8.0).round();
-                final log = TrainingLogModel(
-                  memberId: 'test_user_001', // TODO: Replace with real Auth UID later
-                  startTime: DateTime.now().subtract(Duration(seconds: _elapsedSeconds)),
-                  endTime: DateTime.now(),
-                  totalMins: _elapsedSeconds ~/ 60,
-                  postureScore: avgAcc.round(),
-                  calories: caloriesBurned,
-                );
-                
-                // Fire and forget (don't block UI navigation)
-                DataRepository().saveTrainingLog(log).then((_) {
-                  debugPrint('Training log saved successfully to Firestore!');
-                }).catchError((e) {
-                  debugPrint('Failed to save training log: $e');
-                });
 
+                // 導向結果頁
                 if (mounted) {
                   Navigator.pushReplacement(
                     context,
@@ -368,10 +352,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
               },
               child: Container(
                 padding: const EdgeInsets.all(12),
-                decoration: const BoxDecoration(
-                  color: Colors.redAccent,
-                  shape: BoxShape.circle,
-                ),
+                decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle),
                 child: const Icon(Icons.stop_rounded, color: Colors.white, size: 28),
               ),
             ),

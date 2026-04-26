@@ -4,7 +4,7 @@ from core.models import Member, BodyRecord, BoardRanking, CommunityPost, Favorit
 class MemberSerializer(serializers.ModelSerializer):
     class Meta:
         model = Member
-        fields = ['id', 'username', 'email', 'date_joined']
+        fields = ['id', 'username', 'email', 'date_joined',]
         read_only_fields = ['id', 'date_joined']
 
 class BodyRecordSerializer(serializers.ModelSerializer):
