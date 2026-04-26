@@ -1,4 +1,7 @@
 import 'package:flutter/material.dart';
+import 'repositories/data_repository.dart';
+import 'models/training_log_model.dart';
+import 'package:intl/intl.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});
@@ -15,7 +18,7 @@ class HomePage extends StatelessWidget {
             children: [
               const _HeaderSection(),
               const SizedBox(height: 18),
-              _MainDashboardCard(),
+              const _MainDashboardCard(),
             ],
           ),
         ),
@@ -29,28 +32,12 @@ class _HeaderSection extends StatelessWidget {
 
   String _formatDate(DateTime date) {
     const weekdays = [
-      'Monday',
-      'Tuesday',
-      'Wednesday',
-      'Thursday',
-      'Friday',
-      'Saturday',
-      'Sunday',
+      'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday',
     ];
 
     const months = [
-      'January',
-      'February',
-      'March',
-      'April',
-      'May',
-      'June',
-      'July',
-      'August',
-      'September',
-      'October',
-      'November',
-      'December',
+      'January', 'February', 'March', 'April', 'May', 'June', 
+      'July', 'August', 'September', 'October', 'November', 'December',
     ];
 
     return '${weekdays[date.weekday - 1]}, ${months[date.month - 1]} ${date.day}';
@@ -95,9 +82,46 @@ class _HeaderSection extends StatelessWidget {
   }
 }
 
-class _MainDashboardCard extends StatelessWidget {
+class _MainDashboardCard extends StatefulWidget {
+  const _MainDashboardCard({super.key});
+
+  @override
+  State<_MainDashboardCard> createState() => _MainDashboardCardState();
+}
+
+class _MainDashboardCardState extends State<_MainDashboardCard> {
+  final DataRepository _repository = DataRepository();
+  List<TrainingLogModel> _history = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    final history = await _repository.getUserTrainingHistory('test_user_001');
+    if (mounted) {
+      setState(() {
+        _history = history;
+        _isLoading = false;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Center(child: Padding(
+        padding: EdgeInsets.all(40.0),
+        child: CircularProgressIndicator(),
+      ));
+    }
+
+    int totalCalories = _history.fold(0, (sum, item) => sum + item.calories);
+    int totalSteps = _history.length * 1200; 
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(18),
@@ -113,49 +137,49 @@ class _MainDashboardCard extends StatelessWidget {
           ),
         ],
       ),
-      child: const Column(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _StreakHeader(),
-          SizedBox(height: 16),
-          _StreakBanner(),
-          SizedBox(height: 18),
-          _WeekDaysRow(),
-          SizedBox(height: 18),
-          Divider(color: Color(0xFFE4E4E4), thickness: 1),
-          SizedBox(height: 16),
-          _ProgressSection(),
-          SizedBox(height: 18),
+          const _StreakHeader(),
+          const SizedBox(height: 16),
+          const _StreakBanner(),
+          const SizedBox(height: 18),
+          const _WeekDaysRow(),
+          const SizedBox(height: 18),
+          const Divider(color: Color(0xFFE4E4E4), thickness: 1),
+          const SizedBox(height: 16),
+          _ProgressSection(itemsCompleted: _history.length),
+          const SizedBox(height: 18),
           _MetricCard(
             icon: Icons.local_fire_department_outlined,
-            iconColor: Color(0xFFFF6A00),
+            iconColor: const Color(0xFFFF6A00),
             label: 'CALORIES',
-            value: '1,247',
+            value: NumberFormat('#,###').format(totalCalories),
             unit: 'kcal',
-            percent: '83%',
+            percent: '${(totalCalories / 2000 * 100).clamp(0, 100).toInt()}%',
             subText: 'of goal',
-            progress: 0.83,
-            progressColor: Color(0xFFFF6A00),
+            progress: (totalCalories / 2000).clamp(0.0, 1.0),
+            progressColor: const Color(0xFFFF6A00),
           ),
-          SizedBox(height: 14),
+          const SizedBox(height: 14),
           _MetricCard(
             icon: Icons.directions_walk_outlined,
             iconColor: Colors.black,
             label: 'STEPS',
-            value: '8,342',
+            value: NumberFormat('#,###').format(totalSteps),
             unit: '',
-            percent: '83%',
+            percent: '${(totalSteps / 10000 * 100).clamp(0, 100).toInt()}%',
             subText: 'of goal',
-            progress: 0.83,
+            progress: (totalSteps / 10000).clamp(0.0, 1.0),
             progressColor: Colors.black,
           ),
-          SizedBox(height: 18),
-          Divider(color: Color(0xFFE4E4E4), thickness: 1),
-          SizedBox(height: 12),
+          const SizedBox(height: 18),
+          const Divider(color: Color(0xFFE4E4E4), thickness: 1),
+          const SizedBox(height: 12),
           Center(
             child: Text(
-              'Daily Goals (0/4)',
-              style: TextStyle(
+              'Daily Goals (${_history.length > 4 ? 4 : _history.length}/4)',
+              style: const TextStyle(
                 fontSize: 13,
                 color: Color(0xFF7A7A7A),
                 fontWeight: FontWeight.w600,
@@ -240,19 +264,7 @@ class _MonthlyCheckInDialog extends StatelessWidget {
   const _MonthlyCheckInDialog();
 
   static const Set<int> _completedDays = {
-    1,
-    2,
-    3,
-    4,
-    6,
-    8,
-    9,
-    12,
-    15,
-    16,
-    18,
-    19,
-    20,
+    1, 2, 3, 4, 6, 8, 9, 12, 15, 16, 18, 19, 20,
   };
 
   @override
@@ -264,9 +276,7 @@ class _MonthlyCheckInDialog extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         child: Container(
           width: double.infinity,
-          decoration: const BoxDecoration(
-            color: Colors.white,
-          ),
+          decoration: const BoxDecoration(color: Colors.white),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -329,49 +339,22 @@ class _MonthlyCheckInDialog extends StatelessWidget {
                     SizedBox(height: 10),
                     _CalendarMonthGrid(),
                     SizedBox(height: 16),
-                    Divider(
-                      height: 1,
-                      color: Color(0xFFE7E7E7),
-                    ),
+                    Divider(height: 1, color: Color(0xFFE7E7E7)),
                     SizedBox(height: 16),
                     Row(
                       children: [
-                        Expanded(
-                          child: _CheckInStat(
-                            value: '13',
-                            label: 'Days Active',
-                            color: Colors.black,
-                          ),
-                        ),
-                        Expanded(
-                          child: _CheckInStat(
-                            value: '65%',
-                            label: 'Success Rate',
-                            color: Color(0xFF4FBF63),
-                          ),
-                        ),
-                        Expanded(
-                          child: _CheckInStat(
-                            value: '4',
-                            label: 'Current Streak',
-                            color: Color(0xFFF59E0B),
-                          ),
-                        ),
+                        Expanded(child: _CheckInStat(value: '13', label: 'Days Active', color: Colors.black)),
+                        Expanded(child: _CheckInStat(value: '65%', label: 'Success Rate', color: Color(0xFF4FBF63))),
+                        Expanded(child: _CheckInStat(value: '4', label: 'Current Streak', color: Color(0xFFF59E0B))),
                       ],
                     ),
                     SizedBox(height: 14),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        _LegendItem(
-                          color: Color(0xFF4FBF63),
-                          label: 'Completed',
-                        ),
+                        _LegendItem(color: Color(0xFF4FBF63), label: 'Completed'),
                         SizedBox(width: 18),
-                        _LegendItem(
-                          color: Colors.black,
-                          label: 'Today',
-                        ),
+                        _LegendItem(color: Colors.black, label: 'Today'),
                       ],
                     ),
                   ],
@@ -391,7 +374,6 @@ class _CalendarWeekHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     const weekDays = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
-
     return Row(
       children: weekDays.map((day) {
         return Expanded(
@@ -429,12 +411,7 @@ class _CalendarMonthGrid extends StatelessWidget {
         final day = index + 1;
         final completed = _MonthlyCheckInDialog._completedDays.contains(day);
         final isToday = day == 7;
-
-        return _CalendarDayCell(
-          day: day,
-          completed: completed,
-          isToday: isToday,
-        );
+        return _CalendarDayCell(day: day, completed: completed, isToday: isToday);
       },
     );
   }
@@ -445,49 +422,22 @@ class _CalendarDayCell extends StatelessWidget {
   final bool completed;
   final bool isToday;
 
-  const _CalendarDayCell({
-    required this.day,
-    required this.completed,
-    required this.isToday,
-  });
+  const _CalendarDayCell({required this.day, required this.completed, required this.isToday});
 
   @override
   Widget build(BuildContext context) {
-    final backgroundColor = isToday
-        ? Colors.black
-        : completed
-            ? const Color(0xFF4FBF63)
-            : const Color(0xFFF0F1F3);
-    final textColor =
-        (completed || isToday) ? Colors.white : const Color(0xFF8E95A1);
+    final backgroundColor = isToday ? Colors.black : completed ? const Color(0xFF4FBF63) : const Color(0xFFF0F1F3);
+    final textColor = (completed || isToday) ? Colors.white : const Color(0xFF8E95A1);
 
     return Container(
-      decoration: BoxDecoration(
-        color: backgroundColor,
-        borderRadius: BorderRadius.circular(9),
-      ),
+      decoration: BoxDecoration(color: backgroundColor, borderRadius: BorderRadius.circular(9)),
       child: Stack(
         children: [
           Center(
-            child: Text(
-              '$day',
-              style: TextStyle(
-                color: textColor,
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
+            child: Text('$day', style: TextStyle(color: textColor, fontSize: 12, fontWeight: FontWeight.w800)),
           ),
           if (completed)
-            const Positioned(
-              top: 5,
-              right: 5,
-              child: Icon(
-                Icons.check,
-                color: Colors.white,
-                size: 9,
-              ),
-            ),
+            const Positioned(top: 5, right: 5, child: Icon(Icons.check, color: Colors.white, size: 9)),
         ],
       ),
     );
@@ -499,33 +449,15 @@ class _CheckInStat extends StatelessWidget {
   final String label;
   final Color color;
 
-  const _CheckInStat({
-    required this.value,
-    required this.label,
-    required this.color,
-  });
+  const _CheckInStat({required this.value, required this.label, required this.color});
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Text(
-          value,
-          style: TextStyle(
-            color: color,
-            fontSize: 18,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
+        Text(value, style: TextStyle(color: color, fontSize: 18, fontWeight: FontWeight.w800)),
         const SizedBox(height: 4),
-        Text(
-          label,
-          style: const TextStyle(
-            color: Color(0xFF747B86),
-            fontSize: 10,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
+        Text(label, style: const TextStyle(color: Color(0xFF747B86), fontSize: 10, fontWeight: FontWeight.w600)),
       ],
     );
   }
@@ -535,33 +467,16 @@ class _LegendItem extends StatelessWidget {
   final Color color;
   final String label;
 
-  const _LegendItem({
-    required this.color,
-    required this.label,
-  });
+  const _LegendItem({required this.color, required this.label});
 
   @override
   Widget build(BuildContext context) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          width: 13,
-          height: 13,
-          decoration: BoxDecoration(
-            color: color,
-            borderRadius: BorderRadius.circular(3),
-          ),
-        ),
+        Container(width: 13, height: 13, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(3))),
         const SizedBox(width: 6),
-        Text(
-          label,
-          style: const TextStyle(
-            color: Color(0xFF4B5563),
-            fontSize: 11,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
+        Text(label, style: const TextStyle(color: Color(0xFF4B5563), fontSize: 11, fontWeight: FontWeight.w600)),
       ],
     );
   }
@@ -582,11 +497,7 @@ class _StreakBanner extends StatelessWidget {
       ),
       child: const Text(
         '4-Day Streak! You\'re on a roll! +10 points!',
-        style: TextStyle(
-          color: Color(0xFFFF3B30),
-          fontSize: 14,
-          fontWeight: FontWeight.w700,
-        ),
+        style: TextStyle(color: Color(0xFFFF3B30), fontSize: 14, fontWeight: FontWeight.w700),
       ),
     );
   }
@@ -599,15 +510,9 @@ class _WeekDaysRow extends StatelessWidget {
   Widget build(BuildContext context) {
     const labels = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
     const completed = [true, true, false, true, true, false, false];
-
     return Row(
       children: List.generate(labels.length, (index) {
-        return Expanded(
-          child: _DayStatusItem(
-            day: labels[index],
-            completed: completed[index],
-          ),
-        );
+        return Expanded(child: _DayStatusItem(day: labels[index], completed: completed[index]));
       }),
     );
   }
@@ -617,23 +522,13 @@ class _DayStatusItem extends StatelessWidget {
   final String day;
   final bool completed;
 
-  const _DayStatusItem({
-    required this.day,
-    required this.completed,
-  });
+  const _DayStatusItem({required this.day, required this.completed});
 
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Text(
-          day,
-          style: const TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            color: Color(0xFF727272),
-          ),
-        ),
+        Text(day, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF727272))),
         const SizedBox(height: 8),
         Container(
           width: 34,
@@ -641,26 +536,9 @@ class _DayStatusItem extends StatelessWidget {
           decoration: BoxDecoration(
             color: completed ? const Color(0xFF22C55E) : Colors.white,
             shape: BoxShape.circle,
-            border: Border.all(
-              color:
-                  completed ? const Color(0xFF16A34A) : const Color(0xFFD4D4D4),
-              width: 2,
-            ),
-            boxShadow: completed
-                ? const [
-                    BoxShadow(
-                      color: Color(0x1F22C55E),
-                      blurRadius: 6,
-                      offset: Offset(0, 3),
-                    ),
-                  ]
-                : null,
+            border: Border.all(color: completed ? const Color(0xFF16A34A) : const Color(0xFFD4D4D4), width: 2),
           ),
-          child: Icon(
-            completed ? Icons.check : Icons.add,
-            color: completed ? Colors.white : const Color(0xFFBDBDBD),
-            size: 18,
-          ),
+          child: Icon(completed ? Icons.check : Icons.add, color: completed ? Colors.white : const Color(0xFFBDBDBD), size: 18),
         ),
       ],
     );
@@ -668,42 +546,36 @@ class _DayStatusItem extends StatelessWidget {
 }
 
 class _ProgressSection extends StatelessWidget {
-  const _ProgressSection();
+  final int itemsCompleted;
+  const _ProgressSection({super.key, this.itemsCompleted = 0});
 
   @override
   Widget build(BuildContext context) {
-    return const Column(
+    double progress = (itemsCompleted / 7).clamp(0.0, 1.0);
+    return Column(
       children: [
         Row(
           children: [
-            Expanded(
+            const Expanded(
               child: Text(
                 'Weekly Progress',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF5D6470),
-                ),
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Color(0xFF5D6470)),
               ),
             ),
             Text(
-              '4/7',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                color: Colors.black,
-              ),
+              '$itemsCompleted/7',
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.black),
             ),
           ],
         ),
-        SizedBox(height: 10),
+        const SizedBox(height: 10),
         ClipRRect(
-          borderRadius: BorderRadius.all(Radius.circular(99)),
+          borderRadius: const BorderRadius.all(Radius.circular(99)),
           child: LinearProgressIndicator(
-            value: 4 / 7,
+            value: progress,
             minHeight: 9,
-            backgroundColor: Color(0xFFE5E7EB),
-            valueColor: AlwaysStoppedAnimation(Color(0xFF22C55E)),
+            backgroundColor: const Color(0xFFE5E7EB),
+            valueColor: const AlwaysStoppedAnimation(Color(0xFF22C55E)),
           ),
         ),
       ],
@@ -723,25 +595,15 @@ class _MetricCard extends StatelessWidget {
   final Color progressColor;
 
   const _MetricCard({
-    required this.icon,
-    required this.iconColor,
-    required this.label,
-    required this.value,
-    required this.unit,
-    required this.percent,
-    required this.subText,
-    required this.progress,
-    required this.progressColor,
+    required this.icon, required this.iconColor, required this.label, required this.value, required this.unit,
+    required this.percent, required this.subText, required this.progress, required this.progressColor,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8F8F8),
-        borderRadius: BorderRadius.circular(22),
-      ),
+      decoration: BoxDecoration(color: const Color(0xFFF8F8F8), borderRadius: BorderRadius.circular(22)),
       child: Column(
         children: [
           Row(
@@ -749,10 +611,7 @@ class _MetricCard extends StatelessWidget {
               Container(
                 width: 52,
                 height: 52,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(16),
-                ),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
                 child: Icon(icon, color: iconColor, size: 28),
               ),
               const SizedBox(width: 12),
@@ -760,40 +619,17 @@ class _MetricCard extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      label,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        color: Color(0xFF8A8FA0),
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.5,
-                      ),
-                    ),
+                    Text(label, style: const TextStyle(fontSize: 13, color: Color(0xFF8A8FA0), fontWeight: FontWeight.w800, letterSpacing: 0.5)),
                     const SizedBox(height: 4),
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Text(
-                          value,
-                          style: const TextStyle(
-                            fontSize: 26,
-                            fontWeight: FontWeight.w800,
-                            color: Colors.black,
-                            height: 1,
-                          ),
-                        ),
+                        Text(value, style: const TextStyle(fontSize: 26, fontWeight: FontWeight.w800, color: Colors.black, height: 1)),
                         if (unit.isNotEmpty) ...[
                           const SizedBox(width: 6),
                           Padding(
                             padding: const EdgeInsets.only(bottom: 3),
-                            child: Text(
-                              unit,
-                              style: const TextStyle(
-                                fontSize: 18,
-                                color: Color(0xFF9CA3AF),
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
+                            child: Text(unit, style: const TextStyle(fontSize: 18, color: Color(0xFF9CA3AF), fontWeight: FontWeight.w500)),
                           ),
                         ],
                       ],
@@ -804,21 +640,8 @@ class _MetricCard extends StatelessWidget {
               Column(
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  Text(
-                    percent,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  Text(
-                    subText,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF8A8FA0),
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
+                  Text(percent, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: Colors.black)),
+                  Text(subText, style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF), fontWeight: FontWeight.w500)),
                 ],
               ),
             ],
@@ -828,7 +651,7 @@ class _MetricCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(99),
             child: LinearProgressIndicator(
               value: progress,
-              minHeight: 8,
+              minHeight: 6,
               backgroundColor: const Color(0xFFE5E7EB),
               valueColor: AlwaysStoppedAnimation(progressColor),
             ),

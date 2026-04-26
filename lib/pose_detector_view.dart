@@ -191,11 +191,41 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
         backgroundColor: Colors.black,
         body: Stack(
           children: [
-            const Center(
-              child: Text(
-                '相機不可用',
-                style: TextStyle(color: Colors.white54),
-              ),
+            Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.videocam_off_outlined,
+                  color: Colors.white54,
+                  size: 48,
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  '相機不可用 (模擬器)',
+                  style: TextStyle(color: Colors.white54, fontSize: 18),
+                ),
+                const SizedBox(height: 24),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    // Simulate some progress
+                    setState(() {
+                      _elapsedSeconds = 900; // 15 mins
+                      _accuracyRate = 92.5;
+                      _stepCount = 1200;
+                      _totalAccuracySum = 92.5;
+                      _accuracySamples = 1;
+                      _feedback = ['模擬動作：姿勢非常標準！', '維持呼吸。'];
+                    });
+                  },
+                  icon: const Icon(Icons.play_arrow),
+                  label: const Text('生成模擬數據 (測試用)'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blueAccent,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  ),
+                ),
+              ],
             ),
             _buildDetectionOverlay(),
           ],
