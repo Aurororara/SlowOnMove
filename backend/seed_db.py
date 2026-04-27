@@ -30,6 +30,7 @@ def seed():
     print("Starting database seeding...")
 
     users_data = [
+        {"username": "test_user_001", "email": "catherine@example.com", "days": 35, "base_score": 98},
         {"username": "sarah", "email": "sarah@example.com", "days": 30, "base_score": 95},
         {"username": "mike", "email": "mike@example.com", "days": 25, "base_score": 92},
         {"username": "emma", "email": "emma@example.com", "days": 20, "base_score": 89},
