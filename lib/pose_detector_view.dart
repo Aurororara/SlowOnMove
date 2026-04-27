@@ -239,10 +239,35 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
         backgroundColor: Colors.black,
         body: Stack(
           children: [
-            const Center(
-              child: Text(
-                '相機啟動中...',
-                style: TextStyle(color: Colors.white54),
+            Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text(
+                    '相機啟動中...',
+                    style: TextStyle(color: Colors.white54),
+                  ),
+                  const SizedBox(height: 20),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        _elapsedSeconds = 300; // 5 minutes mock
+                        _accuracyRate = 92.5; 
+                        _stepCount = 1200;
+                        _feedback = "模擬運動數據生成成功！這是一次超慢跑測試。";
+                      });
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('模擬數據已生成')),
+                      );
+                    },
+                    icon: const Icon(Icons.bug_report),
+                    label: const Text('生成模擬數據 (測試用)'),
+                    style: ElevatedButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      backgroundColor: Colors.blueGrey,
+                    ),
+                  ),
+                ],
               ),
             ),
             _buildDetectionOverlay(),
