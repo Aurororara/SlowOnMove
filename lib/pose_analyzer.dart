@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
+import 'package:flutter_tflite/flutter_tflite.dart';
 
 class PoseAnalysisResult {
   final double accuracy;
@@ -125,7 +126,7 @@ class PoseAnalyzer {
   /// [Placeholder] For future Teachable Machine TFLite model inference
   /// This will be used to refine the accuracy score based on custom trained models.
   Future<void> loadModel() async {
-    // TODO: Implement TFLite model loading using tflite_v2
+    // TODO: Implement TFLite model loading using flutter_tflite
     print("TFLite model loading placeholder called.");
   }
 
