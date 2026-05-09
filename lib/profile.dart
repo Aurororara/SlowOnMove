@@ -18,6 +18,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int timeSum = 0;
   int _totalCalories = 0;
   int _totalSteps = 0; 
+  double _totalDistance = 0.0;
   String _height = "--";
   String _weight = "--";
   String _fullName = "Lamei";
@@ -48,12 +49,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
         int calSum = 0;
         int stepSum = 0; 
+        double distSum = 0.0;
         int timeSum = 0; 
 
         // 3. 只針對過濾後的 myLogs 進行累加計算
         for (var log in myLogs) {
           calSum += (log['calories'] as num).toInt();
           stepSum += (log['step_count'] as num? ?? 0).toInt();
+          distSum += (log['distance'] as num? ?? 0.0).toDouble(); // 總里程
           timeSum += (log['total_mins'] as num? ?? 0).toInt();
         }
 
@@ -63,6 +66,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             _workoutCount = timeSum; 
             _totalCalories = calSum;
             _totalSteps = stepSum; 
+            _totalDistance = distSum;
             
             if (myBodyRecords.isNotEmpty) {
               _height = myBodyRecords.last['height'].toString();
@@ -163,7 +167,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
               '消耗卡路里'
             )),
             const SizedBox(width: 16),
-            Expanded(child: _buildStatCard(Icons.directions_walk_outlined, _totalSteps.toString(), '步數')), 
+Expanded(
+  child: _buildStatCard(
+    Icons.directions_walk_outlined, 
+    '${_totalDistance.toStringAsFixed(2)} km', 
+    '總里程 ($_totalSteps 步)', // ⭐ 這裡把 { } 拿掉
+  ),
+),
           ],
         ),
       ],

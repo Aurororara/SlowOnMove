@@ -40,37 +40,38 @@ class _ResultsScreenState extends State<ResultsScreen> {
     _saveData();       // ⭐ 呼叫儲存函數，這下不會有紅字了！
   }
 
-  // ⭐ 核心功能：將運動數據寫入資料庫
-  Future<void> _saveData() async {
-  final String baseUrl = kIsWeb ? "http://localhost:8000/api" : "http://10.0.2.2:8000/api";
-  
-  try {
-    final response = await http.post(
-      Uri.parse('$baseUrl/training-logs/'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        "member": UserSession.memberId,
-        "exercise_type": "slow_jogging",
-        "start_time": DateTime.now().subtract(Duration(seconds: widget.timeSeconds)).toIso8601String(),
-        "end_time": DateTime.now().toIso8601String(),
-        "total_mins": widget.timeSeconds ~/ 60,
-        "posture_score": widget.averageAccuracy.toInt(),
-        "calories": caloriesBurned,
-        "step_count": widget.stepCount,
-      }),
-    );
+// ⭐ 在 _ResultsScreenState 類別裡新增換算邏輯
+  double get distanceKm => (widget.stepCount * 0.7) / 1000.0;
 
-    if (response.statusCode == 201) {
-      debugPrint("✅ 終於成功存進去了！數據已同步。");
-    } else {
-      // ⭐ 這樣改才不會讓 HTML 刷屏
-      debugPrint("❌ 儲存還是失敗，錯誤碼：${response.statusCode}");
-      debugPrint("請看 Django 那個黑色的視窗，那裡的錯誤比較清楚。");
+  Future<void> _saveData() async {
+    final String baseUrl = kIsWeb ? "http://localhost:8000/api" : "http://10.0.2.2:8000/api";
+    
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/training-logs/'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          "member": UserSession.memberId,
+          "exercise_type": "slow_jogging",
+          "start_time": DateTime.now().subtract(Duration(seconds: widget.timeSeconds)).toIso8601String(),
+          "end_time": DateTime.now().toIso8601String(),
+          "total_mins": widget.timeSeconds ~/ 60,
+          "posture_score": widget.averageAccuracy.toInt(),
+          "calories": caloriesBurned,
+          "step_count": widget.stepCount, // ⭐ 傳入原始步數
+          "distance": distanceKm,        // ⭐ 傳入換算的里程
+        }),
+      );
+
+      if (response.statusCode == 201) {
+        debugPrint("✅ 數據存入成功：${widget.stepCount}步 / ${distanceKm.toStringAsFixed(2)}km");
+      } else {
+        debugPrint("❌ 儲存失敗：${response.statusCode}");
+      }
+    } catch (e) {
+      debugPrint("⚠️ 連線異常: $e");
     }
-  } catch (e) {
-    debugPrint("⚠️ 連線異常: $e");
   }
-}
 
 
   Future<void> _fetchAiFeedback() async {
