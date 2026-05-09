@@ -31,59 +31,50 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _fetchProfileData() async {
-    final String baseUrl = kIsWeb ? "http://localhost:8000/api" : "http://10.0.2.2:8000/api";
-    final int currentMemberId = UserSession.memberId;
+  final String baseUrl = kIsWeb ? "http://localhost:8000/api" : "http://10.0.2.2:8000/api";
+  final int currentMemberId = UserSession.memberId;
 
-    try {
-      final logResponse = await http.get(Uri.parse('$baseUrl/training-logs/'));
-      final bodyResponse = await http.get(Uri.parse('$baseUrl/body-records/'));
+  try {
+    // ⭐ 修改點 1：改呼叫妳剛剛在瀏覽器測通的那支 API
+    final logStatsResponse = await http.get(
+      Uri.parse('$baseUrl/training-logs/my-stats/?member_id=$currentMemberId')
+    );
+    // 身體紀錄還是要抓最新的，所以這行不變
+    final bodyResponse = await http.get(Uri.parse('$baseUrl/body-records/'));
 
-      if (logResponse.statusCode == 200 && bodyResponse.statusCode == 200) {
-        // 1. 先抓回所有人原始資料
-        final List allLogs = json.decode(logResponse.body);
-        final List allBodyRecords = json.decode(bodyResponse.body);
+    if (logStatsResponse.statusCode == 200 && bodyResponse.statusCode == 200) {
+      // ⭐ 修改點 2：直接解析統計數據
+      final Map<String, dynamic> stats = json.decode(logStatsResponse.body);
+      final List allBodyRecords = json.decode(bodyResponse.body);
+      
+      // 過濾身體紀錄 (這部分維持原樣，抓最新的身高體重)
+      final List myBodyRecords = allBodyRecords.where((rec) => rec['member'] == currentMemberId).toList();
 
-        // 2.過濾資料：只留下目前登入會員的紀錄
-        final List myLogs = allLogs.where((log) => log['member'] == currentMemberId).toList();
-        final List myBodyRecords = allBodyRecords.where((rec) => rec['member'] == currentMemberId).toList();
-
-        int calSum = 0;
-        int stepSum = 0; 
-        double distSum = 0.0;
-        int timeSum = 0; 
-
-        // 3. 只針對過濾後的 myLogs 進行累加計算
-        for (var log in myLogs) {
-          calSum += (log['calories'] as num).toInt();
-          stepSum += (log['step_count'] as num? ?? 0).toInt();
-          distSum += (log['distance'] as num? ?? 0.0).toDouble(); // 總里程
-          timeSum += (log['total_mins'] as num? ?? 0).toInt();
-        }
-
-        if (mounted) {
-          setState(() {
-            // ⭐ 更新目前會員的統計資料
-            _workoutCount = timeSum; 
-            _totalCalories = calSum;
-            _totalSteps = stepSum; 
-            _totalDistance = distSum;
-            
-            if (myBodyRecords.isNotEmpty) {
-              _height = myBodyRecords.last['height'].toString();
-              _weight = myBodyRecords.last['weight'].toString();
-            }
-            _isLoading = false;
-          });
-        }
-      } else {
-        debugPrint("API 報錯: Logs(${logResponse.statusCode}), Body(${bodyResponse.statusCode})");
-        if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          // ⭐ 修改點 3：直接從 stats 拿資料，不用跑 for 迴圈了！
+          _workoutCount = stats['total_time'] ?? 0;   // 運動總分鐘
+          _totalCalories = stats['total_calories'] ?? 0;
+          _totalSteps = stats['total_steps'] ?? 0;
+          // 注意 distance 是小數，要轉 double
+          _totalDistance = (stats['total_distance'] as num?)?.toDouble() ?? 0.0;
+          
+          if (myBodyRecords.isNotEmpty) {
+            _height = myBodyRecords.last['height'].toString();
+            _weight = myBodyRecords.last['weight'].toString();
+          }
+          _isLoading = false;
+        });
       }
-    } catch (e) {
-      debugPrint("抓取資料失敗: $e");
+    } else {
+      debugPrint("API 報錯: Stats(${logStatsResponse.statusCode})");
       if (mounted) setState(() => _isLoading = false);
     }
+  } catch (e) {
+    debugPrint("抓取資料失敗: $e");
+    if (mounted) setState(() => _isLoading = false);
   }
+}
 
   @override
   Widget build(BuildContext context) {

@@ -56,6 +56,7 @@ class BodyRecordViewSet(viewsets.ModelViewSet):
     permission_classes = [AllowAny]
    # permission_classes = [IsAuthenticated]
 
+
 class BoardRankingViewSet(viewsets.ModelViewSet):
     queryset = BoardRanking.objects.all()
     serializer_class = BoardRankingSerializer
@@ -77,3 +78,31 @@ class TrainingLogViewSet(viewsets.ModelViewSet):
     serializer_class = TrainingLogSerializer
     permission_classes = [AllowAny]
     #permission_classes = [IsAuthenticated]
+    # ⭐個人運動數據加總 API
+    @action(detail=False, methods=['get'], url_path='my-stats')
+    def my_stats(self, request):
+        member_id = request.query_params.get('member_id')
+        
+        if not member_id:
+            return Response({"error": "缺少 member_id 參數"}, status=400)
+
+        # 篩選該會員的所有運動紀錄
+        user_logs = TrainingLog.objects.filter(member_id=member_id)
+        
+        # 讓資料庫直接幫我們加總 (效能最高)
+        stats = user_logs.aggregate(
+            total_time=Sum('total_mins'),
+            total_calories=Sum('calories'),
+            total_steps=Sum('step_count'),
+            total_distance=Sum('distance')
+        )
+
+        # 如果沒有紀錄，Sum 會回傳 None，所以要用 'or 0' 給預設值
+        return Response({
+            "member_id": member_id,
+            "workout_count": user_logs.count(), # 總運動次數
+            "total_time": stats['total_time'] or 0,
+            "total_calories": stats['total_calories'] or 0,
+            "total_steps": stats['total_steps'] or 0,
+            "total_distance": round(stats['total_distance'] or 0.0, 2)
+        })
