@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import './services/api_service.dart';
 
 class LeaderboardPage extends StatefulWidget {
   const LeaderboardPage({super.key});
@@ -14,7 +14,7 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
   int selectedPeriod = 0;
 
   // TODO: 之後請改成登入者自己的 member_id
-  final int currentMemberId = 1;
+  final int currentMemberId = 6;
 
   List<LeaderboardUser> rankings = [];
   bool isLoading = true;
@@ -47,32 +47,25 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
       final exerciseType = categories[selectedCategory]['value'];
       final period = periods[selectedPeriod]['value'];
 
-      final url = Uri.parse(
-        'http://127.0.0.1:8000/api/members/leaderboard/'
-        '?exercise_type=$exerciseType&period=$period',
+      final response = await ApiService().dio.get(
+        'members/leaderboard',
+        queryParameters: {
+          'exercise_type': exerciseType,
+          'period': period,
+        },
       );
 
-      final response = await http.get(url);
+      final decoded = response.data;
+      final List data = decoded['data'];
 
-      if (response.statusCode == 200) {
-        final decoded = jsonDecode(response.body);
-        final List data = decoded['data'];
-
-        setState(() {
-          rankings =
-              data.map((item) => LeaderboardUser.fromJson(item)).toList();
-          isLoading = false;
-          errorMessage = null;
-        });
-      } else {
-        setState(() {
-          errorMessage = '取得排行榜失敗：${response.statusCode}';
-          isLoading = false;
-        });
-      }
+      setState(() {
+        rankings = data.map((item) => LeaderboardUser.fromJson(item)).toList();
+        isLoading = false;
+        errorMessage = null;
+      });
     } catch (e) {
       setState(() {
-        errorMessage = '連線失敗：$e';
+        errorMessage = ApiService().getErrorMessage(e);
         isLoading = false;
       });
     }

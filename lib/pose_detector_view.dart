@@ -32,7 +32,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
 
   Timer? _timer;
   int _elapsedSeconds = 0;
-  
+
   final PoseAnalyzer _poseAnalyzer = PoseAnalyzer();
   double _accuracyRate = 0.0;
   int _stepCount = 0;
@@ -43,15 +43,17 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
   @override
   void initState() {
     super.initState();
-    
+
     // ⭐ 初始化 PoseDetector 前先檢查是否為網頁
     if (!kIsWeb) {
       _poseDetector = PoseDetector(options: PoseDetectorOptions());
     }
 
-    if (cameras.any((element) => element.lensDirection == CameraLensDirection.front)) {
+    if (cameras
+        .any((element) => element.lensDirection == CameraLensDirection.front)) {
       _cameraIndex = cameras.indexOf(
-        cameras.firstWhere((element) => element.lensDirection == CameraLensDirection.front),
+        cameras.firstWhere(
+            (element) => element.lensDirection == CameraLensDirection.front),
       );
     } else if (cameras.isNotEmpty) {
       _cameraIndex = 0;
@@ -130,24 +132,27 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
     if (!kIsWeb && Platform.isIOS) {
       rotation = InputImageRotationValue.fromRawValue(sensorOrientation);
     } else if (!kIsWeb && Platform.isAndroid) {
-      var rotationCompensation = _orientations[_cameraController!.value.deviceOrientation];
+      var rotationCompensation =
+          _orientations[_cameraController!.value.deviceOrientation];
       if (rotationCompensation == null) return null;
       if (camera.lensDirection == CameraLensDirection.front) {
         rotationCompensation = (sensorOrientation + rotationCompensation) % 360;
       } else {
-        rotationCompensation = (sensorOrientation - rotationCompensation + 360) % 360;
+        rotationCompensation =
+            (sensorOrientation - rotationCompensation + 360) % 360;
       }
       rotation = InputImageRotationValue.fromRawValue(rotationCompensation);
     }
-    
+
     if (rotation == null) return null;
 
     final format = InputImageFormatValue.fromRawValue(image.format.raw as int);
-    
+
     // ⭐ 這裡也是：檢查 Platform 前先確定不是 Web
     if (format == null ||
         (!kIsWeb && Platform.isAndroid && format != InputImageFormat.nv21) ||
-        (!kIsWeb && Platform.isIOS && format != InputImageFormat.bgra8888)) return null;
+        (!kIsWeb && Platform.isIOS && format != InputImageFormat.bgra8888))
+      return null;
 
     if (image.planes.isEmpty) return null;
 
@@ -166,15 +171,15 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
     if (kIsWeb || !_canProcess || _isBusy) return; // ⭐ 網頁版不執行
     _isBusy = true;
     setState(() => _text = '');
-    
+
     final poses = await _poseDetector.processImage(inputImage);
-    
+
     final analysisResult = _poseAnalyzer.analyze(poses);
     _accuracyRate = analysisResult.accuracy;
-    
+
     for (var f in analysisResult.feedback) {
       if (!_feedback.contains(f)) {
-         _feedback.add(f);
+        _feedback.add(f);
       }
     }
     _stepCount = analysisResult.stepCount;
@@ -184,7 +189,8 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
       _accuracySamples++;
     }
 
-    if (inputImage.metadata?.size != null && inputImage.metadata?.rotation != null) {
+    if (inputImage.metadata?.size != null &&
+        inputImage.metadata?.rotation != null) {
       final painter = PosePainter(
         poses,
         inputImage.metadata!.size,
@@ -252,9 +258,9 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
                     onPressed: () {
                       setState(() {
                         _elapsedSeconds = 300; // 5 minutes mock
-                        _accuracyRate = 92.5; 
+                        _accuracyRate = 92.5;
                         _stepCount = 1200;
-                        _feedback = "模擬運動數據生成成功！這是一次超慢跑測試。";
+                        _feedback.add("模擬運動數據生成成功！這是一次超慢跑測試。");
                       });
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('模擬數據已生成')),
@@ -275,7 +281,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
         ),
       );
     }
-    
+
     final size = MediaQuery.of(context).size;
     var scale = size.aspectRatio * _cameraController!.value.aspectRatio;
     if (scale < 1) scale = 1 / scale;
@@ -331,7 +337,10 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
                 const SizedBox(height: 4),
                 Text(
                   '$minutes:$seconds',
-                  style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold),
                 ),
               ],
             ),
@@ -339,12 +348,15 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                const Text('準確率', style: TextStyle(color: Colors.white70, fontSize: 14)),
+                const Text('準確率',
+                    style: TextStyle(color: Colors.white70, fontSize: 14)),
                 const SizedBox(height: 4),
                 Text(
                   '${_accuracyRate.toStringAsFixed(1)}%',
                   style: TextStyle(
-                    color: _accuracyRate > 80 ? Colors.greenAccent : Colors.orangeAccent,
+                    color: _accuracyRate > 80
+                        ? Colors.greenAccent
+                        : Colors.orangeAccent,
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
                   ),
@@ -356,8 +368,10 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
                 _timer?.cancel();
                 if (!kIsWeb) _poseDetector.close();
                 _cameraController?.dispose();
-                
-                double avgAcc = _accuracySamples > 0 ? (_totalAccuracySum / _accuracySamples) : 0.0;
+
+                double avgAcc = _accuracySamples > 0
+                    ? (_totalAccuracySum / _accuracySamples)
+                    : 0.0;
                 int caloriesBurned = ((_elapsedSeconds / 60.0) * 8.0).round();
 
                 // 導向結果頁
@@ -377,8 +391,10 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
               },
               child: Container(
                 padding: const EdgeInsets.all(12),
-                decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle),
-                child: const Icon(Icons.stop_rounded, color: Colors.white, size: 28),
+                decoration: const BoxDecoration(
+                    color: Colors.redAccent, shape: BoxShape.circle),
+                child: const Icon(Icons.stop_rounded,
+                    color: Colors.white, size: 28),
               ),
             ),
           ],

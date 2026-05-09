@@ -1,53 +1,89 @@
-import 'package:dio/dio.dart';
 import '../models/user_model.dart';
 import '../models/training_log_model.dart';
+import '../services/api_service.dart';
 
 class DataRepository {
-  // Replace with actual local/remote server IP (e.g. 10.0.2.2 for Android Simulator, 127.0.0.1 for iOS)
-  final Dio _dio = Dio(BaseOptions(baseUrl: 'http://127.0.0.1:8000/api/'));
+  final ApiService _api = ApiService();
 
   // ==== Users ====
-  
-  /// Create or update a user profile
+
   Future<void> createUserProfile(UserModel user) async {
     try {
-      await _dio.post('members/', data: user.toJson());
+      await _api.dio.post(
+        'members/',
+        data: user.toJson(),
+      );
     } catch (e) {
-      print('Error creating profile: $e');
+      throw _api.getErrorMessage(e);
     }
   }
 
-  /// Get a user profile by ID
   Future<UserModel?> getUserProfile(String uid) async {
     try {
-      final response = await _dio.get('members/$uid/');
+      final response = await _api.dio.get('members/$uid/');
       return UserModel.fromJson(response.data, uid);
     } catch (e) {
-      print('Error getting profile: $e');
-      return null;
+      throw _api.getErrorMessage(e);
     }
   }
 
   // ==== Training Logs ====
-  
-  /// Save a training log for a user
+
   Future<void> saveTrainingLog(TrainingLogModel log) async {
     try {
-      await _dio.post('training-logs/', data: log.toJson());
+      await _api.dio.post(
+        'training-logs/',
+        data: log.toJson(),
+      );
     } catch (e) {
-      print('Error saving training log: $e');
+      throw _api.getErrorMessage(e);
     }
   }
 
-  /// Get past training logs (e.g. for history screen)
+  Future<void> saveWorkoutTrainingLog({
+    required int timeSeconds,
+    required int stepCount,
+    required double accuracy,
+    required int calories,
+  }) async {
+    try {
+      await _api.dio.post(
+        'training-logs/',
+        data: {
+          'exercise_type': 'slow_jogging',
+          'total_mins': timeSeconds ~/ 60,
+          'posture_score': accuracy.toInt(),
+          'calories': calories,
+          'step_count': stepCount,
+          'start_time': DateTime.now().toIso8601String(),
+        },
+      );
+    } catch (e) {
+      throw _api.getErrorMessage(e);
+    }
+  }
+
   Future<List<TrainingLogModel>> getUserTrainingHistory(String uid) async {
     try {
-      final response = await _dio.get('training-logs/', queryParameters: {'member': uid});
-      final data = response.data as List;
-      return data.map((item) => TrainingLogModel.fromJson(item, item['id'].toString())).toList();
+      final response = await _api.dio.get(
+        'training-logs/',
+        queryParameters: {
+          'member': uid,
+        },
+      );
+
+      final List data = response.data as List;
+
+      return data
+          .map(
+            (item) => TrainingLogModel.fromJson(
+              item,
+              item['id'].toString(),
+            ),
+          )
+          .toList();
     } catch (e) {
-      print('Error fetching user training history: $e');
-      return [];
+      throw _api.getErrorMessage(e);
     }
   }
 }
