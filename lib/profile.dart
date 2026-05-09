@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'edit_profile_screen.dart';
 import 'package:flutter/foundation.dart';
+import 'services/user_session.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -30,8 +31,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _fetchProfileData() async {
     final String baseUrl = kIsWeb ? "http://localhost:8000/api" : "http://10.0.2.2:8000/api";
-    // ⭐ 設定目標 Member ID 為 6
-    final int targetMemberId = 6; 
+    final int currentMemberId = UserSession.memberId;
 
     try {
       final logResponse = await http.get(Uri.parse('$baseUrl/training-logs/'));
@@ -42,9 +42,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         final List allLogs = json.decode(logResponse.body);
         final List allBodyRecords = json.decode(bodyResponse.body);
 
-        // 2. ⭐ 過濾資料：只留下 member 為 6 的那些紀錄
-        final List myLogs = allLogs.where((log) => log['member'] == targetMemberId).toList();
-        final List myBodyRecords = allBodyRecords.where((rec) => rec['member'] == targetMemberId).toList();
+        // 2.過濾資料：只留下目前登入會員的紀錄
+        final List myLogs = allLogs.where((log) => log['member'] == currentMemberId).toList();
+        final List myBodyRecords = allBodyRecords.where((rec) => rec['member'] == currentMemberId).toList();
 
         int calSum = 0;
         int stepSum = 0; 
@@ -59,7 +59,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
         if (mounted) {
           setState(() {
-            // ⭐ 更新狀態：現在這些數據都是 Member 6 專屬的了
+            // ⭐ 更新目前會員的統計資料
             _workoutCount = timeSum; 
             _totalCalories = calSum;
             _totalSteps = stepSum; 
@@ -148,10 +148,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
       children: [
         Row(
           children: [
-            Expanded(child: _buildStatCard(Icons.emoji_events_outlined, '12', 'Achievements')),
+            Expanded(child: _buildStatCard(Icons.emoji_events_outlined, '12', '獎牌')),
             const SizedBox(width: 16),
             Expanded(child: _buildStatCard(Icons.access_time, '$_workoutCount min', // 加上單位，例如 120 min
-  'Total Time')),
+  '運動時數')),
           ],
         ),
         const SizedBox(height: 16),
@@ -160,7 +160,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Expanded(child: _buildStatCard(
               Icons.local_fire_department_outlined, 
               _totalCalories >= 1000 ? '${(_totalCalories/1000).toStringAsFixed(1)}k' : '$_totalCalories', 
-              'Calories'
+              '消耗卡路里'
             )),
             const SizedBox(width: 16),
             Expanded(child: _buildStatCard(Icons.directions_walk_outlined, _totalSteps.toString(), '步數')), 

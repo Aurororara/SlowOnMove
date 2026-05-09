@@ -5,6 +5,7 @@ import 'package:confetti/confetti.dart';
 import 'package:http/http.dart' as http; // ⭐ 處理網路請求必備
 import 'services/ai_coach_service.dart';
 import 'package:flutter/foundation.dart'; // ⭐ 判斷是否為網頁版
+import 'services/user_session.dart';
 
 class ResultsScreen extends StatefulWidget {
   final int timeSeconds;
@@ -48,7 +49,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
       Uri.parse('$baseUrl/training-logs/'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
-        "member": 6, // ⭐ 這裡填入妳在後台看到的那個數字
+        "member": UserSession.memberId,
         "exercise_type": "slow_jogging",
         "start_time": DateTime.now().subtract(Duration(seconds: widget.timeSeconds)).toIso8601String(),
         "end_time": DateTime.now().toIso8601String(),
