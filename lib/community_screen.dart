@@ -1,5 +1,42 @@
 import 'package:flutter/material.dart';
 
+const List<_RunInviteFriend> _sharedFriendsSeed = [
+  _RunInviteFriend(
+    initial: 'S',
+    name: 'Sarah Chen',
+    runsTogether: 12,
+    streak: 5,
+    lastRun: '2024-03-02',
+  ),
+  _RunInviteFriend(
+    initial: 'M',
+    name: 'Mike Johnson',
+    runsTogether: 8,
+    streak: 3,
+    lastRun: '2024-03-01',
+  ),
+  _RunInviteFriend(
+    initial: 'J',
+    name: 'Jordan Lee',
+    runsTogether: 15,
+    streak: 7,
+    lastRun: '2024-03-03',
+  ),
+];
+
+const List<_GroupExerciseOption> _groupExerciseOptions = [
+  _GroupExerciseOption(
+    value: 'slow_jogging',
+    label: '超慢跑',
+    icon: Icons.directions_run,
+  ),
+  _GroupExerciseOption(
+    value: 'squat',
+    label: '深蹲',
+    icon: Icons.accessibility_new,
+  ),
+];
+
 class CommunityScreen extends StatefulWidget {
   const CommunityScreen({super.key});
 
@@ -9,6 +46,8 @@ class CommunityScreen extends StatefulWidget {
 
 class _CommunityScreenState extends State<CommunityScreen> {
   final TextEditingController _postController = TextEditingController();
+  final GlobalKey<_GroupsPanelState> _groupsPanelKey =
+      GlobalKey<_GroupsPanelState>();
   final List<_CommunityPost> _posts = [
     const _CommunityPost(
       initial: 'S',
@@ -200,6 +239,20 @@ class _CommunityScreenState extends State<CommunityScreen> {
       _isGroupsOpen = false;
       _inviteFriend = null;
       _chatFriend = friend;
+    });
+  }
+
+  void _appendSystemChatMessage(_RunInviteFriend friend, String text) {
+    final existing = _friendChats[friend.name] ?? const <_ChatEntry>[];
+    setState(() {
+      _friendChats[friend.name] = [
+        ...existing,
+        _ChatEntry(
+          text: text,
+          isMine: true,
+          timestamp: 'Just now',
+        ),
+      ];
     });
   }
 
@@ -688,7 +741,11 @@ class _CommunityScreenState extends State<CommunityScreen> {
                             onMessageTap: _openChat,
                           )
                         : _isGroupsOpen
-                            ? const _GroupsPanel(key: ValueKey('groups'))
+                            ? _GroupsPanel(
+                                key: _groupsPanelKey,
+                                onMessageTap: _openChat,
+                                onSystemMessage: _appendSystemChatMessage,
+                              )
                             : ListView(
                                 key: const ValueKey('community-feed'),
                                 padding:
@@ -823,10 +880,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
           else if (_isGroupsOpen)
             _CreateGroupButton(
               onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                      content: Text('Create group flow coming next')),
-                );
+                _groupsPanelKey.currentState?.openCreateGroup();
               },
             )
           else ...[
@@ -1479,29 +1533,9 @@ class _FriendsPanel extends StatefulWidget {
 
 class _FriendsPanelState extends State<_FriendsPanel> {
   int _selectedTab = 0;
-  final List<_RunInviteFriend> _friends = [
-    const _RunInviteFriend(
-      initial: 'S',
-      name: 'Sarah Chen',
-      runsTogether: 12,
-      streak: 5,
-      lastRun: '2024-03-02',
-    ),
-    const _RunInviteFriend(
-      initial: 'M',
-      name: 'Mike Johnson',
-      runsTogether: 8,
-      streak: 3,
-      lastRun: '2024-03-01',
-    ),
-    const _RunInviteFriend(
-      initial: 'J',
-      name: 'Jordan Lee',
-      runsTogether: 15,
-      streak: 7,
-      lastRun: '2024-03-03',
-    ),
-  ];
+  final List<_RunInviteFriend> _friends = List<_RunInviteFriend>.from(
+    _sharedFriendsSeed,
+  );
   final List<_FriendRequest> _requests = [
     const _FriendRequest(initial: 'A', name: 'Alex Rivera'),
   ];
@@ -1557,7 +1591,6 @@ class _FriendsPanelState extends State<_FriendsPanel> {
       _pendingRequests.add(
         _FriendRequest(initial: suggestion.initial, name: suggestion.name),
       );
-      _selectedTab = 1;
     });
     _showMessage('Friend request sent to ${suggestion.name}');
   }
@@ -3044,33 +3077,150 @@ const TextStyle _friendMetaStyle = TextStyle(
   fontWeight: FontWeight.w700,
 );
 
+String _groupMetricUnit(String exerciseType) {
+  switch (exerciseType) {
+    case 'squat':
+      return 'squats';
+    case 'slow_jogging':
+    default:
+      return 'runs';
+  }
+}
+
+String _groupMetricLabel(String exerciseType, int value) {
+  return '$value ${_groupMetricUnit(exerciseType)}';
+}
+
+String _groupWeeklyGoalLabel(
+  String exerciseType,
+  int current,
+  int target,
+) {
+  return '$current/$target ${_groupMetricUnit(exerciseType)}';
+}
+
 class _GroupsPanel extends StatefulWidget {
-  const _GroupsPanel({super.key});
+  final ValueChanged<_RunInviteFriend> onMessageTap;
+  final void Function(_RunInviteFriend friend, String message) onSystemMessage;
+
+  const _GroupsPanel({
+    super.key,
+    required this.onMessageTap,
+    required this.onSystemMessage,
+  });
 
   @override
   State<_GroupsPanel> createState() => _GroupsPanelState();
 }
 
 class _GroupsPanelState extends State<_GroupsPanel> {
+  static const String _currentUserName = 'Catherine';
   int _selectedTab = 0;
+  bool _isCreateGroupOpen = false;
+  final TextEditingController _groupNameController = TextEditingController();
+  final TextEditingController _groupDescriptionController =
+      TextEditingController();
+  bool _createPrivateGroup = false;
+  String _selectedExerciseType = 'slow_jogging';
+  final List<_RunInviteFriend> _availableInviteFriends =
+      List<_RunInviteFriend>.from(_sharedFriendsSeed);
   final List<_MyGroup> _myGroups = [
     const _MyGroup(
+      ownerName: 'Lamei',
+      ownerInitial: 'L',
       name: 'Morning Runners Club',
       description: 'Early birds who love sunrise jogs',
       members: 142,
       runs: 856,
+      weeklyGoalCurrent: 32,
+      weeklyGoalTarget: 50,
       progressText: '32/50 runs',
       progress: 0.64,
+      isPrivate: false,
+      exerciseType: 'slow_jogging',
       showCrown: true,
       showSettings: true,
+      memberPreview: [
+        _GroupMember(
+          initial: 'L',
+          name: 'Lamei',
+          badge: '👑',
+          totalRuns: 145,
+          runsThisWeek: 5,
+          joinedDate: '2024/1/15',
+          canMessage: false,
+        ),
+        _GroupMember(
+          initial: 'A',
+          name: 'Sarah Chen',
+          totalRuns: 98,
+          runsThisWeek: 4,
+          joinedDate: '2024/1/20',
+        ),
+        _GroupMember(
+          initial: 'M',
+          name: 'Mike Johnson',
+          totalRuns: 87,
+          runsThisWeek: 3,
+          joinedDate: '2024/2/1',
+        ),
+        _GroupMember(
+          initial: 'E',
+          name: 'Emma Wilson',
+          totalRuns: 112,
+          runsThisWeek: 6,
+          joinedDate: '2024/1/25',
+        ),
+      ],
+      activities: [
+        _GroupActivityEntry(
+          title: 'Sunrise Run',
+          subtitle: '6 members joined this morning session',
+          timestamp: 'Today',
+        ),
+        _GroupActivityEntry(
+          title: 'Weekly goal update',
+          subtitle: 'The group reached 32 runs this week',
+          timestamp: '2h ago',
+        ),
+      ],
     ),
     const _MyGroup(
+      ownerName: 'Catherine',
+      ownerInitial: 'C',
       name: 'City Park Joggers',
       description: 'Weekly meetups at Central Park',
       members: 87,
       runs: 432,
+      weeklyGoalCurrent: 32,
+      weeklyGoalTarget: 30,
       progressText: '32/30 runs',
       progress: 1,
+      isPrivate: false,
+      exerciseType: 'slow_jogging',
+      memberPreview: [
+        _GroupMember(
+          initial: 'C',
+          name: 'Catherine',
+          totalRuns: 67,
+          runsThisWeek: 4,
+          joinedDate: '2024/2/12',
+        ),
+        _GroupMember(
+          initial: 'R',
+          name: 'Ryan',
+          totalRuns: 80,
+          runsThisWeek: 5,
+          joinedDate: '2024/1/20',
+        ),
+      ],
+      activities: [
+        _GroupActivityEntry(
+          title: 'Central Park meetup',
+          subtitle: 'Saturday run event is open for RSVP',
+          timestamp: 'Yesterday',
+        ),
+      ],
     ),
   ];
   final List<_DiscoverGroup> _discoverGroups = [
@@ -3088,12 +3238,170 @@ class _GroupsPanelState extends State<_GroupsPanel> {
     ),
   ];
 
+  @override
+  void dispose() {
+    _groupNameController.dispose();
+    _groupDescriptionController.dispose();
+    super.dispose();
+  }
+
+  void openCreateGroup() {
+    setState(() {
+      _isCreateGroupOpen = true;
+      _selectedTab = 0;
+    });
+  }
+
   void _showMessage(String text) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
 
-  void _viewGroup(String name) {
-    _showMessage('Opened $name');
+  void _closeCreateGroup() {
+    setState(() {
+      _isCreateGroupOpen = false;
+      _groupNameController.clear();
+      _groupDescriptionController.clear();
+      _createPrivateGroup = false;
+      _selectedExerciseType = 'slow_jogging';
+    });
+  }
+
+  void _createGroup() {
+    final name = _groupNameController.text.trim();
+    final description = _groupDescriptionController.text.trim();
+    if (name.isEmpty || description.isEmpty) {
+      return;
+    }
+
+    setState(() {
+      _myGroups.insert(
+        0,
+        _MyGroup(
+          ownerName: _currentUserName,
+          ownerInitial: 'C',
+          name: name,
+          description: description,
+          members: 1,
+          runs: 0,
+          weeklyGoalCurrent: 0,
+          weeklyGoalTarget: 20,
+          progressText: '0/20 runs',
+          progress: 0,
+          isPrivate: _createPrivateGroup,
+          exerciseType: _selectedExerciseType,
+          memberPreview: const [
+            _GroupMember(
+              initial: 'C',
+              name: 'Catherine',
+              totalRuns: 0,
+              runsThisWeek: 0,
+              joinedDate: 'Today',
+              canMessage: false,
+            ),
+          ],
+          activities: const [
+            _GroupActivityEntry(
+              title: 'Group created',
+              subtitle: 'Welcome to your new running group',
+              timestamp: 'Just now',
+            ),
+          ],
+        ),
+      );
+      if (!_createPrivateGroup) {
+        _discoverGroups.insert(
+          0,
+          _DiscoverGroup(
+            name: name,
+            description: description,
+            members: 1,
+            isPrivate: false,
+            joined: true,
+            exerciseType: _selectedExerciseType,
+          ),
+        );
+      }
+      _selectedTab = 0;
+    });
+
+    _closeCreateGroup();
+    _showMessage('Group "$name" created');
+  }
+
+  void _viewGroup(_MyGroup group) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => _GroupDetailScreen(
+          group: group,
+          onMessageTap: widget.onMessageTap,
+          inviteableFriends: _availableInviteFriends,
+          onInviteFriend: _inviteFriendToGroup,
+          onRequestInvite: _requestFriendForGroup,
+        ),
+      ),
+    );
+  }
+
+  _MyGroup _inviteFriendToGroup(_MyGroup group, _RunInviteFriend friend) {
+    final updatedGroup = group.copyWith(
+      members: group.members + 1,
+      memberPreview: [
+        ...group.memberPreview,
+        _GroupMember(
+          initial: friend.initial,
+          name: friend.name,
+          totalRuns: friend.runsTogether,
+          runsThisWeek: friend.streak,
+          joinedDate: 'Today',
+        ),
+      ],
+      activities: [
+        _GroupActivityEntry(
+          title: '${friend.name} joined the group',
+          subtitle: 'Invited by $_currentUserName',
+          timestamp: 'Just now',
+        ),
+        ...group.activities,
+      ],
+    );
+
+    setState(() {
+      final index = _myGroups.indexWhere((item) => item.name == group.name);
+      if (index != -1) {
+        _myGroups[index] = updatedGroup;
+      }
+      final discoverIndex =
+          _discoverGroups.indexWhere((item) => item.name == group.name);
+      if (discoverIndex != -1) {
+        _discoverGroups[discoverIndex] =
+            _discoverGroups[discoverIndex].copyWith(
+          members: _discoverGroups[discoverIndex].members + 1,
+        );
+      }
+    });
+
+    widget.onSystemMessage(
+      friend,
+      '$_currentUserName invited you to join "${group.name}".',
+    );
+    _showMessage('${friend.name} added to ${group.name}');
+    return updatedGroup;
+  }
+
+  void _requestFriendForGroup(_MyGroup group, _RunInviteFriend friend) {
+    final ownerThread = _RunInviteFriend(
+      initial: group.ownerInitial,
+      name: group.ownerName,
+      runsTogether: 0,
+      streak: 0,
+      lastRun: 'Group chat',
+    );
+
+    widget.onSystemMessage(
+      ownerThread,
+      '$_currentUserName requested to add ${friend.name} to "${group.name}". Please review this member invite request.',
+    );
+    _showMessage('Request sent to ${group.ownerName}');
   }
 
   void _openGroupSettings(String name) {
@@ -3102,17 +3410,48 @@ class _GroupsPanelState extends State<_GroupsPanel> {
 
   void _joinGroup(_DiscoverGroup group) {
     setState(() {
-      _discoverGroups.removeWhere((item) => item.name == group.name);
       _myGroups.add(
         _MyGroup(
+          ownerName: 'Group Admin',
+          ownerInitial: 'G',
           name: group.name,
           description: group.description,
           members: group.members + 1,
           runs: 0,
+          weeklyGoalCurrent: 0,
+          weeklyGoalTarget: 20,
           progressText: '0/20 runs',
           progress: 0,
+          isPrivate: group.isPrivate,
+          exerciseType: group.exerciseType,
+          memberPreview: const [
+            _GroupMember(
+              initial: 'Y',
+              name: 'You',
+              totalRuns: 0,
+              runsThisWeek: 0,
+              joinedDate: 'Today',
+              canMessage: false,
+            ),
+          ],
+          activities: const [
+            _GroupActivityEntry(
+              title: 'Welcome to the group',
+              subtitle: 'Your membership was just created',
+              timestamp: 'Just now',
+            ),
+          ],
         ),
       );
+      final discoverIndex =
+          _discoverGroups.indexWhere((item) => item.name == group.name);
+      if (discoverIndex != -1) {
+        _discoverGroups[discoverIndex] =
+            _discoverGroups[discoverIndex].copyWith(
+          joined: true,
+          members: group.members + 1,
+        );
+      }
       _selectedTab = 0;
     });
     _showMessage('Joined ${group.name}');
@@ -3165,6 +3504,27 @@ class _GroupsPanelState extends State<_GroupsPanel> {
         ),
         const SizedBox(height: 22),
         const _GroupSearchField(),
+        if (_isCreateGroupOpen) ...[
+          const SizedBox(height: 14),
+          _CreateGroupForm(
+            nameController: _groupNameController,
+            descriptionController: _groupDescriptionController,
+            isPrivate: _createPrivateGroup,
+            selectedExerciseType: _selectedExerciseType,
+            onPrivacyChanged: (value) {
+              setState(() {
+                _createPrivateGroup = value;
+              });
+            },
+            onExerciseChanged: (value) {
+              setState(() {
+                _selectedExerciseType = value;
+              });
+            },
+            onClose: _closeCreateGroup,
+            onCreate: _createGroup,
+          ),
+        ],
         const SizedBox(height: 14),
         _SectionLabel(_selectedTab == 0
             ? 'YOUR GROUPS (${_myGroups.length})'
@@ -3184,12 +3544,15 @@ class _GroupsPanelState extends State<_GroupsPanel> {
                   description: group.description,
                   members: group.members,
                   runs: group.runs,
-                  progressText: group.progressText,
+                  weeklyGoalCurrent: group.weeklyGoalCurrent,
+                  weeklyGoalTarget: group.weeklyGoalTarget,
                   progress: group.progress,
                   actionLabel: 'View Group',
+                  isPrivate: group.isPrivate,
+                  exerciseType: group.exerciseType,
                   showCrown: group.showCrown,
                   showSettings: group.showSettings,
-                  onActionTap: () => _viewGroup(group.name),
+                  onActionTap: () => _viewGroup(group),
                   onSettingsTap: group.showSettings
                       ? () => _openGroupSettings(group.name)
                       : null,
@@ -3209,12 +3572,16 @@ class _GroupsPanelState extends State<_GroupsPanel> {
                   name: group.name,
                   description: group.description,
                   members: group.members,
-                  actionLabel: group.requestSent
-                      ? 'Requested'
-                      : (group.isPrivate ? 'Request to Join' : 'Join Group'),
+                  actionLabel: group.joined
+                      ? 'Joined'
+                      : group.requestSent
+                          ? 'Requested'
+                          : (group.isPrivate
+                              ? 'Request to Join'
+                              : 'Join Group'),
                   isPrivate: group.isPrivate,
-                  isDisabled: group.requestSent,
-                  onTap: group.requestSent
+                  isDisabled: group.joined || group.requestSent,
+                  onTap: group.joined || group.requestSent
                       ? null
                       : () => group.isPrivate
                           ? _requestGroup(group)
@@ -3289,6 +3656,310 @@ class _GroupSearchField extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _CreateGroupForm extends StatelessWidget {
+  final TextEditingController nameController;
+  final TextEditingController descriptionController;
+  final bool isPrivate;
+  final String selectedExerciseType;
+  final ValueChanged<bool> onPrivacyChanged;
+  final ValueChanged<String> onExerciseChanged;
+  final VoidCallback onClose;
+  final VoidCallback onCreate;
+
+  const _CreateGroupForm({
+    required this.nameController,
+    required this.descriptionController,
+    required this.isPrivate,
+    required this.selectedExerciseType,
+    required this.onPrivacyChanged,
+    required this.onExerciseChanged,
+    required this.onClose,
+    required this.onCreate,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final canCreate = nameController.text.trim().isNotEmpty &&
+        descriptionController.text.trim().isNotEmpty;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.black, width: 2),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Create New Group',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.black,
+                  ),
+                ),
+              ),
+              InkWell(
+                onTap: onClose,
+                child: const Padding(
+                  padding: EdgeInsets.all(4),
+                  child: Icon(Icons.close, size: 20),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          const Text(
+            'GROUP NAME',
+            style: TextStyle(
+              color: Color(0xFF4A5568),
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: nameController,
+            decoration: InputDecoration(
+              hintText: 'e.g., Weekend Warriors',
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              ),
+            ),
+            onChanged: (_) => (context as Element).markNeedsBuild(),
+          ),
+          const SizedBox(height: 14),
+          const Text(
+            'DESCRIPTION',
+            style: TextStyle(
+              color: Color(0xFF4A5568),
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: descriptionController,
+            maxLines: 2,
+            decoration: InputDecoration(
+              hintText: 'What\'s your group about?',
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              ),
+            ),
+            onChanged: (_) => (context as Element).markNeedsBuild(),
+          ),
+          const SizedBox(height: 14),
+          const Text(
+            'EXERCISE TYPE',
+            style: TextStyle(
+              color: Color(0xFF4A5568),
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: _groupExerciseOptions.map((option) {
+              final isSelected = selectedExerciseType == option.value;
+              return Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(
+                    right: option == _groupExerciseOptions.first ? 10 : 0,
+                  ),
+                  child: _GroupExerciseCard(
+                    title: option.label,
+                    icon: option.icon,
+                    isSelected: isSelected,
+                    onTap: () => onExerciseChanged(option.value),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 14),
+          const Text(
+            'PRIVACY',
+            style: TextStyle(
+              color: Color(0xFF4A5568),
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: _GroupPrivacyCard(
+                  title: 'Public',
+                  subtitle: 'Anyone can join',
+                  icon: Icons.public,
+                  isSelected: !isPrivate,
+                  onTap: () => onPrivacyChanged(false),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _GroupPrivacyCard(
+                  title: 'Private',
+                  subtitle: 'Invite only',
+                  icon: Icons.lock_outline,
+                  isSelected: isPrivate,
+                  onTap: () => onPrivacyChanged(true),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            height: 42,
+            child: TextButton(
+              onPressed: canCreate ? onCreate : null,
+              style: TextButton.styleFrom(
+                backgroundColor:
+                    canCreate ? Colors.black : const Color(0xFF9CA3AF),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              child: const Text(
+                'Create Group',
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GroupPrivacyCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _GroupPrivacyCard({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected ? Colors.black : const Color(0xFFE2E8F0),
+            width: isSelected ? 2 : 1.5,
+          ),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: Colors.black, size: 22),
+            const SizedBox(height: 8),
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w900,
+                color: Colors.black,
+              ),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              subtitle,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF718096),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _GroupExerciseCard extends StatelessWidget {
+  final String title;
+  final IconData icon;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _GroupExerciseCard({
+    required this.title,
+    required this.icon,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: isSelected ? Colors.black : const Color(0xFFE2E8F0),
+            width: isSelected ? 2 : 1.5,
+          ),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, color: Colors.black, size: 22),
+            const SizedBox(height: 8),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w900,
+                color: Colors.black,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -3414,9 +4085,12 @@ class _GroupCard extends StatelessWidget {
   final String description;
   final int members;
   final int runs;
-  final String progressText;
+  final int weeklyGoalCurrent;
+  final int weeklyGoalTarget;
   final double progress;
   final String actionLabel;
+  final bool isPrivate;
+  final String exerciseType;
   final bool showCrown;
   final bool showSettings;
   final VoidCallback onActionTap;
@@ -3427,9 +4101,12 @@ class _GroupCard extends StatelessWidget {
     required this.description,
     required this.members,
     required this.runs,
-    required this.progressText,
+    required this.weeklyGoalCurrent,
+    required this.weeklyGoalTarget,
     required this.progress,
     required this.actionLabel,
+    this.isPrivate = false,
+    this.exerciseType = 'slow_jogging',
     required this.onActionTap,
     this.showCrown = false,
     this.showSettings = false,
@@ -3479,8 +4156,11 @@ class _GroupCard extends StatelessWidget {
                           const Icon(Icons.workspace_premium_outlined,
                               color: Color(0xFFD69E2E), size: 16),
                         const SizedBox(width: 5),
-                        const Icon(Icons.public,
-                            color: Color(0xFF718096), size: 15),
+                        Icon(
+                          isPrivate ? Icons.lock_outline : Icons.public,
+                          color: const Color(0xFF718096),
+                          size: 15,
+                        ),
                       ],
                     ),
                     const SizedBox(height: 3),
@@ -3490,6 +4170,8 @@ class _GroupCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: _friendMetaStyle,
                     ),
+                    const SizedBox(height: 7),
+                    _GroupExerciseChip(exerciseType: exerciseType),
                     const SizedBox(height: 7),
                     Row(
                       children: [
@@ -3501,7 +4183,10 @@ class _GroupCard extends StatelessWidget {
                         const Icon(Icons.trending_up,
                             color: Color(0xFF718096), size: 14),
                         const SizedBox(width: 4),
-                        Text('$runs runs', style: _friendMetaStyle),
+                        Text(
+                          _groupMetricLabel(exerciseType, runs),
+                          style: _friendMetaStyle,
+                        ),
                       ],
                     ),
                   ],
@@ -3558,7 +4243,11 @@ class _GroupCard extends StatelessWidget {
                     ),
                     const Spacer(),
                     Text(
-                      progressText,
+                      _groupWeeklyGoalLabel(
+                        exerciseType,
+                        weeklyGoalCurrent,
+                        weeklyGoalTarget,
+                      ),
                       style: const TextStyle(
                         color: Color(0xFF111827),
                         fontSize: 11,
@@ -3611,25 +4300,1115 @@ class _CreateGroupButton extends StatelessWidget {
   }
 }
 
+class _GroupDetailScreen extends StatefulWidget {
+  final _MyGroup group;
+  final ValueChanged<_RunInviteFriend> onMessageTap;
+  final List<_RunInviteFriend> inviteableFriends;
+  final _MyGroup Function(_MyGroup group, _RunInviteFriend friend)
+      onInviteFriend;
+  final void Function(_MyGroup group, _RunInviteFriend friend) onRequestInvite;
+
+  const _GroupDetailScreen({
+    required this.group,
+    required this.onMessageTap,
+    required this.inviteableFriends,
+    required this.onInviteFriend,
+    required this.onRequestInvite,
+  });
+
+  @override
+  State<_GroupDetailScreen> createState() => _GroupDetailScreenState();
+}
+
+class _GroupDetailScreenState extends State<_GroupDetailScreen> {
+  int _selectedTab = 0;
+  late _MyGroup _group;
+  bool _isCreateEventOpen = false;
+  final TextEditingController _eventTitleController = TextEditingController();
+  final TextEditingController _eventDateController = TextEditingController();
+  final TextEditingController _eventLocationController =
+      TextEditingController();
+  final TextEditingController _eventNotesController = TextEditingController();
+  String? _selectedEventTime;
+
+  static const List<String> _eventTimeOptions = [
+    '06:00 AM',
+    '07:00 AM',
+    '08:00 AM',
+    '06:00 PM',
+    '07:00 PM',
+  ];
+
+  @override
+  void initState() {
+    super.initState();
+    _group = widget.group;
+  }
+
+  @override
+  void dispose() {
+    _eventTitleController.dispose();
+    _eventDateController.dispose();
+    _eventLocationController.dispose();
+    _eventNotesController.dispose();
+    super.dispose();
+  }
+
+  bool get _isOwner => _group.ownerName == _GroupsPanelState._currentUserName;
+  bool get _canDirectInvite => _isOwner || !_group.isPrivate;
+  bool get _isRunningGroup => _group.exerciseType == 'slow_jogging';
+
+  Future<void> _pickEventDate() async {
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: DateTime(2026, 5, 10),
+      firstDate: DateTime(2024),
+      lastDate: DateTime(2030),
+    );
+
+    if (pickedDate == null) {
+      return;
+    }
+
+    final month = pickedDate.month.toString().padLeft(2, '0');
+    final day = pickedDate.day.toString().padLeft(2, '0');
+    setState(() {
+      _eventDateController.text = '${pickedDate.year} / $month / $day';
+    });
+  }
+
+  void _toggleCreateEvent() {
+    setState(() {
+      _isCreateEventOpen = !_isCreateEventOpen;
+    });
+  }
+
+  void _submitGroupRunEvent() {
+    final title = _eventTitleController.text.trim();
+    final date = _eventDateController.text.trim();
+    final location = _eventLocationController.text.trim();
+    final time = _selectedEventTime;
+
+    if (title.isEmpty || date.isEmpty || location.isEmpty || time == null) {
+      return;
+    }
+
+    setState(() {
+      _group = _group.copyWith(
+        activities: [
+          _GroupActivityEntry(
+            title: title,
+            subtitle: '$date • $time • $location',
+            timestamp: 'Just now',
+          ),
+          ..._group.activities,
+        ],
+      );
+      _isCreateEventOpen = false;
+      _eventTitleController.clear();
+      _eventDateController.clear();
+      _eventLocationController.clear();
+      _eventNotesController.clear();
+      _selectedEventTime = null;
+      _selectedTab = 1;
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Group run event created: $title')),
+    );
+  }
+
+  Future<void> _openInviteSheet() async {
+    if (widget.inviteableFriends.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No friends available right now')),
+      );
+      return;
+    }
+
+    final selected = await showModalBottomSheet<_RunInviteFriend>(
+      context: context,
+      builder: (context) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _canDirectInvite
+                      ? 'Invite Your Friends'
+                      : 'Request a New Member',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.black,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _canDirectInvite
+                      ? 'Only your friends can be invited directly into this group.'
+                      : 'Only your own friends can be proposed, and the group owner must approve them first.',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    height: 1.45,
+                    color: Color(0xFF64748B),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                ...widget.inviteableFriends.map(
+                  (friend) {
+                    final alreadyInGroup = _group.memberPreview.any(
+                      (member) => member.name == friend.name,
+                    );
+
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: _DarkInitialAvatar(initial: friend.initial),
+                      title: Text(
+                        friend.name,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          color: alreadyInGroup
+                              ? const Color(0xFF94A3B8)
+                              : Colors.black,
+                        ),
+                      ),
+                      subtitle: Text(
+                        alreadyInGroup
+                            ? 'Already in group'
+                            : '${friend.runsTogether} runs together',
+                        style: TextStyle(
+                          color: alreadyInGroup
+                              ? const Color(0xFF94A3B8)
+                              : const Color(0xFF64748B),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      trailing: Icon(
+                        alreadyInGroup
+                            ? Icons.check_circle_outline
+                            : Icons.chevron_right_rounded,
+                        color: alreadyInGroup
+                            ? const Color(0xFF94A3B8)
+                            : const Color(0xFF111827),
+                      ),
+                      onTap: alreadyInGroup
+                          ? null
+                          : () => Navigator.of(context).pop(friend),
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (selected == null) {
+      return;
+    }
+
+    if (_canDirectInvite) {
+      final updated = widget.onInviteFriend(_group, selected);
+      setState(() {
+        _group = updated;
+      });
+    } else {
+      widget.onRequestInvite(_group, selected);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final group = _group;
+    final percentRemaining =
+        ((1 - group.progress.clamp(0.0, 1.0)) * 100).round().clamp(0, 100);
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC),
+      appBar: AppBar(
+        backgroundColor: const Color(0xFFF8FAFC),
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded,
+              size: 18, color: Color(0xFF4A5568)),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: const Text(
+          'GROUP',
+          style: TextStyle(
+            color: Color(0xFF111827),
+            fontSize: 17,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 1.1,
+          ),
+        ),
+        centerTitle: true,
+      ),
+      body: SafeArea(
+        top: false,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
+          children: [
+            Container(
+              padding: const EdgeInsets.all(18),
+              decoration: _friendCardDecoration,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 58,
+                        height: 58,
+                        decoration: BoxDecoration(
+                          color: Colors.black,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                        child: const Icon(Icons.groups_2_outlined,
+                            color: Colors.white, size: 31),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    group.name,
+                                    style: const TextStyle(
+                                      color: Colors.black,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w900,
+                                      height: 1.2,
+                                    ),
+                                  ),
+                                ),
+                                if (group.showCrown)
+                                  const Padding(
+                                    padding: EdgeInsets.only(right: 6),
+                                    child: Text('👑',
+                                        style: TextStyle(fontSize: 14)),
+                                  ),
+                                Icon(
+                                  group.isPrivate
+                                      ? Icons.lock_outline
+                                      : Icons.public,
+                                  color: const Color(0xFF94A3B8),
+                                  size: 16,
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              group.description,
+                              style: const TextStyle(
+                                color: Color(0xFF64748B),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            _GroupExerciseChip(
+                                exerciseType: group.exerciseType),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _GroupStatTile(
+                          label: 'Members',
+                          value: '${group.members}',
+                          icon: Icons.people_outline,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: _GroupStatTile(
+                          label: group.exerciseType == 'squat'
+                              ? 'Total Squats'
+                              : 'Total Runs',
+                          value:
+                              _groupMetricLabel(group.exerciseType, group.runs),
+                          icon: Icons.trending_up,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.emoji_events_outlined,
+                                size: 15, color: Color(0xFFD69E2E)),
+                            const SizedBox(width: 6),
+                            const Text(
+                              'Weekly Goal',
+                              style: TextStyle(
+                                color: Color(0xFF475569),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const Spacer(),
+                            Text(
+                              _groupWeeklyGoalLabel(
+                                group.exerciseType,
+                                group.weeklyGoalCurrent,
+                                group.weeklyGoalTarget,
+                              ),
+                              style: const TextStyle(
+                                color: Color(0xFF111827),
+                                fontSize: 13,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(99),
+                          child: LinearProgressIndicator(
+                            value: group.progress.clamp(0.0, 1.0),
+                            minHeight: 8,
+                            backgroundColor: const Color(0xFFE2E8F0),
+                            valueColor: const AlwaysStoppedAnimation<Color>(
+                                Colors.black),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Center(
+                          child: Text(
+                            '$percentRemaining% to go',
+                            style: const TextStyle(
+                              color: Color(0xFF94A3B8),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Expanded(
+                  child: _GroupTabButton(
+                    label: 'Members (${group.memberPreview.length})',
+                    isSelected: _selectedTab == 0,
+                    onTap: () {
+                      setState(() {
+                        _selectedTab = 0;
+                      });
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _GroupTabButton(
+                    label: 'Activity',
+                    isSelected: _selectedTab == 1,
+                    onTap: () {
+                      setState(() {
+                        _selectedTab = 1;
+                      });
+                    },
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            SizedBox(
+              height: 46,
+              child: TextButton.icon(
+                onPressed: _isRunningGroup ? _toggleCreateEvent : null,
+                style: _friendButtonStyle(true),
+                icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                label: Text(
+                  _isRunningGroup
+                      ? (_isCreateEventOpen
+                          ? 'Hide Group Run Event Form'
+                          : 'Create Group Run Event')
+                      : 'Group Event for Slow Jogging Only',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ),
+            if (_isRunningGroup && _isCreateEventOpen) ...[
+              const SizedBox(height: 12),
+              _CreateGroupRunEventForm(
+                titleController: _eventTitleController,
+                dateController: _eventDateController,
+                locationController: _eventLocationController,
+                notesController: _eventNotesController,
+                selectedTime: _selectedEventTime,
+                timeOptions: _eventTimeOptions,
+                onPickDate: _pickEventDate,
+                onTimeSelected: (time) {
+                  setState(() {
+                    _selectedEventTime = time;
+                  });
+                },
+                onCreate: _submitGroupRunEvent,
+              ),
+            ],
+            const SizedBox(height: 10),
+            SizedBox(
+              height: 44,
+              child: TextButton.icon(
+                onPressed: _openInviteSheet,
+                style: _friendButtonStyle(false),
+                icon: Icon(
+                  _canDirectInvite
+                      ? Icons.person_add_alt_1_outlined
+                      : Icons.mark_chat_unread_outlined,
+                  size: 17,
+                ),
+                label: Text(
+                  _canDirectInvite
+                      ? 'Invite Friend to Group'
+                      : 'Request Member Invite',
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 14),
+            if (_selectedTab == 0) ...[
+              if (group.memberPreview.isEmpty)
+                const _EmptyState(text: 'No members to show yet.')
+              else
+                ...group.memberPreview.map(
+                  (member) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _GroupMemberCard(
+                      member: member,
+                      exerciseType: group.exerciseType,
+                      onMessageTap: member.canMessage
+                          ? () => widget.onMessageTap(
+                                _RunInviteFriend(
+                                  initial: member.initial,
+                                  name: member.name,
+                                  runsTogether: member.totalRuns,
+                                  streak: member.runsThisWeek,
+                                  lastRun: 'This week',
+                                ),
+                              )
+                          : null,
+                    ),
+                  ),
+                ),
+            ] else ...[
+              if (group.activities.isEmpty)
+                const _EmptyState(text: 'No recent activity yet.')
+              else
+                ...group.activities.map(
+                  (activity) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: _GroupActivityCard(activity: activity),
+                  ),
+                ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _GroupStatTile extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+
+  const _GroupStatTile({
+    required this.label,
+    required this.value,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, size: 14, color: const Color(0xFF94A3B8)),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Color(0xFF64748B),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.black,
+              fontSize: 31,
+              fontWeight: FontWeight.w900,
+              height: 1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GroupMemberCard extends StatelessWidget {
+  final _GroupMember member;
+  final String exerciseType;
+  final VoidCallback? onMessageTap;
+
+  const _GroupMemberCard({
+    required this.member,
+    required this.exerciseType,
+    this.onMessageTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: _friendCardDecoration,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: const BoxDecoration(
+              color: Colors.black,
+              shape: BoxShape.circle,
+            ),
+            child: Center(
+              child: Text(
+                member.initial,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(
+                        '${member.name}${member.badge.isNotEmpty ? ' ${member.badge}' : ''}',
+                        style: const TextStyle(
+                          color: Colors.black,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    const Icon(Icons.route_outlined,
+                        size: 14, color: Color(0xFF718096)),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${member.totalRuns} total ${_groupMetricUnit(exerciseType)}',
+                      style: _friendMetaStyle,
+                    ),
+                    const SizedBox(width: 12),
+                    const Icon(Icons.calendar_today_outlined,
+                        size: 14, color: Color(0xFF718096)),
+                    const SizedBox(width: 4),
+                    Text('${member.runsThisWeek} this week',
+                        style: _friendMetaStyle),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Joined ${member.joinedDate}',
+                  style: const TextStyle(
+                    color: Color(0xFF94A3B8),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (onMessageTap != null) ...[
+            const SizedBox(width: 10),
+            _IconSquareButton(
+              icon: Icons.chat_bubble_outline_rounded,
+              onTap: onMessageTap!,
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _GroupActivityCard extends StatelessWidget {
+  final _GroupActivityEntry activity;
+
+  const _GroupActivityCard({required this.activity});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: _friendCardDecoration,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: BoxDecoration(
+              color: const Color(0xFF111827),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child:
+                const Icon(Icons.bolt_rounded, color: Colors.white, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  activity.title,
+                  style: const TextStyle(
+                    color: Colors.black,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  activity.subtitle,
+                  style: const TextStyle(
+                    color: Color(0xFF64748B),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            activity.timestamp,
+            style: const TextStyle(
+              color: Color(0xFF94A3B8),
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GroupExerciseChip extends StatelessWidget {
+  final String exerciseType;
+
+  const _GroupExerciseChip({required this.exerciseType});
+
+  _GroupExerciseOption get _option {
+    return _groupExerciseOptions.firstWhere(
+      (item) => item.value == exerciseType,
+      orElse: () => _groupExerciseOptions.first,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final option = _option;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(option.icon, size: 14, color: Colors.black),
+          const SizedBox(width: 6),
+          Text(
+            option.label,
+            style: const TextStyle(
+              color: Color(0xFF111827),
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CreateGroupRunEventForm extends StatelessWidget {
+  final TextEditingController titleController;
+  final TextEditingController dateController;
+  final TextEditingController locationController;
+  final TextEditingController notesController;
+  final String? selectedTime;
+  final List<String> timeOptions;
+  final VoidCallback onPickDate;
+  final ValueChanged<String> onTimeSelected;
+  final VoidCallback onCreate;
+
+  const _CreateGroupRunEventForm({
+    required this.titleController,
+    required this.dateController,
+    required this.locationController,
+    required this.notesController,
+    required this.selectedTime,
+    required this.timeOptions,
+    required this.onPickDate,
+    required this.onTimeSelected,
+    required this.onCreate,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final canCreate = titleController.text.trim().isNotEmpty &&
+        dateController.text.trim().isNotEmpty &&
+        locationController.text.trim().isNotEmpty &&
+        selectedTime != null;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: _friendCardDecoration,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Create Group Run Event',
+            style: TextStyle(
+              color: Colors.black,
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 18),
+          const _InviteFieldLabel(
+            icon: Icons.flag_outlined,
+            text: 'Event Title',
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: titleController,
+            decoration: InputDecoration(
+              hintText: 'e.g., Sunrise Group Run',
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              ),
+            ),
+            onChanged: (_) => (context as Element).markNeedsBuild(),
+          ),
+          const SizedBox(height: 18),
+          const _InviteFieldLabel(
+            icon: Icons.calendar_today_outlined,
+            text: 'Select Date',
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: dateController,
+            readOnly: true,
+            onTap: onPickDate,
+            decoration: InputDecoration(
+              hintText: '年 / 月 / 日',
+              suffixIcon: IconButton(
+                onPressed: onPickDate,
+                icon: const Icon(Icons.calendar_today_outlined, size: 20),
+              ),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              ),
+            ),
+            onChanged: (_) => (context as Element).markNeedsBuild(),
+          ),
+          const SizedBox(height: 18),
+          const _InviteFieldLabel(
+            icon: Icons.access_time_outlined,
+            text: 'Select Time',
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: timeOptions.map((time) {
+              final isSelected = selectedTime == time;
+              return ChoiceChip(
+                label: Text(time),
+                selected: isSelected,
+                onSelected: (_) => onTimeSelected(time),
+                labelStyle: TextStyle(
+                  color: isSelected ? Colors.white : const Color(0xFF4A5568),
+                  fontWeight: FontWeight.w800,
+                  fontSize: 12,
+                ),
+                selectedColor: Colors.black,
+                backgroundColor: const Color(0xFFF1F5F9),
+                side: BorderSide.none,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 18),
+          const _InviteFieldLabel(
+            icon: Icons.location_on_outlined,
+            text: 'Location',
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: locationController,
+            decoration: InputDecoration(
+              hintText: 'Where will the group meet?',
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              ),
+            ),
+            onChanged: (_) => (context as Element).markNeedsBuild(),
+          ),
+          const SizedBox(height: 18),
+          const _InviteFieldLabel(
+            icon: Icons.edit_note_outlined,
+            text: 'Additional Notes (Optional)',
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: notesController,
+            maxLines: 4,
+            decoration: InputDecoration(
+              hintText: 'Add pace, distance, or meetup instructions...',
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(14),
+                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: canCreate ? onCreate : null,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.black,
+                disabledBackgroundColor: const Color(0xFFBDBDBD),
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+              icon: const Icon(Icons.send_outlined, size: 18),
+              label: const Text(
+                'Create Event',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _MyGroup {
+  final String ownerName;
+  final String ownerInitial;
   final String name;
   final String description;
   final int members;
   final int runs;
+  final int weeklyGoalCurrent;
+  final int weeklyGoalTarget;
   final String progressText;
   final double progress;
+  final bool isPrivate;
+  final String exerciseType;
   final bool showCrown;
   final bool showSettings;
+  final List<_GroupMember> memberPreview;
+  final List<_GroupActivityEntry> activities;
 
   const _MyGroup({
+    required this.ownerName,
+    required this.ownerInitial,
     required this.name,
     required this.description,
     required this.members,
     required this.runs,
+    required this.weeklyGoalCurrent,
+    required this.weeklyGoalTarget,
     required this.progressText,
     required this.progress,
+    this.isPrivate = false,
+    this.exerciseType = 'slow_jogging',
     this.showCrown = false,
     this.showSettings = false,
+    this.memberPreview = const [],
+    this.activities = const [],
+  });
+
+  _MyGroup copyWith({
+    String? ownerName,
+    String? ownerInitial,
+    String? name,
+    String? description,
+    int? members,
+    int? runs,
+    int? weeklyGoalCurrent,
+    int? weeklyGoalTarget,
+    String? progressText,
+    double? progress,
+    bool? isPrivate,
+    String? exerciseType,
+    bool? showCrown,
+    bool? showSettings,
+    List<_GroupMember>? memberPreview,
+    List<_GroupActivityEntry>? activities,
+  }) {
+    return _MyGroup(
+      ownerName: ownerName ?? this.ownerName,
+      ownerInitial: ownerInitial ?? this.ownerInitial,
+      name: name ?? this.name,
+      description: description ?? this.description,
+      members: members ?? this.members,
+      runs: runs ?? this.runs,
+      weeklyGoalCurrent: weeklyGoalCurrent ?? this.weeklyGoalCurrent,
+      weeklyGoalTarget: weeklyGoalTarget ?? this.weeklyGoalTarget,
+      progressText: progressText ?? this.progressText,
+      progress: progress ?? this.progress,
+      isPrivate: isPrivate ?? this.isPrivate,
+      exerciseType: exerciseType ?? this.exerciseType,
+      showCrown: showCrown ?? this.showCrown,
+      showSettings: showSettings ?? this.showSettings,
+      memberPreview: memberPreview ?? this.memberPreview,
+      activities: activities ?? this.activities,
+    );
+  }
+}
+
+class _GroupMember {
+  final String initial;
+  final String name;
+  final String badge;
+  final int totalRuns;
+  final int runsThisWeek;
+  final String joinedDate;
+  final bool canMessage;
+
+  const _GroupMember({
+    required this.initial,
+    required this.name,
+    this.badge = '',
+    required this.totalRuns,
+    required this.runsThisWeek,
+    required this.joinedDate,
+    this.canMessage = true,
+  });
+}
+
+class _GroupActivityEntry {
+  final String title;
+  final String subtitle;
+  final String timestamp;
+
+  const _GroupActivityEntry({
+    required this.title,
+    required this.subtitle,
+    required this.timestamp,
   });
 }
 
@@ -3639,6 +5418,8 @@ class _DiscoverGroup {
   final int members;
   final bool isPrivate;
   final bool requestSent;
+  final bool joined;
+  final String exerciseType;
 
   const _DiscoverGroup({
     required this.name,
@@ -3646,6 +5427,8 @@ class _DiscoverGroup {
     required this.members,
     required this.isPrivate,
     this.requestSent = false,
+    this.joined = false,
+    this.exerciseType = 'slow_jogging',
   });
 
   _DiscoverGroup copyWith({
@@ -3654,6 +5437,8 @@ class _DiscoverGroup {
     int? members,
     bool? isPrivate,
     bool? requestSent,
+    bool? joined,
+    String? exerciseType,
   }) {
     return _DiscoverGroup(
       name: name ?? this.name,
@@ -3661,8 +5446,22 @@ class _DiscoverGroup {
       members: members ?? this.members,
       isPrivate: isPrivate ?? this.isPrivate,
       requestSent: requestSent ?? this.requestSent,
+      joined: joined ?? this.joined,
+      exerciseType: exerciseType ?? this.exerciseType,
     );
   }
+}
+
+class _GroupExerciseOption {
+  final String value;
+  final String label;
+  final IconData icon;
+
+  const _GroupExerciseOption({
+    required this.value,
+    required this.label,
+    required this.icon,
+  });
 }
 
 class _GroupsButton extends StatelessWidget {
