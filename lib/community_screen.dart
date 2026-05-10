@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+import 'models/community_post.dart';
+import 'services/community_store.dart';
+import 'services/user_session.dart';
+
 
 const List<_RunInviteFriend> _sharedFriendsSeed = [
   _RunInviteFriend(
@@ -38,7 +42,9 @@ const List<_GroupExerciseOption> _groupExerciseOptions = [
 ];
 
 class CommunityScreen extends StatefulWidget {
-  const CommunityScreen({super.key});
+  final CommunityStore store;
+
+  const CommunityScreen({super.key, required this.store});
 
   @override
   State<CommunityScreen> createState() => _CommunityScreenState();
@@ -48,38 +54,6 @@ class _CommunityScreenState extends State<CommunityScreen> {
   final TextEditingController _postController = TextEditingController();
   final GlobalKey<_GroupsPanelState> _groupsPanelKey =
       GlobalKey<_GroupsPanelState>();
-  final List<_CommunityPost> _posts = [
-    const _CommunityPost(
-      initial: 'S',
-      name: 'Sarah Chen',
-      timeAgo: '2 hours ago',
-      content:
-          'Just completed my first 5km slow jog! Feeling amazing and completely pain-free. The key is patience and consistency!',
-      tags: ['#MorningRun', '#PainFree', '#ProgressNotPerfection'],
-      likes: 24,
-      commentThreads: ['Love this progress!', 'So inspiring'],
-    ),
-    const _CommunityPost(
-      initial: 'M',
-      name: 'Mike Johnson',
-      timeAgo: '5 hours ago',
-      content:
-          'Week 3 of slow jogging and my knee pain has completely disappeared. This approach really works!',
-      tags: ['#SlowJoggingChallenge', '#HealthyHabits'],
-      likes: 18,
-      commentThreads: ['Needed to hear this today'],
-    ),
-    const _CommunityPost(
-      initial: 'A',
-      name: 'Anna Lee',
-      timeAgo: 'Yesterday',
-      content:
-          'Tiny steps, steady breathing, and no pressure. Today felt like the first run I actually wanted to repeat.',
-      tags: ['#EasyMiles', '#KeepMoving'],
-      likes: 31,
-      commentThreads: ['Steady really wins', 'Saving this mindset'],
-    ),
-  ];
   final Set<String> _selectedComposerTags = <String>{};
   final Map<String, List<_ChatEntry>> _friendChats = {
     'Sarah Chen': const [
@@ -109,8 +83,23 @@ class _CommunityScreenState extends State<CommunityScreen> {
   _RunInviteFriend? _inviteFriend;
   _RunInviteFriend? _chatFriend;
 
+  List<CommunityPost> get _posts => widget.store.posts;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.store.addListener(_handleStoreChanged);
+  }
+
+  void _handleStoreChanged() {
+    if (mounted) {
+      setState(() {});
+    }
+  }
+
   @override
   void dispose() {
+    widget.store.removeListener(_handleStoreChanged);
     _postController.dispose();
     super.dispose();
   }
@@ -165,19 +154,15 @@ class _CommunityScreenState extends State<CommunityScreen> {
         .toList();
     final tags = <String>{..._selectedComposerTags, ...detectedTags}.toList();
 
+    widget.store.addPost(
+      initial: UserSession.displayInitial,
+      name: UserSession.displayName,
+      timeAgo: 'Just now',
+      content: content,
+      tags: tags,
+    );
+
     setState(() {
-      _posts.insert(
-        0,
-        _CommunityPost(
-          initial: 'C',
-          name: 'Catherine',
-          timeAgo: 'Just now',
-          content: content,
-          tags: tags,
-          likes: 0,
-          commentThreads: const [],
-        ),
-      );
       _postController.clear();
       _selectedComposerTags.clear();
       _isComposerOpen = false;
@@ -289,21 +274,19 @@ class _CommunityScreenState extends State<CommunityScreen> {
   }
 
   void _toggleLike(int index) {
-    final post = _posts[index];
-    final isLiked = !post.isLiked;
-    setState(() {
-      _posts[index] = post.copyWith(
-        isLiked: isLiked,
-        likes: post.likes + (isLiked ? 1 : -1),
-      );
-    });
+    widget.store.toggleLike(index);
   }
 
   void _toggleSave(int index) {
-    final post = _posts[index];
-    setState(() {
-      _posts[index] = post.copyWith(isSaved: !post.isSaved);
-    });
+    final isSaving = !_posts[index].isSaved;
+    widget.store.toggleSave(index);
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(isSaving ? '已加入我的珍藏' : '已從我的珍藏移除'),
+        duration: const Duration(seconds: 2),
+      ),
+    );
   }
 
   Future<void> _openComments(int index) async {
@@ -322,11 +305,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
               final text = controller.text.trim();
               if (text.isEmpty) return;
 
-              setState(() {
-                _posts[index] = post.copyWith(
-                  commentThreads: [...comments, text],
-                );
-              });
+              widget.store.addComment(index, text);
               modalSetState(() {});
               controller.clear();
             }
@@ -1158,56 +1137,6 @@ class _PostComposer extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _CommunityPost {
-  final String initial;
-  final String name;
-  final String timeAgo;
-  final String content;
-  final List<String> tags;
-  final int likes;
-  final List<String> commentThreads;
-  final bool isLiked;
-  final bool isSaved;
-
-  const _CommunityPost({
-    required this.initial,
-    required this.name,
-    required this.timeAgo,
-    required this.content,
-    required this.tags,
-    required this.likes,
-    required this.commentThreads,
-    this.isLiked = false,
-    this.isSaved = false,
-  });
-
-  int get commentCount => commentThreads.length;
-
-  _CommunityPost copyWith({
-    String? initial,
-    String? name,
-    String? timeAgo,
-    String? content,
-    List<String>? tags,
-    int? likes,
-    List<String>? commentThreads,
-    bool? isLiked,
-    bool? isSaved,
-  }) {
-    return _CommunityPost(
-      initial: initial ?? this.initial,
-      name: name ?? this.name,
-      timeAgo: timeAgo ?? this.timeAgo,
-      content: content ?? this.content,
-      tags: tags ?? this.tags,
-      likes: likes ?? this.likes,
-      commentThreads: commentThreads ?? this.commentThreads,
-      isLiked: isLiked ?? this.isLiked,
-      isSaved: isSaved ?? this.isSaved,
     );
   }
 }

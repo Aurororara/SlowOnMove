@@ -4,6 +4,9 @@ import 'profile.dart';
 import 'bottom_nav_bar.dart';
 import 'community_screen.dart';
 import 'leaderboard_page.dart';
+import 'services/community_store.dart';
+import 'services/user_session.dart';
+
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -14,6 +17,7 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
+  final CommunityStore _communityStore = CommunityStore();
 
   void _onNavTap(int index) {
     setState(() {
@@ -25,10 +29,10 @@ class _MainScreenState extends State<MainScreen> {
   Widget build(BuildContext context) {
     final pages = [
       const HomeScreen(), // Index 0
-      const CommunityScreen(), // Index 1
+      CommunityScreen(store: _communityStore), // Index 1
       const ExerciseSelectionScreen(), // Index 2 (運動選擇頁)
-      LeaderboardPage(),
-      const ProfileScreen(), // Index 4 (個人檔案)
+      const LeaderboardPage(),
+      ProfileScreen(store: _communityStore), // Index 4 (個人檔案)
     ];
 
     return Scaffold(
@@ -86,7 +90,7 @@ class _HomeScreenState extends State<HomeScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Welcome, Catherine',
+              'Welcome, ${UserSession.displayName}',
               style: theme.textTheme.headlineSmall?.copyWith(
                 fontWeight: FontWeight.w800,
                 color: Colors.black,
