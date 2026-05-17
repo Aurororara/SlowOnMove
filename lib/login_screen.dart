@@ -70,13 +70,7 @@ class _LoginScreenState extends State<LoginScreen> {
       } else if (loginType == 'Facebook') {
         isNewUser = await FacebookAuthService().signIn();
       } else if (loginType == 'Apple') {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Apple 登入尚未實作'),
-            duration: Duration(seconds: 1),
-          ),
-        );
-        return;
+        isNewUser = false;
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
