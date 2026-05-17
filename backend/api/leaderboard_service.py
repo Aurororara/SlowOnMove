@@ -128,6 +128,8 @@ def get_leaderboard(exercise_type=None, period=PERIOD_ALL):
         leaderboard.append({
             "member_id": member.id,
             "username": member.username,
+            "name": member.first_name or member.username,
+            "avatar": member.avatar,
             "posture_score": round(posture_score, 2),
             "total_calories": round(total_calories, 2),
             "calorie_score": round(calorie_score, 2),

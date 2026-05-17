@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import './services/api_service.dart';
+import './services/user_session.dart';
 
 class LeaderboardPage extends StatefulWidget {
   const LeaderboardPage({super.key});
@@ -13,8 +14,7 @@ class _LeaderboardPageState extends State<LeaderboardPage> {
   int selectedCategory = 0;
   int selectedPeriod = 0;
 
-  // TODO: 之後請改成登入者自己的 member_id
-  final int currentMemberId = 6;
+  int get currentMemberId => UserSession.memberId;
 
   List<LeaderboardUser> rankings = [];
   bool isLoading = true;
@@ -401,17 +401,9 @@ class _PodiumPerson extends StatelessWidget {
 
     return Column(
       children: [
-        CircleAvatar(
+        UserAvatar(
+          user: user,
           radius: avatarSize / 2,
-          backgroundColor: user.avatarColor,
-          child: Text(
-            user.avatarLetter,
-            style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.w900,
-              color: Colors.white,
-            ),
-          ),
         ),
         const SizedBox(height: 8),
         Text(medalEmoji, style: const TextStyle(fontSize: 22)),
@@ -476,6 +468,8 @@ class RankingListCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final isFirst = user.rank == 1;
 
+    final hasAvatar = user.avatarUrl != null && user.avatarUrl!.isNotEmpty;
+
     return AnimatedContainer(
       duration: const Duration(milliseconds: 180),
       padding: const EdgeInsets.all(16),
@@ -517,18 +511,10 @@ class RankingListCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 12),
-              CircleAvatar(
+              UserAvatar(
+                user: user,
                 radius: isCurrentUser ? 29 : 26,
-                backgroundColor:
-                    isCurrentUser ? const Color(0xFF7C3AED) : user.avatarColor,
-                child: Text(
-                  user.avatarLetter,
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
-                  ),
-                ),
+                isCurrentUser: isCurrentUser,
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -844,6 +830,64 @@ class _MedalBadge extends StatelessWidget {
   }
 }
 
+class UserAvatar extends StatelessWidget {
+  final LeaderboardUser user;
+  final double radius;
+  final bool isCurrentUser;
+
+  const UserAvatar({
+    super.key,
+    required this.user,
+    required this.radius,
+    this.isCurrentUser = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final hasAvatar =
+        user.avatarUrl != null && user.avatarUrl!.trim().isNotEmpty;
+
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor:
+          isCurrentUser ? const Color(0xFF7C3AED) : user.avatarColor,
+      child: ClipOval(
+        child: hasAvatar
+            ? Image.network(
+                user.avatarUrl!,
+                width: radius * 2,
+                height: radius * 2,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return _fallbackAvatar();
+                },
+              )
+            : _fallbackAvatar(),
+      ),
+    );
+  }
+
+  Widget _fallbackAvatar() {
+    return Container(
+      width: radius * 2,
+      height: radius * 2,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: isCurrentUser ? const Color(0xFF7C3AED) : user.avatarColor,
+      ),
+      child: Text(
+        user.avatarLetter,
+        style: TextStyle(
+          fontSize: radius * 0.8,
+          fontWeight: FontWeight.w900,
+          color: Colors.white,
+        ),
+      ),
+    );
+  }
+}
+
 class LeaderboardUser {
   final int memberId;
   final String name;
@@ -854,6 +898,7 @@ class LeaderboardUser {
   final String avatarLetter;
   final Color avatarColor;
   final Color medalColor;
+  final String? avatarUrl;
 
   const LeaderboardUser({
     required this.memberId,
@@ -865,21 +910,33 @@ class LeaderboardUser {
     required this.avatarLetter,
     required this.avatarColor,
     required this.medalColor,
+    this.avatarUrl,
   });
 
+  static String? _parseAvatarUrl(dynamic value) {
+    if (value == null) return null;
+
+    final url = value.toString().trim();
+
+    if (url.isEmpty) return null;
+    if (url == 'null') return null;
+
+    return url;
+  }
+
   factory LeaderboardUser.fromJson(Map<String, dynamic> json) {
-    final username = (json['username'] ?? 'User').toString();
+    final nameStr = (json['name'] ?? json['username'] ?? 'User').toString();
     final rank = ((json['rank'] ?? 0) as num).toInt();
 
     return LeaderboardUser(
       memberId: ((json['member_id'] ?? 0) as num).toInt(),
-      name: username,
+      name: nameStr,
       score: ((json['score'] ?? 0) as num).toDouble(),
       accuracy:
           ((json['posture_score'] ?? json['posture'] ?? 0) as num).round(),
       totalCalories: ((json['total_calories'] ?? 0) as num).toDouble(),
       rank: rank,
-      avatarLetter: username.isNotEmpty ? username[0].toUpperCase() : 'U',
+      avatarLetter: nameStr.isNotEmpty ? nameStr[0].toUpperCase() : 'U',
       avatarColor: const Color(0xFF1F2A44),
       medalColor: rank == 1
           ? const Color(0xFFFFC107)
@@ -888,6 +945,12 @@ class LeaderboardUser {
               : rank == 3
                   ? const Color(0xFFCD7F32)
                   : const Color(0xFFE5E7EB),
+      avatarUrl: _parseAvatarUrl(
+        json['avatar'] ??
+            json['avatar_url'] ??
+            json['photo_url'] ??
+            json['picture'],
+      ),
     );
   }
 }

@@ -2,8 +2,9 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 
 class Member(AbstractUser):
-    # AbstractUser provides username, email, password, date_joined, etc.
-    pass
+    avatar = models.URLField(max_length=500, blank=True, null=True)
+    login_provider = models.CharField(max_length=50, blank=True, null=True)
+    provider_id = models.CharField(max_length=100, blank=True, null=True)
 
 class BodyRecord(models.Model):
     member = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='body_records')

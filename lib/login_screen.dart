@@ -1,9 +1,20 @@
 import 'package:flutter/material.dart';
+
 import 'onboarding_setup_screen.dart';
 import 'main_screen.dart';
+import 'services/auth/google_auth_service.dart';
+import 'services/auth/facebook_auth_service.dart';
+import 'services/auth/apple_auth_service.dart';
 
-class LoginScreen extends StatelessWidget {
+class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
+
+  @override
+  State<LoginScreen> createState() => _LoginScreenState();
+}
+
+class _LoginScreenState extends State<LoginScreen> {
+  bool _isLoading = false;
 
   Future<void> _showTermsDialog(BuildContext context, String loginType) async {
     final agreed = await showDialog<bool>(
@@ -29,15 +40,11 @@ class LoginScreen extends StatelessWidget {
           ),
           actions: [
             TextButton(
-              onPressed: () {
-                Navigator.pop(context, false);
-              },
+              onPressed: () => Navigator.pop(context, false),
               child: const Text('不同意'),
             ),
             ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context, true);
-              },
+              onPressed: () => Navigator.pop(context, true),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.black,
                 foregroundColor: Colors.white,
@@ -49,31 +56,70 @@ class LoginScreen extends StatelessWidget {
       },
     );
 
-    // TODO: 判斷是否為第一次登入
-    const bool isFirstTimeUser = false;
+    if (agreed != true || !context.mounted) return;
 
-    if (agreed == true && context.mounted) {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      bool? isNewUser;
+
+      if (loginType == 'Google') {
+        isNewUser = await GoogleAuthService().signIn();
+      } else if (loginType == 'Facebook') {
+        isNewUser = await FacebookAuthService().signIn();
+      } else if (loginType == 'Apple') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Apple 登入尚未實作'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+        return;
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$loginType 登入尚未實作'),
+            duration: const Duration(seconds: 1),
+          ),
+        );
+        return;
+      }
+
+      if (!context.mounted) return;
+
+      if (isNewUser != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('$loginType 登入成功'),
+            duration: const Duration(seconds: 1),
+          ),
+        );
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => isNewUser == true
+                ? const OnboardingSetupScreen()
+                : const MainScreen(),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!context.mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('$loginType 登入成功'),
-          duration: const Duration(seconds: 1),
+          content: Text('$loginType 登入失敗: $e'),
+          backgroundColor: Colors.red,
         ),
       );
-
-      if (isFirstTimeUser) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const OnboardingSetupScreen(),
-          ),
-        );
-      } else {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const MainScreen(),
-          ),
-        );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
       }
     }
   }
@@ -222,6 +268,15 @@ class LoginScreen extends StatelessWidget {
               ),
             ),
           ),
+          if (_isLoading)
+            Container(
+              color: Colors.black54,
+              child: const Center(
+                child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+            ),
         ],
       ),
     );

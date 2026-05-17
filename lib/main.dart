@@ -1,13 +1,26 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
-import 'package:device_preview/device_preview.dart';
+import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
+
 import 'login_screen.dart';
 
 List<CameraDescription> cameras = [];
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
   debugPrint('--- App Starting ---');
+
+  // Facebook Web 初始化
+  if (kIsWeb) {
+    await FacebookAuth.i.webAndDesktopInitialize(
+      appId: '1544257417341589',
+      cookie: true,
+      xfbml: true,
+      version: 'v19.0',
+    );
+  }
 
   try {
     cameras = await availableCameras();
@@ -25,6 +38,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     debugPrint('--- Building MyApp ---');
+
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Slow On Move',
@@ -34,7 +48,6 @@ class MyApp extends StatelessWidget {
         primarySwatch: Colors.grey,
         scaffoldBackgroundColor: Colors.white,
       ),
-      // App 一啟動就進入登入畫面
       home: const LoginScreen(),
     );
   }
