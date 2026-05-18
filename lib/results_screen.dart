@@ -12,6 +12,7 @@ class ResultsScreen extends StatefulWidget {
   final double averageAccuracy;
   final int stepCount;
   final List<String> finalFeedback;
+  final String exerciseTitle;
 
   const ResultsScreen({
     super.key,
@@ -19,6 +20,7 @@ class ResultsScreen extends StatefulWidget {
     required this.averageAccuracy,
     required this.stepCount,
     required this.finalFeedback,
+    this.exerciseTitle = '超慢跑',
   });
 
   @override
@@ -52,14 +54,14 @@ class _ResultsScreenState extends State<ResultsScreen> {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           "member": UserSession.memberId,
-          "exercise_type": "slow_jogging",
+          "exercise_type": widget.exerciseTitle == '深蹲' ? "squat" : "slow_jogging",
           "start_time": DateTime.now().subtract(Duration(seconds: widget.timeSeconds)).toIso8601String(),
           "end_time": DateTime.now().toIso8601String(),
           "total_mins": widget.timeSeconds ~/ 60,
           "posture_score": widget.averageAccuracy.toInt(),
           "calories": caloriesBurned,
-          "step_count": widget.stepCount, // ⭐ 傳入原始步數
-          "distance": distanceKm,        // ⭐ 傳入換算的里程
+          "step_count": widget.exerciseTitle == '深蹲' ? 0 : widget.stepCount, // 深蹲不傳步數
+          "distance": widget.exerciseTitle == '深蹲' ? 0.0 : distanceKm,        // 深蹲不傳里程
         }),
       );
 
@@ -75,13 +77,29 @@ class _ResultsScreenState extends State<ResultsScreen> {
 
 
   Future<void> _fetchAiFeedback() async {
-    final feedback = await AiCoachService.generateFeedback(
-      timeSeconds: widget.timeSeconds,
-      averageAccuracy: widget.averageAccuracy,
-      stepCount: widget.stepCount,
-      calories: caloriesBurned,
-    );
-    
+    // 暫時停用 Gemini API，改用固定的教練建議
+    String feedback = "";
+    if (widget.exerciseTitle == '深蹲') {
+      if (widget.averageAccuracy >= 80) {
+        feedback = "深蹲姿勢非常標準！核心有收緊，膝蓋與腳尖方向一致，重心掌握得很好。請繼續保持這個好習慣，這對鍛鍊臀腿肌肉非常有幫助！";
+      } else if (widget.averageAccuracy >= 60) {
+        feedback = "做得不錯，但還有進步空間。注意深蹲時重心要放在腳跟，背部保持挺直，不要過度前傾。下蹲時感受臀部向後坐的感覺。";
+      } else {
+        feedback = "深蹲姿勢需要再調整喔。請注意：下蹲時臀部往後坐，膝蓋不要內夾，保持呼吸節奏。建議對著鏡子慢慢練習，感受肌肉發力。";
+      }
+    } else {
+      if (widget.averageAccuracy >= 80) {
+        feedback = "超慢跑節奏掌握得很完美！步伐輕盈，落地姿勢正確。繼續保持這樣的步頻與姿勢，能有效燃燒脂肪並保護膝蓋！";
+      } else if (widget.averageAccuracy >= 60) {
+        feedback = "表現不錯，但要注意落地時盡量使用前腳掌或全腳掌，避免腳跟重落地，以減少膝蓋負擔。保持身體微微前傾會更輕鬆喔。";
+      } else {
+        feedback = "超慢跑姿勢需要微調。請保持身體微微前傾，步伐縮小，提高步頻，並注意手臂自然擺動。不要急，跟著自己的節奏慢慢來。";
+      }
+    }
+
+    // 延遲一下模擬 AI 載入感
+    await Future.delayed(const Duration(seconds: 1));
+
     if (mounted) {
       setState(() {
         _dynamicAiFeedback = feedback;
@@ -118,7 +136,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
                 children: [
                   const Text('運動完成！', style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
-                  const Text('恭喜你完成了這段時間的超慢跑', style: TextStyle(fontSize: 16, color: Colors.black54)),
+                  Text('恭喜你完成了這段時間的${widget.exerciseTitle}', style: const TextStyle(fontSize: 16, color: Colors.black54)),
                   const SizedBox(height: 40),
                   
                   // 數據網格
@@ -134,7 +152,10 @@ class _ResultsScreenState extends State<ResultsScreen> {
                     children: [
                       Expanded(child: _buildStatCard('平均準確率', '${widget.averageAccuracy.toStringAsFixed(1)}%', Icons.check_circle_outline, widget.averageAccuracy > 80 ? Colors.green : Colors.orange)),
                       const SizedBox(width: 16),
-                      Expanded(child: _buildStatCard('步數', '${widget.stepCount} 步', Icons.directions_walk_outlined, Colors.purpleAccent)),
+                      if (widget.exerciseTitle != '深蹲')
+                        Expanded(child: _buildStatCard('步數', '${widget.stepCount} 步', Icons.directions_walk_outlined, Colors.purpleAccent))
+                      else
+                        Expanded(child: Container()), // 保持排版平衡
                     ],
                   ),
                   

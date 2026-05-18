@@ -1,6 +1,5 @@
 import 'dart:math' as math;
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
-import 'package:flutter_tflite/flutter_tflite.dart';
 
 class PoseAnalysisResult {
   final double accuracy;
@@ -25,6 +24,9 @@ class PoseAnalyzer {
   // To avoid redundant feedback
   final Set<String> _currentFeedback = {};
 
+  DateTime? _lastAnalyzeTime;
+  PoseAnalysisResult? _lastResult;
+
   PoseAnalysisResult analyze(List<Pose> poses) {
     if (poses.isEmpty) {
       return PoseAnalysisResult(
@@ -34,9 +36,38 @@ class PoseAnalyzer {
       );
     }
 
+    final currentTime = DateTime.now();
+    if (_lastAnalyzeTime != null && _lastResult != null && 
+        currentTime.difference(_lastAnalyzeTime!).inMilliseconds < 50) {
+      return _lastResult!;
+    }
+    _lastAnalyzeTime = currentTime;
+
     final pose = poses.first;
     _currentFeedback.clear();
     double currentAccuracy = 100.0;
+
+    final leftKnee = pose.landmarks[PoseLandmarkType.leftKnee];
+    final rightKnee = pose.landmarks[PoseLandmarkType.rightKnee];
+
+    bool noLegsDetected = false;
+    if (leftKnee == null || rightKnee == null) {
+      noLegsDetected = true;
+    } else {
+      double minLikelihood = math.min(leftKnee.likelihood, rightKnee.likelihood);
+      if (minLikelihood < 0.2) {
+        noLegsDetected = true;
+      }
+    }
+
+    if (noLegsDetected) {
+      _lastResult = PoseAnalysisResult(
+        accuracy: 0.0,
+        feedback: ['沒有拍攝到腿部，請調整鏡頭角度！'],
+        stepCount: _stepCount,
+      );
+      return _lastResult!;
+    }
 
     // 1. Core Posture Analysis (Back should be straight)
     final leftShoulder = pose.landmarks[PoseLandmarkType.leftShoulder];
@@ -45,16 +76,15 @@ class PoseAnalyzer {
     final rightHip = pose.landmarks[PoseLandmarkType.rightHip];
 
     if (leftShoulder != null && leftHip != null && rightShoulder != null && rightHip != null) {
-      // Calculate torso angle relative to vertical
       double leftTorsoAngle = _calculateAngleWithVertical(leftShoulder, leftHip);
       double rightTorsoAngle = _calculateAngleWithVertical(rightShoulder, rightHip);
       double avgTorsoAngle = (leftTorsoAngle + rightTorsoAngle) / 2;
 
-      // Super slow running implies an upright posture. Angle > 15 degrees is leaning.
-      if (avgTorsoAngle > 15) {
+      // 超慢跑允許微微前傾，大於 25 度才開始扣分
+      if (avgTorsoAngle > 25) {
         _leanForwardFrames++;
-        currentAccuracy -= (avgTorsoAngle - 15) * 2; // Penalize based on severity
-        if (_leanForwardFrames > 10) {
+        currentAccuracy -= (avgTorsoAngle - 25); // 減輕扣分幅度
+        if (_leanForwardFrames > 15) {
           _currentFeedback.add('身體太前傾了，請挺直腰桿！');
         }
       } else {
@@ -62,57 +92,38 @@ class PoseAnalyzer {
       }
     }
 
-    // 2. Leg Action Analysis (Knees should lift, but loose clothing compensation applied)
-    final leftKnee = pose.landmarks[PoseLandmarkType.leftKnee];
-    final rightKnee = pose.landmarks[PoseLandmarkType.rightKnee];
-    final leftAnkle = pose.landmarks[PoseLandmarkType.leftAnkle];
-
+    // 2. Leg Action Analysis (Step counting using knee Y differences)
     if (leftKnee != null && rightKnee != null) {
-      // Clothing Compensation Logic:
-      // If the model's confidence in the knee/ankle is very low (e.g., baggy pants obscuring joint),
-      // we reduce the penalty and rely more on general hip bounce.
-      double minLikelihood = math.min(leftKnee.likelihood, rightKnee.likelihood);
-      double toleranceMultiplier = minLikelihood < 0.6 ? 0.5 : 1.0; // 50% penalty reduction if loose clothing suspected
-
-      // Calculate relative Y distance between hip and knee (negative is up in screen space)
-      double leftKneeHeight = (leftHip?.y ?? 0) - leftKnee.y;
-      double rightKneeHeight = (rightHip?.y ?? 0) - rightKnee.y;
-
-      // Simple relative threshold for lifting knee.
-      double liftThreshold = 50.0;
-
-      if (leftKneeHeight < liftThreshold && rightKneeHeight < liftThreshold) {
-         _lowKneeFrames++;
-         currentAccuracy -= (10 * toleranceMultiplier); // Apply penalty with tolerance
-         if (_lowKneeFrames > 15) {
-             _currentFeedback.add('膝蓋可以稍微抬高一點喔！');
-         }
-      } else {
-         _lowKneeFrames = 0;
-      }
-
-      // Step Counting Logic (Simple alternating Y peak detection)
-      // Check if one knee is significantly higher than the other, creating an alternating cycle
-      if (leftKneeHeight > rightKneeHeight + 20) {
+      // 在 ML Kit 中，Y 越小代表在畫面上越上方
+      // 左膝蓋比右膝蓋高出一定距離 (例如 15 單位)
+      double yDiff = leftKnee.y - rightKnee.y;
+      
+      if (yDiff < -12) {
         if (!_isKneeHigh) {
           _stepCount++;
           _isKneeHigh = true;
         }
-      } else if (rightKneeHeight > leftKneeHeight + 20) {
+      } else if (yDiff > 12) {
         if (_isKneeHigh) {
           _stepCount++;
           _isKneeHigh = false;
         }
       }
+      
+      // 移除原本不合理的膝蓋高度扣分邏輯，因為：
+      // 1. 原本的 leftHip.y - leftKnee.y 是負數，導致永遠小於 threshold，永遠被扣分
+      // 2. 超慢跑本來就「不需要」高抬膝，步伐小是正常的
     }
 
     if (currentAccuracy < 0) currentAccuracy = 0;
+    if (currentAccuracy > 100) currentAccuracy = 100;
 
-    return PoseAnalysisResult(
+    _lastResult = PoseAnalysisResult(
       accuracy: currentAccuracy,
       feedback: _currentFeedback.toList(),
       stepCount: _stepCount,
     );
+    return _lastResult!;
   }
 
   // Calculate angle between two points and the vertical axis (0 is perfectly vertical)

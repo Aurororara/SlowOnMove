@@ -22,12 +22,12 @@ Future<void> main() async {
     );
   }
 
-  try {
-    cameras = await availableCameras();
+  availableCameras().then((cams) {
+    cameras = cams;
     debugPrint('--- Cameras initialized: ${cameras.length} ---');
-  } catch (e) {
+  }).catchError((e) {
     debugPrint('Camera error: $e');
-  }
+  });
 
   runApp(const MyApp());
 }

@@ -145,9 +145,10 @@ class PosePainter extends CustomPainter {
         textPainter.paint(canvas, offset);
       }
 
-      drawText("Status: $feedback", const Offset(30, 80), feedbackColor, 28);
-      drawText("Knee Angle: ${kneeAngle.toInt()}", const Offset(30, 130), Colors.white, 20);
-      drawText("Steps: $stepCount (Cadence: $cadence spm)", const Offset(30, 170), Colors.white, 20);
+      // 依據使用者要求，移除黑色框下方的三段提示文字 (Status, Knee Angle, Steps)
+      // drawText("Status: $feedback", const Offset(30, 80), feedbackColor, 28);
+      // drawText("Knee Angle: ${kneeAngle.toInt()}", const Offset(30, 130), Colors.white, 20);
+      // drawText("Steps: $stepCount (Cadence: $cadence spm)", const Offset(30, 170), Colors.white, 20);
     }
   }
 

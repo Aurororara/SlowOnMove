@@ -86,30 +86,16 @@
 	<key>NSCameraUsageDescription</key>
 	<string>This app needs camera access to track your running pose.</string>
 
+	<key>NSMicrophoneUsageDescription</key>
+	<string>This app needs microphone access for video recording.</string>
+
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This app needs photo library access to upload profile pictures or community posts.</string>
+
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>This app needs local network access to debug and connect with the Flutter tools.</string>
 
-	<key>UIApplicationSceneManifest</key>
-	<dict>
-		<key>UIApplicationSupportsMultipleScenes</key>
-		<false/>
-		<key>UISceneConfigurations</key>
-		<dict>
-			<key>UIWindowSceneSessionRoleApplication</key>
-			<array>
-				<dict>
-					<key>UISceneClassName</key>
-					<string>UIWindowScene</string>
-					<key>UISceneConfigurationName</key>
-					<string>flutter</string>
-					<key>UISceneDelegateClassName</key>
-					<string>FlutterSceneDelegate</string>
-					<key>UISceneStoryboardFile</key>
-					<string>Main</string>
-				</dict>
-			</array>
-		</dict>
-	</dict>
+
 
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>

@@ -107,8 +107,18 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
     });
   }
 
+  DateTime? _lastImageProcessTime;
+
   void _processCameraImage(CameraImage image) {
     if (kIsWeb) return; // 網頁版不執行
+    
+    final currentTime = DateTime.now();
+    if (_lastImageProcessTime != null && 
+        currentTime.difference(_lastImageProcessTime!).inMilliseconds < 60) {
+      return; // 節流：限制在約 15 FPS，減少 CPU 負載與發熱
+    }
+    _lastImageProcessTime = currentTime;
+
     final inputImage = _inputImageFromCameraImage(image);
     if (inputImage == null) return;
     _processImage(inputImage);
@@ -384,6 +394,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
                         averageAccuracy: avgAcc,
                         stepCount: _stepCount,
                         finalFeedback: _feedback,
+                        exerciseTitle: widget.exerciseTitle,
                       ),
                     ),
                   );
