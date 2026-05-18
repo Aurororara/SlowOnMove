@@ -72,6 +72,7 @@ class FacebookAuthService {
           newMemberId: userData['id'],
           newName: userData['name'] ?? '',
           newEmail: userData['email'] ?? '',
+          newAvatar: userData['avatar'] ?? avatarUrl ?? '',
         );
 
         print('Facebook 登入成功');

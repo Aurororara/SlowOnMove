@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
-import 'components/exercise_history.dart';
+import 'exercise_history_screen.dart';
 import 'edit_profile_screen.dart';
 import 'models/community_post.dart';
 import 'services/community_store.dart';
@@ -107,7 +107,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         _buildStatsGrid(),
                         const SizedBox(height: 32),
                         _buildSectionTitle('MY DATA & PROGRESS'),
-                        const SizedBox(height: 16),
+                        _buildMenuButton(
+                        icon: Icons.history,
+                        title: '歷史紀錄',
+                        subtitle: '查看所有運動紀錄',
+                        iconColor: Colors.blueAccent,
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                const ExerciseHistoryScreen(),
+                          ),
+                        ),
+                      ),
                         _buildMenuButton(
                         icon: Icons.auto_awesome,
                         title: '月度回顧',
@@ -120,19 +132,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                         ),
                       ),
-                        _buildMenuButton(
-                          icon: Icons.history,
-                          title: '歷史紀錄',
-                          subtitle: '查看所有運動紀錄',
-                          iconColor: Colors.blueAccent,
-                          onTap: () => Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) =>
-                                  const ExerciseHistoryScreen(),
-                            ),
-                          ),
-                        ),
                         _buildMenuButton(
                           icon: Icons.favorite_border,
                           title: '我的珍藏',
@@ -270,20 +269,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
               },
             ),
           ),
-          Container(
-            width: 90,
-            height: 90,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.white,
-            ),
-            child: Center(
-              child: Text(
-                _fullName.isNotEmpty ? _fullName[0] : "U",
-                style: const TextStyle(fontSize: 40, color: Colors.black),
-              ),
-            ),
-          ),
+          CircleAvatar(
+          radius: 45,
+          backgroundColor: Colors.white,
+          backgroundImage: UserSession.avatar.isNotEmpty
+              ? NetworkImage(UserSession.avatar)
+              : null,
+          child: UserSession.avatar.isEmpty
+              ? Text(
+                  _fullName.isNotEmpty ? _fullName[0] : "U",
+                  style: const TextStyle(fontSize: 40, color: Colors.black),
+                )
+              : null,
+        ),
           const SizedBox(height: 16),
           Text(
             _fullName,

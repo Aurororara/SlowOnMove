@@ -18,7 +18,9 @@ class _MonthlyRecapScreenState extends State<MonthlyRecapScreen> {
   bool _isLoading = true;
   DateTime _selectedMonth = DateTime(DateTime.now().year, DateTime.now().month);
   List<dynamic> _monthLogs = [];
+
   final PageController _pageController = PageController();
+  int _currentPage = 0;
 
   @override
   void initState() {
@@ -29,58 +31,118 @@ class _MonthlyRecapScreenState extends State<MonthlyRecapScreen> {
   Future<void> _fetchMonthlyLogs() async {
     setState(() => _isLoading = true);
 
-    final int memberId = UserSession.memberId;
-    final response = await http.get(Uri.parse('${ApiConfig.baseUrl}training-logs/'));
+    try {
+      final int memberId = UserSession.memberId;
+      final response = await http.get(
+        Uri.parse('${ApiConfig.baseUrl}training-logs/'),
+      );
 
-    if (response.statusCode == 200) {
-      final List allLogs = json.decode(response.body);
+      if (response.statusCode == 200) {
+        final List allLogs = json.decode(response.body);
 
-      final logs = allLogs.where((log) {
-        if (log['member'] != memberId || log['start_time'] == null) return false;
+        final logs = allLogs.where((log) {
+          if (log['member'] != memberId || log['start_time'] == null) {
+            return false;
+          }
 
-        final DateTime time = DateTime.parse(log['start_time']);
-        return time.year == _selectedMonth.year && time.month == _selectedMonth.month;
-      }).toList();
+          final DateTime time = DateTime.parse(log['start_time']);
+          return time.year == _selectedMonth.year &&
+              time.month == _selectedMonth.month;
+        }).toList();
 
-      logs.sort((a, b) => b['start_time'].compareTo(a['start_time']));
+        logs.sort((a, b) => b['start_time'].compareTo(a['start_time']));
 
-      if (mounted) {
-        setState(() {
-          _monthLogs = logs;
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            _monthLogs = logs;
+            _isLoading = false;
+            _currentPage = 0;
+          });
+        }
+      } else {
+        if (mounted) setState(() => _isLoading = false);
       }
-    } else {
+    } catch (e) {
+      debugPrint('月度回顧抓取失敗: $e');
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
   void _changeMonth(int offset) {
     setState(() {
-      _selectedMonth = DateTime(_selectedMonth.year, _selectedMonth.month + offset);
+      _selectedMonth = DateTime(
+        _selectedMonth.year,
+        _selectedMonth.month + offset,
+      );
+      _currentPage = 0;
     });
+
     _pageController.jumpToPage(0);
     _fetchMonthlyLogs();
   }
 
-  int get totalMinutes => _monthLogs.fold(0, (sum, log) => sum + ((log['total_mins'] ?? 0) as int));
-  int get totalCalories => _monthLogs.fold(0, (sum, log) => sum + ((log['calories'] ?? 0) as int));
-  int get totalSteps => _monthLogs.fold(0, (sum, log) => sum + ((log['step_count'] ?? 0) as int));
+  void _goNextPage() {
+    const int lastPageIndex = 5;
 
-  double get totalDistance => _monthLogs.fold(
-        0.0,
-        (sum, log) => sum + ((log['distance'] as num?)?.toDouble() ?? 0.0),
+    if (_currentPage < lastPageIndex) {
+      _pageController.nextPage(
+        duration: const Duration(milliseconds: 450),
+        curve: Curves.easeOutCubic,
       );
+    } else {
+      _pageController.animateToPage(
+        0,
+        duration: const Duration(milliseconds: 450),
+        curve: Curves.easeOutCubic,
+      );
+    }
+  }
+
+  int get totalMinutes {
+    return _monthLogs.fold(
+      0,
+      (sum, log) => sum + ((log['total_mins'] ?? 0) as int),
+    );
+  }
+
+  int get totalCalories {
+    return _monthLogs.fold(
+      0,
+      (sum, log) => sum + ((log['calories'] ?? 0) as int),
+    );
+  }
+
+  int get totalSteps {
+    return _monthLogs.fold(
+      0,
+      (sum, log) => sum + ((log['step_count'] ?? 0) as int),
+    );
+  }
+
+  double get totalDistance {
+    return _monthLogs.fold(
+      0.0,
+      (sum, log) => sum + ((log['distance'] as num?)?.toDouble() ?? 0.0),
+    );
+  }
 
   int get avgAccuracy {
     if (_monthLogs.isEmpty) return 0;
-    final total = _monthLogs.fold(0, (sum, log) => sum + ((log['posture_score'] ?? 0) as int));
+
+    final total = _monthLogs.fold(
+      0,
+      (sum, log) => sum + ((log['posture_score'] ?? 0) as int),
+    );
+
     return total ~/ _monthLogs.length;
   }
 
   dynamic get bestDurationLog {
     if (_monthLogs.isEmpty) return null;
-    return _monthLogs.reduce((a, b) => (a['total_mins'] ?? 0) > (b['total_mins'] ?? 0) ? a : b);
+
+    return _monthLogs.reduce(
+      (a, b) => (a['total_mins'] ?? 0) > (b['total_mins'] ?? 0) ? a : b,
+    );
   }
 
   String get badgeTitle {
@@ -92,14 +154,19 @@ class _MonthlyRecapScreenState extends State<MonthlyRecapScreen> {
     return '慢慢開始者';
   }
 
-  String get monthTitle => '${_selectedMonth.year}.${_selectedMonth.month.toString().padLeft(2, '0')}';
+  String get monthTitle {
+    return '${_selectedMonth.year}.${_selectedMonth.month.toString().padLeft(2, '0')}';
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF7F9FC),
       appBar: AppBar(
-        title: const Text('Monthly Recap', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text(
+          'Monthly Recap',
+          style: TextStyle(fontWeight: FontWeight.bold),
+        ),
         centerTitle: true,
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
@@ -113,15 +180,25 @@ class _MonthlyRecapScreenState extends State<MonthlyRecapScreen> {
                 ? const Center(child: CircularProgressIndicator())
                 : _monthLogs.isEmpty
                     ? _buildEmptyState()
-                    : PageView(
-                        controller: _pageController,
-                        children: [
-                          _buildCoverPage(),
-                          _buildStatsPage(),
-                          _buildBestMomentPage(),
-                          _buildChartPage(),
-                          _buildBadgePage(),
-                        ],
+                    : GestureDetector(
+                        onTap: _goNextPage,
+                        child: PageView(
+                          controller: _pageController,
+                          physics: const NeverScrollableScrollPhysics(),
+                          onPageChanged: (index) {
+                            setState(() {
+                              _currentPage = index;
+                            });
+                          },
+                          children: [
+                            _buildCoverPage(),
+                            _buildStatsPage(),
+                            _buildBestMomentPage(),
+                            _buildChartPage(),
+                            _buildBadgePage(),
+                            _buildSummaryPage(),
+                          ],
+                        ),
                       ),
           ),
           if (!_isLoading && _monthLogs.isNotEmpty) _buildPageHint(),
@@ -150,7 +227,10 @@ class _MonthlyRecapScreenState extends State<MonthlyRecapScreen> {
               child: Center(
                 child: Text(
                   '$monthTitle 月度回顧',
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ),
@@ -172,16 +252,27 @@ class _MonthlyRecapScreenState extends State<MonthlyRecapScreen> {
         children: [
           const Icon(Icons.auto_awesome, color: Colors.white, size: 54),
           const SizedBox(height: 24),
-          Text(monthTitle, style: const TextStyle(color: Colors.white70, fontSize: 22)),
+          Text(
+            monthTitle,
+            style: const TextStyle(color: Colors.white70, fontSize: 22),
+          ),
           const SizedBox(height: 8),
           const Text(
             '你的慢跑月度回顧',
-            style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 28,
+              fontWeight: FontWeight.bold,
+            ),
           ),
           const SizedBox(height: 32),
           Text(
             '${_monthLogs.length}',
-            style: const TextStyle(color: Colors.white, fontSize: 82, fontWeight: FontWeight.w900),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 82,
+              fontWeight: FontWeight.w900,
+            ),
           ),
           const Text(
             '次慢跑紀錄',
@@ -200,7 +291,11 @@ class _MonthlyRecapScreenState extends State<MonthlyRecapScreen> {
         children: [
           const Text(
             '本月總成績',
-            style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 28,
+              fontWeight: FontWeight.bold,
+            ),
           ),
           const SizedBox(height: 28),
           Row(
@@ -235,21 +330,39 @@ class _MonthlyRecapScreenState extends State<MonthlyRecapScreen> {
           const SizedBox(height: 24),
           const Text(
             'Best Moment',
-            style: TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 30,
+              fontWeight: FontWeight.bold,
+            ),
           ),
           const SizedBox(height: 28),
-          const Text('本月最長一次慢跑', style: TextStyle(color: Colors.white70, fontSize: 18)),
+          const Text(
+            '本月最長一次慢跑',
+            style: TextStyle(color: Colors.white70, fontSize: 18),
+          ),
           const SizedBox(height: 12),
           Text(
             '$bestMins min',
-            style: const TextStyle(color: Colors.white, fontSize: 64, fontWeight: FontWeight.w900),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 64,
+              fontWeight: FontWeight.w900,
+            ),
           ),
           const SizedBox(height: 8),
-          Text(bestDate, style: const TextStyle(color: Colors.white70, fontSize: 16)),
+          Text(
+            bestDate,
+            style: const TextStyle(color: Colors.white70, fontSize: 16),
+          ),
           const SizedBox(height: 28),
           Text(
             '平均姿勢準確率 $avgAccuracy%',
-            style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ],
       ),
@@ -274,7 +387,11 @@ class _MonthlyRecapScreenState extends State<MonthlyRecapScreen> {
         children: [
           const Text(
             '每週運動趨勢',
-            style: TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 28,
+              fontWeight: FontWeight.bold,
+            ),
           ),
           const SizedBox(height: 36),
           ...List.generate(weeklyMinutes.length, (index) {
@@ -289,7 +406,10 @@ class _MonthlyRecapScreenState extends State<MonthlyRecapScreen> {
                     width: 58,
                     child: Text(
                       'Week ${index + 1}',
-                      style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.bold),
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                   Expanded(
@@ -315,7 +435,10 @@ class _MonthlyRecapScreenState extends State<MonthlyRecapScreen> {
                     ),
                   ),
                   const SizedBox(width: 10),
-                  Text('$value', style: const TextStyle(color: Colors.white)),
+                  Text(
+                    '$value',
+                    style: const TextStyle(color: Colors.white),
+                  ),
                 ],
               ),
             );
@@ -341,13 +464,128 @@ class _MonthlyRecapScreenState extends State<MonthlyRecapScreen> {
           Text(
             badgeTitle,
             textAlign: TextAlign.center,
-            style: const TextStyle(color: Colors.white, fontSize: 36, fontWeight: FontWeight.w900),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 36,
+              fontWeight: FontWeight.w900,
+            ),
           ),
           const SizedBox(height: 28),
           const Text(
             '每一次紀錄都算數。\n你正在慢慢累積自己的進步。',
             textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.white, fontSize: 17, height: 1.6),
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 17,
+              height: 1.6,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSummaryPage() {
+    return _RecapPage(
+      gradientColors: const [Color(0xFF0F2027), Color(0xFF2C5364)],
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.insights, color: Colors.white, size: 54),
+          const SizedBox(height: 18),
+          Text(
+            '$monthTitle Summary',
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            '本月完整總結',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 30,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 28),
+          Container(
+            padding: const EdgeInsets.all(18),
+            decoration: BoxDecoration(
+              color: Colors.white.withOpacity(0.14),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Colors.white.withOpacity(0.2)),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    _buildSummaryItem(
+                      Icons.directions_run,
+                      '${_monthLogs.length}',
+                      '跑步次數',
+                    ),
+                    _buildSummaryItem(Icons.timer, '$totalMinutes', '分鐘'),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  children: [
+                    _buildSummaryItem(
+                      Icons.route,
+                      totalDistance.toStringAsFixed(2),
+                      '公里',
+                    ),
+                    _buildSummaryItem(
+                      Icons.local_fire_department,
+                      '$totalCalories',
+                      'kcal',
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  children: [
+                    _buildSummaryItem(
+                      Icons.directions_walk,
+                      '$totalSteps',
+                      '步數',
+                    ),
+                    _buildSummaryItem(
+                      Icons.gps_fixed,
+                      '$avgAccuracy%',
+                      '準確率',
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 28),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              badgeTitle,
+              style: const TextStyle(
+                color: Color(0xFF2C5364),
+                fontWeight: FontWeight.w900,
+                fontSize: 16,
+              ),
+            ),
+          ),
+          const SizedBox(height: 22),
+          const Text(
+            '點一下可以重新播放回顧',
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 13,
+            ),
           ),
         ],
       ),
@@ -366,11 +604,49 @@ class _MonthlyRecapScreenState extends State<MonthlyRecapScreen> {
         ),
         child: Column(
           children: [
-            Text(value, style: const TextStyle(color: Colors.white, fontSize: 30, fontWeight: FontWeight.w900)),
+            Text(
+              value,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 30,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
             const SizedBox(height: 6),
-            Text(label, style: const TextStyle(color: Colors.white70, fontSize: 14)),
+            Text(
+              label,
+              style: const TextStyle(color: Colors.white70, fontSize: 14),
+            ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildSummaryItem(IconData icon, String value, String label) {
+    return Expanded(
+      child: Column(
+        children: [
+          Icon(icon, color: Colors.white, size: 24),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -382,11 +658,19 @@ class _MonthlyRecapScreenState extends State<MonthlyRecapScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.calendar_month_outlined, size: 84, color: Colors.grey[300]),
+            Icon(
+              Icons.calendar_month_outlined,
+              size: 84,
+              color: Colors.grey[300],
+            ),
             const SizedBox(height: 18),
             const Text(
               '這個月還沒有跑步紀錄',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Color(0xFF64748B)),
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF64748B),
+              ),
             ),
             const SizedBox(height: 8),
             const Text(
@@ -401,11 +685,11 @@ class _MonthlyRecapScreenState extends State<MonthlyRecapScreen> {
   }
 
   Widget _buildPageHint() {
-    return const Padding(
-      padding: EdgeInsets.only(bottom: 16),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 16),
       child: Text(
-        '左右滑動查看完整回顧',
-        style: TextStyle(color: Colors.grey, fontSize: 12),
+        '點擊畫面查看下一頁  ${_currentPage + 1}/6',
+        style: const TextStyle(color: Colors.grey, fontSize: 12),
       ),
     );
   }
@@ -433,15 +717,25 @@ class _RecapPage extends StatelessWidget {
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(32),
-        boxShadow: [
-          BoxShadow(
-            color: gradientColors.last.withOpacity(0.25),
-            blurRadius: 24,
-            offset: const Offset(0, 12),
-          ),
-        ],
       ),
-      child: child,
+
+      // 修正 overflow
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight: constraints.maxHeight,
+              ),
+              child: SingleChildScrollView(
+                physics: const BouncingScrollPhysics(),
+                child: child,
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 }

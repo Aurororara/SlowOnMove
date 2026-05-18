@@ -72,6 +72,7 @@ class GoogleAuthService {
           newMemberId: userData['id'],
           newName: userData['name'] ?? '',
           newEmail: userData['email'] ?? '',
+          newAvatar: userData['avatar'] ?? '',
         );
 
         return data['is_new_user'] == true;

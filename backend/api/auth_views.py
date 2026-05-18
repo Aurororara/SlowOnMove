@@ -36,6 +36,7 @@ def create_jwt_response(user, created, message):
             "id": user.id,
             "email": user.email,
             "name": user.first_name,
+            "avatar": getattr(user, "avatar", ""),
         },
         "is_new_user": created,
     }, status=status.HTTP_200_OK)
