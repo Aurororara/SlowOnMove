@@ -9,6 +9,8 @@ import 'edit_profile_screen.dart';
 import 'models/community_post.dart';
 import 'services/community_store.dart';
 import 'services/user_session.dart';
+import 'config/api_config.dart';
+import 'monthly_recap_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final CommunityStore store;
@@ -37,47 +39,49 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _fetchProfileData() async {
-    final String baseUrl =
-        kIsWeb ? "http://localhost:8000/api" : "http://10.0.2.2:8000/api";
-    final int currentMemberId = UserSession.memberId;
+  final String baseUrl = ApiConfig.baseUrl;
+  final int currentMemberId = UserSession.memberId;
 
-    try {
-      final logStatsResponse = await http.get(
-        Uri.parse('$baseUrl/training-logs/my-stats/?member_id=$currentMemberId'),
-      );
-      final bodyResponse = await http.get(Uri.parse('$baseUrl/body-records/'));
+  try {
+    final logStatsResponse = await http.get(
+      Uri.parse('${baseUrl}training-logs/my-stats/?member_id=$currentMemberId'),
+    );
 
-      if (logStatsResponse.statusCode == 200 && bodyResponse.statusCode == 200) {
-        final Map<String, dynamic> stats = json.decode(logStatsResponse.body);
-        final List allBodyRecords = json.decode(bodyResponse.body);
+    final bodyResponse = await http.get(
+      Uri.parse('${baseUrl}body-records/'),
+    );
 
-        final List myBodyRecords = allBodyRecords
-            .where((rec) => rec['member'] == currentMemberId)
-            .toList();
+    if (logStatsResponse.statusCode == 200 && bodyResponse.statusCode == 200) {
+      final Map<String, dynamic> stats = json.decode(logStatsResponse.body);
+      final List allBodyRecords = json.decode(bodyResponse.body);
 
-        if (mounted) {
-          setState(() {
-            _workoutCount = stats['total_time'] ?? 0;
-            _totalCalories = stats['total_calories'] ?? 0;
-            _totalSteps = stats['total_steps'] ?? 0;
-            _totalDistance =
-                (stats['total_distance'] as num?)?.toDouble() ?? 0.0;
+      final List myBodyRecords = allBodyRecords
+          .where((rec) => rec['member'] == currentMemberId)
+          .toList();
 
-            if (myBodyRecords.isNotEmpty) {
-              _height = myBodyRecords.last['height'].toString();
-              _weight = myBodyRecords.last['weight'].toString();
-            }
-            _isLoading = false;
-          });
-        }
-      }
-    } catch (e) {
-      debugPrint("抓取資料失敗: $e");
       if (mounted) {
-        setState(() => _isLoading = false);
+        setState(() {
+          _workoutCount = stats['total_time'] ?? 0;
+          _totalCalories = stats['total_calories'] ?? 0;
+          _totalSteps = stats['total_steps'] ?? 0;
+          _totalDistance = (stats['total_distance'] as num?)?.toDouble() ?? 0.0;
+
+          if (myBodyRecords.isNotEmpty) {
+            _height = myBodyRecords.last['height'].toString();
+            _weight = myBodyRecords.last['weight'].toString();
+          }
+
+          _isLoading = false;
+        });
       }
     }
+  } catch (e) {
+    debugPrint("抓取資料失敗: $e");
+    if (mounted) {
+      setState(() => _isLoading = false);
+    }
   }
+}
 
   @override
   Widget build(BuildContext context) {
@@ -104,6 +108,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         const SizedBox(height: 32),
                         _buildSectionTitle('MY DATA & PROGRESS'),
                         const SizedBox(height: 16),
+                        _buildMenuButton(
+                        icon: Icons.auto_awesome,
+                        title: '月度回顧',
+                        subtitle: '查看每個月的跑步 Recap',
+                        iconColor: Colors.purpleAccent,
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const MonthlyRecapScreen(),
+                          ),
+                        ),
+                      ),
                         _buildMenuButton(
                           icon: Icons.history,
                           title: '歷史紀錄',
