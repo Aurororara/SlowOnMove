@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http; // ⭐ 處理網路請求必備
 import 'services/ai_coach_service.dart';
 import 'package:flutter/foundation.dart'; // ⭐ 判斷是否為網頁版
 import 'services/user_session.dart';
+import 'config/api_config.dart';
 
 class ResultsScreen extends StatefulWidget {
   final int timeSeconds;
@@ -46,11 +47,13 @@ class _ResultsScreenState extends State<ResultsScreen> {
   double get distanceKm => (widget.stepCount * 0.7) / 1000.0;
 
   Future<void> _saveData() async {
-    final String baseUrl = kIsWeb ? "http://localhost:8000/api" : "http://10.0.2.2:8000/api";
+    final String baseUrl = ApiConfig.baseUrl; // ⭐ 改用共用的 API Config，解決實機連線失敗問題
+    // 去除結尾的斜線避免網址拼接錯誤 (ApiConfig 裡面有寫斜線)
+    final String url = baseUrl.endsWith('/') ? '${baseUrl}training-logs/' : '$baseUrl/training-logs/';
     
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/training-logs/'),
+        Uri.parse(url),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           "member": UserSession.memberId,
