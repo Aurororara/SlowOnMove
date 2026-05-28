@@ -1,8 +1,5 @@
 import 'package:flutter/material.dart';
-import 'models/community_post.dart';
-import 'services/community_store.dart';
 import 'services/user_session.dart';
-
 
 const List<_RunInviteFriend> _sharedFriendsSeed = [
   _RunInviteFriend(
@@ -51,10 +48,8 @@ class CommunityScreen extends StatefulWidget {
 }
 
 class _CommunityScreenState extends State<CommunityScreen> {
-  final TextEditingController _postController = TextEditingController();
   final GlobalKey<_GroupsPanelState> _groupsPanelKey =
       GlobalKey<_GroupsPanelState>();
-  final Set<String> _selectedComposerTags = <String>{};
   final Map<String, List<_ChatEntry>> _friendChats = {
     'Sarah Chen': const [
       _ChatEntry(
@@ -100,7 +95,6 @@ class _CommunityScreenState extends State<CommunityScreen> {
   @override
   void dispose() {
     widget.store.removeListener(_handleStoreChanged);
-    _postController.dispose();
     super.dispose();
   }
 
@@ -114,61 +108,73 @@ class _CommunityScreenState extends State<CommunityScreen> {
     FocusScope.of(context).unfocus();
     setState(() {
       _isComposerOpen = false;
-      _selectedComposerTags.clear();
     });
   }
 
-  void _toggleComposerTag(String tag) {
-    final text = _postController.text;
-    final normalizedText = text.trimRight();
-    final hasTag = _selectedComposerTags.contains(tag);
-
-    setState(() {
-      if (hasTag) {
-        _selectedComposerTags.remove(tag);
-        _postController.text = normalizedText
-            .replaceAll(' $tag', '')
-            .replaceAll('$tag ', '')
-            .replaceAll(tag, '')
-            .replaceAll(RegExp(r'\s{2,}'), ' ')
-            .trim();
-      } else {
-        _selectedComposerTags.add(tag);
-        _postController.text =
-            normalizedText.isEmpty ? tag : '$normalizedText $tag';
-      }
-
-      _postController.selection = TextSelection.collapsed(
-        offset: _postController.text.length,
-      );
-    });
-  }
-
-  void _submitPost() {
-    final content = _postController.text.trim();
-    if (content.isEmpty) return;
-
-    final detectedTags = RegExp(r'#\w+')
-        .allMatches(content)
-        .map((match) => match.group(0)!)
-        .toList();
-    final tags = <String>{..._selectedComposerTags, ...detectedTags}.toList();
-
+  void _submitPost(_ComposerSubmission submission) {
     widget.store.addPost(
       initial: UserSession.displayInitial,
       name: UserSession.displayName,
       timeAgo: 'Just now',
-      content: content,
-      tags: tags,
+      content: submission.content,
+      tags: submission.tags,
+      type: submission.type,
+      plan: submission.plan,
+      recipe: submission.recipe,
     );
 
     setState(() {
-      _postController.clear();
-      _selectedComposerTags.clear();
       _isComposerOpen = false;
     });
 
     FocusScope.of(context).unfocus();
+  }
+
+  _ComposerSubmission _submissionFromPost(CommunityPost post) {
+    return _ComposerSubmission(
+      type: post.type,
+      content: post.content,
+      tags: post.tags,
+      plan: post.plan,
+      recipe: post.recipe,
+    );
+  }
+
+  Future<void> _editPost(int index) async {
+    final post = _posts[index];
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 18,
+            right: 18,
+            top: 48,
+            bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 18,
+          ),
+          child: SingleChildScrollView(
+            child: _PostComposer(
+              initialSubmission: _submissionFromPost(post),
+              submitLabel: 'Save',
+              onPost: (submission) {
+                widget.store.updatePost(
+                  index,
+                  content: submission.content,
+                  tags: submission.tags,
+                  type: submission.type,
+                  plan: submission.plan,
+                  recipe: submission.recipe,
+                );
+                Navigator.of(sheetContext).pop();
+              },
+              onClose: () => Navigator.of(sheetContext).pop(),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   void _openFriends() {
@@ -187,6 +193,15 @@ class _CommunityScreenState extends State<CommunityScreen> {
       _isFriendsOpen = false;
       _isGroupsOpen = true;
     });
+  }
+
+  void _openMyCommunityProfile() {
+    FocusScope.of(context).unfocus();
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CommunityProfileScreen(store: widget.store),
+      ),
+    );
   }
 
   void _closeSecondaryPage() {
@@ -471,6 +486,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
 
   Future<void> _showPostMenu(int index) async {
     final post = _posts[index];
+    final isOwnPost = post.name == UserSession.displayName;
     await showModalBottomSheet<void>(
       context: context,
       builder: (context) {
@@ -489,6 +505,18 @@ class _CommunityScreenState extends State<CommunityScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
+                if (isOwnPost)
+                  ListTile(
+                    leading:
+                        const Icon(Icons.edit_outlined, color: Colors.black),
+                    title: const Text('Edit post'),
+                    subtitle: const Text('Update your content and details'),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _editPost(index);
+                    },
+                  ),
+                if (isOwnPost) const Divider(height: 1),
                 ListTile(
                   leading:
                       const Icon(Icons.flag_outlined, color: Colors.redAccent),
@@ -740,9 +768,6 @@ class _CommunityScreenState extends State<CommunityScreen> {
                                         ? _PostComposer(
                                             key:
                                                 const ValueKey('composer-open'),
-                                            controller: _postController,
-                                            selectedTags: _selectedComposerTags,
-                                            onTagTap: _toggleComposerTag,
                                             onPost: _submitPost,
                                             onClose: _closeComposer,
                                           )
@@ -750,6 +775,8 @@ class _CommunityScreenState extends State<CommunityScreen> {
                                             key: const ValueKey(
                                                 'composer-closed'),
                                             onTap: _openComposer,
+                                            onProfileTap:
+                                                _openMyCommunityProfile,
                                           ),
                                   ),
                                   const SizedBox(height: 18),
@@ -775,6 +802,9 @@ class _CommunityScreenState extends State<CommunityScreen> {
                                         timeAgo: post.timeAgo,
                                         content: post.content,
                                         tags: post.tags,
+                                        type: post.type,
+                                        plan: post.plan,
+                                        recipe: post.recipe,
                                         likes: post.likes,
                                         comments: post.commentCount,
                                         isLiked: post.isLiked,
@@ -910,8 +940,13 @@ class _SearchField extends StatelessWidget {
 
 class _CreatePostCard extends StatelessWidget {
   final VoidCallback onTap;
+  final VoidCallback onProfileTap;
 
-  const _CreatePostCard({super.key, required this.onTap});
+  const _CreatePostCard({
+    super.key,
+    required this.onTap,
+    required this.onProfileTap,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -929,7 +964,14 @@ class _CreatePostCard extends StatelessWidget {
           ),
           child: Row(
             children: [
-              const _Avatar(initial: 'L'),
+              InkWell(
+                borderRadius: BorderRadius.circular(999),
+                onTap: onProfileTap,
+                child: Padding(
+                  padding: const EdgeInsets.all(2),
+                  child: _Avatar(initial: UserSession.displayInitial),
+                ),
+              ),
               const SizedBox(width: 13),
               const Expanded(
                 child: Text(
@@ -956,7 +998,43 @@ class _CreatePostCard extends StatelessWidget {
   }
 }
 
-class _PostComposer extends StatelessWidget {
+enum _ComposerMode { journey, plan, recipe }
+
+class _ComposerSubmission {
+  final CommunityPostType type;
+  final String content;
+  final List<String> tags;
+  final WorkoutPlanData? plan;
+  final RecipeData? recipe;
+
+  const _ComposerSubmission({
+    required this.type,
+    required this.content,
+    required this.tags,
+    this.plan,
+    this.recipe,
+  });
+}
+
+class _PostComposer extends StatefulWidget {
+  final _ComposerSubmission? initialSubmission;
+  final String submitLabel;
+  final ValueChanged<_ComposerSubmission> onPost;
+  final VoidCallback onClose;
+
+  const _PostComposer({
+    super.key,
+    this.initialSubmission,
+    this.submitLabel = 'Post',
+    required this.onPost,
+    required this.onClose,
+  });
+
+  @override
+  State<_PostComposer> createState() => _PostComposerState();
+}
+
+class _PostComposerState extends State<_PostComposer> {
   static const List<String> _tags = [
     '#MorningRun',
     '#PainFree',
@@ -968,20 +1046,251 @@ class _PostComposer extends StatelessWidget {
     '#MindfulMovement',
   ];
 
-  final TextEditingController controller;
-  final Set<String> selectedTags;
-  final ValueChanged<String> onTagTap;
-  final VoidCallback onPost;
-  final VoidCallback onClose;
+  final TextEditingController _contentController = TextEditingController();
+  final TextEditingController _planTitleController = TextEditingController();
+  final TextEditingController _planSummaryController = TextEditingController();
+  final TextEditingController _recipeTitleController = TextEditingController();
+  final TextEditingController _recipeCookMinutesController =
+      TextEditingController();
+  final Set<String> _selectedTags = <String>{};
+  final List<_EditablePlanStep> _planSteps = [
+    _EditablePlanStep(),
+    _EditablePlanStep(),
+    _EditablePlanStep(),
+  ];
+  final List<_EditableRecipeIngredient> _recipeIngredients = [
+    _EditableRecipeIngredient(),
+    _EditableRecipeIngredient(),
+  ];
 
-  const _PostComposer({
-    super.key,
-    required this.controller,
-    required this.selectedTags,
-    required this.onTagTap,
-    required this.onPost,
-    required this.onClose,
-  });
+  _ComposerMode _mode = _ComposerMode.journey;
+  String _planDifficulty = 'Medium';
+
+  @override
+  void initState() {
+    super.initState();
+    _applyInitialSubmission();
+  }
+
+  void _applyInitialSubmission() {
+    final submission = widget.initialSubmission;
+    if (submission == null) return;
+
+    _contentController.text = submission.content;
+    _selectedTags.addAll(submission.tags);
+
+    switch (submission.type) {
+      case CommunityPostType.journey:
+        _mode = _ComposerMode.journey;
+        break;
+      case CommunityPostType.plan:
+        _mode = _ComposerMode.plan;
+        final plan = submission.plan;
+        if (plan != null) {
+          _planTitleController.text = plan.title;
+          _planSummaryController.text = plan.summary;
+          _planDifficulty = plan.difficulty;
+          for (final step in _planSteps) {
+            step.dispose();
+          }
+          _planSteps
+            ..clear()
+            ..addAll(
+              plan.steps.map((step) {
+                final editable = _EditablePlanStep();
+                editable.name.text = step.name;
+                editable.minutes.text = step.minutes.toString();
+                return editable;
+              }),
+            );
+        }
+        break;
+      case CommunityPostType.recipe:
+        _mode = _ComposerMode.recipe;
+        final recipe = submission.recipe;
+        if (recipe != null) {
+          _recipeTitleController.text = recipe.title;
+          _recipeCookMinutesController.text = recipe.cookMinutes.toString();
+          for (final ingredient in _recipeIngredients) {
+            ingredient.dispose();
+          }
+          _recipeIngredients
+            ..clear()
+            ..addAll(
+              recipe.ingredients.map((ingredient) {
+                final editable = _EditableRecipeIngredient();
+                editable.name.text = ingredient.name;
+                editable.grams.text = ingredient.grams.toStringAsFixed(0);
+                return editable;
+              }),
+            );
+        }
+        break;
+    }
+  }
+
+  @override
+  void dispose() {
+    _contentController.dispose();
+    _planTitleController.dispose();
+    _planSummaryController.dispose();
+    _recipeTitleController.dispose();
+    _recipeCookMinutesController.dispose();
+    for (final step in _planSteps) {
+      step.dispose();
+    }
+    for (final ingredient in _recipeIngredients) {
+      ingredient.dispose();
+    }
+    super.dispose();
+  }
+
+  String get _title {
+    switch (_mode) {
+      case _ComposerMode.journey:
+        return 'Share Your Journey';
+      case _ComposerMode.plan:
+        return 'Share Your Plan';
+      case _ComposerMode.recipe:
+        return 'Share Your Recipe';
+    }
+  }
+
+  String get _hintText {
+    switch (_mode) {
+      case _ComposerMode.journey:
+        return 'Share your slow jogging experience,\nhealth tips, or achievements...';
+      case _ComposerMode.plan:
+        return 'Describe what this training plan helps with,\nlike endurance, recovery, or form...';
+      case _ComposerMode.recipe:
+        return 'Tell everyone why this recipe works for you,\nlike pre-run energy or post-run recovery...';
+    }
+  }
+
+  void _toggleTag(String tag) {
+    setState(() {
+      if (_selectedTags.contains(tag)) {
+        _selectedTags.remove(tag);
+      } else {
+        _selectedTags.add(tag);
+      }
+    });
+  }
+
+  void _addPlanStep() {
+    setState(() {
+      _planSteps.add(_EditablePlanStep());
+    });
+  }
+
+  void _removePlanStep(int index) {
+    if (_planSteps.length <= 1) return;
+    setState(() {
+      final removed = _planSteps.removeAt(index);
+      removed.dispose();
+    });
+  }
+
+  void _addRecipeIngredient() {
+    setState(() {
+      _recipeIngredients.add(_EditableRecipeIngredient());
+    });
+  }
+
+  void _removeRecipeIngredient(int index) {
+    if (_recipeIngredients.length <= 1) return;
+    setState(() {
+      final removed = _recipeIngredients.removeAt(index);
+      removed.dispose();
+    });
+  }
+
+  bool get _canSubmit {
+    switch (_mode) {
+      case _ComposerMode.journey:
+        return _contentController.text.trim().isNotEmpty;
+      case _ComposerMode.plan:
+        return _contentController.text.trim().isNotEmpty &&
+            _planTitleController.text.trim().isNotEmpty &&
+            _validPlanSteps.isNotEmpty;
+      case _ComposerMode.recipe:
+        return _contentController.text.trim().isNotEmpty &&
+            _recipeTitleController.text.trim().isNotEmpty &&
+            _validRecipeIngredients.isNotEmpty;
+    }
+  }
+
+  List<WorkoutPlanStep> get _validPlanSteps => _planSteps
+      .map((step) => step.toPlanStep())
+      .whereType<WorkoutPlanStep>()
+      .toList(growable: false);
+
+  List<RecipeIngredient> get _validRecipeIngredients => _recipeIngredients
+      .map((ingredient) => ingredient.toRecipeIngredient())
+      .whereType<RecipeIngredient>()
+      .toList(growable: false);
+
+  void _submit() {
+    if (!_canSubmit) return;
+
+    final detectedTags = RegExp(r'#\w+')
+        .allMatches(_contentController.text.trim())
+        .map((match) => match.group(0)!)
+        .toList();
+    final tags = <String>{..._selectedTags, ...detectedTags}.toList();
+
+    if (_mode == _ComposerMode.plan) {
+      final steps = _validPlanSteps;
+      final totalMinutes =
+          steps.fold<int>(0, (sum, step) => sum + step.minutes);
+      widget.onPost(
+        _ComposerSubmission(
+          type: CommunityPostType.plan,
+          content: _contentController.text.trim(),
+          tags: tags,
+          plan: WorkoutPlanData(
+            title: _planTitleController.text.trim(),
+            summary: _planSummaryController.text.trim().isEmpty
+                ? _contentController.text.trim()
+                : _planSummaryController.text.trim(),
+            difficulty: _planDifficulty,
+            totalMinutes: totalMinutes,
+            steps: steps,
+          ),
+        ),
+      );
+      return;
+    }
+
+    if (_mode == _ComposerMode.recipe) {
+      final ingredients = _validRecipeIngredients;
+      final nutrition = _calculateNutrition(ingredients);
+      widget.onPost(
+        _ComposerSubmission(
+          type: CommunityPostType.recipe,
+          content: _contentController.text.trim(),
+          tags: tags,
+          recipe: RecipeData(
+            title: _recipeTitleController.text.trim(),
+            description: _contentController.text.trim(),
+            cookMinutes:
+                int.tryParse(_recipeCookMinutesController.text.trim()) ?? 0,
+            ingredients: ingredients,
+            nutrition: nutrition,
+          ),
+        ),
+      );
+      return;
+    }
+
+    widget.onPost(
+      _ComposerSubmission(
+        type: CommunityPostType.journey,
+        content: _contentController.text.trim(),
+        tags: tags,
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -993,123 +1302,230 @@ class _PostComposer extends StatelessWidget {
         border: Border.all(color: Colors.black, width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
+            color: Colors.black.withValues(alpha: 0.08),
             offset: const Offset(0, 8),
             blurRadius: 18,
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+      child: AnimatedBuilder(
+        animation: Listenable.merge([
+          _contentController,
+          _planTitleController,
+          _planSummaryController,
+          _recipeTitleController,
+          _recipeCookMinutesController,
+          ..._planSteps.expand((step) => [step.name, step.minutes]),
+          ..._recipeIngredients.expand((item) => [item.name, item.grams]),
+        ]),
+        builder: (context, _) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Expanded(
-                child: Text(
-                  'Share Your Journey',
-                  style: TextStyle(
-                    color: Colors.black,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _title,
+                          style: const TextStyle(
+                            color: Colors.black,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        _ComposerModeSwitcher(
+                          selectedMode: _mode,
+                          onChanged: (mode) {
+                            setState(() {
+                              _mode = mode;
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: widget.onClose,
+                    visualDensity: VisualDensity.compact,
+                    splashRadius: 20,
+                    icon:
+                        const Icon(Icons.close, color: Colors.black, size: 22),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _contentController,
+                minLines: 2,
+                maxLines: 4,
+                textInputAction: TextInputAction.newline,
+                decoration: _composerInputDecoration(_hintText),
+              ),
+              if (_mode == _ComposerMode.plan) ...[
+                const SizedBox(height: 14),
+                const _ComposerFieldLabel(
+                  icon: Icons.route_outlined,
+                  text: 'Plan Details',
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _planTitleController,
+                  decoration: _composerInputDecoration(
+                      'Plan title, e.g. 4-Week Knee-Friendly Plan'),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _planSummaryController,
+                  maxLines: 2,
+                  decoration: _composerInputDecoration(
+                    'Short plan summary or goal',
                   ),
                 ),
-              ),
-              IconButton(
-                onPressed: onClose,
-                visualDensity: VisualDensity.compact,
-                splashRadius: 20,
-                icon: const Icon(Icons.close, color: Colors.black, size: 22),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: controller,
-            minLines: 3,
-            maxLines: 4,
-            textInputAction: TextInputAction.newline,
-            decoration: InputDecoration(
-              hintText:
-                  'Share your slow jogging experience,\nhealth tips, or achievements...',
-              hintStyle: const TextStyle(
-                color: Color(0xFF718096),
-                fontSize: 14,
-                height: 1.35,
-                fontWeight: FontWeight.w500,
-              ),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-              filled: true,
-              fillColor: Colors.white,
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide:
-                    const BorderSide(color: Color(0xFFE2E8F0), width: 1.5),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: const BorderSide(color: Colors.black, width: 1.5),
-              ),
-            ),
-          ),
-          const SizedBox(height: 14),
-          const Row(
-            children: [
-              Icon(Icons.add_circle_outline,
-                  color: Color(0xFF718096), size: 16),
-              SizedBox(width: 6),
-              Text(
-                'Add Tags',
-                style: TextStyle(
-                  color: Color(0xFF4A5568),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
+                const SizedBox(height: 10),
+                _DifficultyPicker(
+                  value: _planDifficulty,
+                  onChanged: (value) {
+                    setState(() {
+                      _planDifficulty = value;
+                    });
+                  },
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 9),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: _tags
-                .map(
-                  (tag) => _TagPill(
-                    tag,
-                    isSelected: selectedTags.contains(tag),
-                    onTap: () => onTagTap(tag),
+                const SizedBox(height: 12),
+                ...List.generate(_planSteps.length, (index) {
+                  final step = _planSteps[index];
+                  return Padding(
+                    padding: EdgeInsets.only(
+                      bottom: index == _planSteps.length - 1 ? 0 : 10,
+                    ),
+                    child: _PlanStepEditor(
+                      index: index,
+                      step: step,
+                      onRemove: () => _removePlanStep(index),
+                    ),
+                  );
+                }),
+                const SizedBox(height: 10),
+                _SecondaryActionButton(
+                  icon: Icons.add,
+                  label: 'Add Step',
+                  onTap: _addPlanStep,
+                ),
+              ],
+              if (_mode == _ComposerMode.recipe) ...[
+                const SizedBox(height: 14),
+                const _ComposerFieldLabel(
+                  icon: Icons.restaurant_menu_outlined,
+                  text: 'Recipe Details',
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _recipeTitleController,
+                  decoration: _composerInputDecoration(
+                      'Recipe title, e.g. Post-Run Protein Bowl'),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _recipeCookMinutesController,
+                  keyboardType: TextInputType.number,
+                  decoration: _composerInputDecoration('Cook time (minutes)'),
+                ),
+                const SizedBox(height: 12),
+                ...List.generate(_recipeIngredients.length, (index) {
+                  final ingredient = _recipeIngredients[index];
+                  return Padding(
+                    padding: EdgeInsets.only(
+                      bottom: index == _recipeIngredients.length - 1 ? 0 : 10,
+                    ),
+                    child: _RecipeIngredientEditor(
+                      ingredient: ingredient,
+                      onRemove: () => _removeRecipeIngredient(index),
+                    ),
+                  );
+                }),
+                const SizedBox(height: 10),
+                _SecondaryActionButton(
+                  icon: Icons.add,
+                  label: 'Add Ingredient',
+                  onTap: _addRecipeIngredient,
+                ),
+                const SizedBox(height: 12),
+                _RecipeNutritionPreview(
+                  nutrition: _calculateNutrition(_validRecipeIngredients),
+                ),
+              ],
+              if (_mode != _ComposerMode.recipe) ...[
+                const SizedBox(height: 14),
+                const Row(
+                  children: [
+                    Icon(Icons.add_circle_outline,
+                        color: Color(0xFF718096), size: 16),
+                    SizedBox(width: 6),
+                    Text(
+                      'Add Tags',
+                      style: TextStyle(
+                        color: Color(0xFF4A5568),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 9),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: _tags
+                      .map(
+                        (tag) => _TagPill(
+                          tag,
+                          isSelected: _selectedTags.contains(tag),
+                          onTap: () => _toggleTag(tag),
+                        ),
+                      )
+                      .toList(),
+                ),
+                const SizedBox(height: 18),
+              ] else
+                const SizedBox(height: 18),
+              Row(
+                children: [
+                  TextButton.icon(
+                    onPressed: () {},
+                    style: TextButton.styleFrom(
+                      backgroundColor: const Color(0xFFF1F5F9),
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 9,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                    ),
+                    icon: Icon(
+                      _mode == _ComposerMode.recipe
+                          ? Icons.calculate_outlined
+                          : Icons.auto_awesome_outlined,
+                      size: 18,
+                    ),
+                    label: Text(
+                      _mode == _ComposerMode.recipe
+                          ? 'Auto Nutrition'
+                          : 'Structured Post',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
                   ),
-                )
-                .toList(),
-          ),
-          const SizedBox(height: 18),
-          Row(
-            children: [
-              TextButton.icon(
-                onPressed: () {},
-                style: TextButton.styleFrom(
-                  backgroundColor: const Color(0xFFF1F5F9),
-                  foregroundColor: Colors.black,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                icon: const Icon(Icons.add_photo_alternate_outlined, size: 18),
-                label: const Text(
-                  'Add Photo',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
-                ),
-              ),
-              const Spacer(),
-              ValueListenableBuilder<TextEditingValue>(
-                valueListenable: controller,
-                builder: (context, value, child) {
-                  final canPost = value.text.trim().isNotEmpty;
-
-                  return ElevatedButton.icon(
-                    onPressed: canPost ? onPost : null,
+                  const Spacer(),
+                  ElevatedButton.icon(
+                    onPressed: _canSubmit ? _submit : null,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF6B7280),
                       disabledBackgroundColor: const Color(0xFF8A8A8A),
@@ -1125,20 +1541,456 @@ class _PostComposer extends StatelessWidget {
                       ),
                     ),
                     icon: const Icon(Icons.send_outlined, size: 16),
-                    label: const Text(
-                      'Post',
-                      style:
-                          TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+                    label: Text(
+                      widget.submitLabel,
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
-                  );
-                },
+                  ),
+                ],
               ),
             ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+InputDecoration _composerInputDecoration(String hintText) {
+  return InputDecoration(
+    hintText: hintText,
+    hintStyle: const TextStyle(
+      color: Color(0xFF718096),
+      fontSize: 14,
+      height: 1.35,
+      fontWeight: FontWeight.w500,
+    ),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+    filled: true,
+    fillColor: Colors.white,
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1.5),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: Colors.black, width: 1.5),
+    ),
+  );
+}
+
+class _ComposerModeSwitcher extends StatelessWidget {
+  final _ComposerMode selectedMode;
+  final ValueChanged<_ComposerMode> onChanged;
+
+  const _ComposerModeSwitcher({
+    required this.selectedMode,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        _ModeChip(
+          label: 'Journey',
+          isSelected: selectedMode == _ComposerMode.journey,
+          onTap: () => onChanged(_ComposerMode.journey),
+        ),
+        _ModeChip(
+          label: 'Plan',
+          isSelected: selectedMode == _ComposerMode.plan,
+          onTap: () => onChanged(_ComposerMode.plan),
+        ),
+        _ModeChip(
+          label: 'Recipe',
+          isSelected: selectedMode == _ComposerMode.recipe,
+          onTap: () => onChanged(_ComposerMode.recipe),
+        ),
+      ],
+    );
+  }
+}
+
+class _ModeChip extends StatelessWidget {
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _ModeChip({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(999),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.black : const Color(0xFFF1F5F9),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          'Share Your $label',
+          style: TextStyle(
+            color: isSelected ? Colors.white : const Color(0xFF4A5568),
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ComposerFieldLabel extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _ComposerFieldLabel({
+    required this.icon,
+    required this.text,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, color: const Color(0xFF4A5568), size: 16),
+        const SizedBox(width: 6),
+        Text(
+          text,
+          style: const TextStyle(
+            color: Color(0xFF4A5568),
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SecondaryActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _SecondaryActionButton({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: onTap,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: Colors.black,
+        side: const BorderSide(color: Color(0xFFE2E8F0)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      icon: Icon(icon, size: 16),
+      label: Text(
+        label,
+        style: const TextStyle(fontWeight: FontWeight.w800),
+      ),
+    );
+  }
+}
+
+class _DifficultyPicker extends StatelessWidget {
+  final String value;
+  final ValueChanged<String> onChanged;
+
+  const _DifficultyPicker({
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const options = ['Low', 'Medium', 'High'];
+    return Row(
+      children: options
+          .map(
+            (option) => Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: ChoiceChip(
+                label: Text(option),
+                selected: value == option,
+                onSelected: (_) => onChanged(option),
+                labelStyle: TextStyle(
+                  color: value == option ? Colors.white : Colors.black,
+                  fontWeight: FontWeight.w700,
+                ),
+                selectedColor: Colors.black,
+                backgroundColor: const Color(0xFFF1F5F9),
+                side: BorderSide.none,
+              ),
+            ),
+          )
+          .toList(),
+    );
+  }
+}
+
+class _EditablePlanStep {
+  final TextEditingController name = TextEditingController();
+  final TextEditingController minutes = TextEditingController();
+
+  WorkoutPlanStep? toPlanStep() {
+    final stepName = name.text.trim();
+    final stepMinutes = int.tryParse(minutes.text.trim()) ?? 0;
+    if (stepName.isEmpty || stepMinutes <= 0) return null;
+    return WorkoutPlanStep(
+      name: stepName,
+      minutes: stepMinutes,
+    );
+  }
+
+  void dispose() {
+    name.dispose();
+    minutes.dispose();
+  }
+}
+
+class _PlanStepEditor extends StatelessWidget {
+  final int index;
+  final _EditablePlanStep step;
+  final VoidCallback onRemove;
+
+  const _PlanStepEditor({
+    required this.index,
+    required this.step,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 14,
+                backgroundColor: const Color(0xFFE8F0FF),
+                child: Text(
+                  '${index + 1}',
+                  style: const TextStyle(
+                    color: Color(0xFF2563EB),
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: TextField(
+                  controller: step.name,
+                  decoration: _composerInputDecoration('Action name'),
+                ),
+              ),
+              IconButton(
+                onPressed: onRemove,
+                icon: const Icon(Icons.delete_outline, size: 18),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: step.minutes,
+            keyboardType: TextInputType.number,
+            decoration: _composerInputDecoration('Minutes'),
           ),
         ],
       ),
     );
   }
+}
+
+class _EditableRecipeIngredient {
+  final TextEditingController name = TextEditingController();
+  final TextEditingController grams = TextEditingController();
+
+  RecipeIngredient? toRecipeIngredient() {
+    final ingredientName = name.text.trim();
+    final ingredientGrams = double.tryParse(grams.text.trim()) ?? 0;
+    if (ingredientName.isEmpty || ingredientGrams <= 0) return null;
+    return RecipeIngredient(name: ingredientName, grams: ingredientGrams);
+  }
+
+  void dispose() {
+    name.dispose();
+    grams.dispose();
+  }
+}
+
+class _RecipeIngredientEditor extends StatelessWidget {
+  final _EditableRecipeIngredient ingredient;
+  final VoidCallback onRemove;
+
+  const _RecipeIngredientEditor({
+    required this.ingredient,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 3,
+            child: TextField(
+              controller: ingredient.name,
+              decoration: _composerInputDecoration('Ingredient'),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            flex: 2,
+            child: TextField(
+              controller: ingredient.grams,
+              keyboardType: TextInputType.number,
+              decoration: _composerInputDecoration('Grams'),
+            ),
+          ),
+          IconButton(
+            onPressed: onRemove,
+            icon: const Icon(Icons.delete_outline, size: 18),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RecipeNutritionPreview extends StatelessWidget {
+  final NutritionSummary nutrition;
+
+  const _RecipeNutritionPreview({required this.nutrition});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEEF6FF),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFC7DCFF)),
+      ),
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        children: [
+          _NutritionPill(label: '${nutrition.calories} kcal'),
+          _NutritionPill(label: '${nutrition.carbs.toStringAsFixed(1)}g carbs'),
+          _NutritionPill(
+              label: '${nutrition.protein.toStringAsFixed(1)}g protein'),
+          _NutritionPill(label: '${nutrition.fat.toStringAsFixed(1)}g fat'),
+        ],
+      ),
+    );
+  }
+}
+
+class _NutritionPill extends StatelessWidget {
+  final String label;
+
+  const _NutritionPill({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Color(0xFF2563EB),
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+const Map<String, NutritionSummary> _ingredientNutritionPer100g = {
+  'chicken breast':
+      NutritionSummary(calories: 165, carbs: 0, protein: 31, fat: 3.6),
+  'egg': NutritionSummary(calories: 155, carbs: 1.1, protein: 13, fat: 11),
+  'rice': NutritionSummary(calories: 130, carbs: 28.2, protein: 2.7, fat: 0.3),
+  'oats': NutritionSummary(calories: 389, carbs: 66.3, protein: 16.9, fat: 6.9),
+  'banana': NutritionSummary(calories: 89, carbs: 22.8, protein: 1.1, fat: 0.3),
+  'broccoli':
+      NutritionSummary(calories: 35, carbs: 7.2, protein: 2.4, fat: 0.4),
+  'salmon': NutritionSummary(calories: 208, carbs: 0, protein: 20, fat: 13),
+  'tofu': NutritionSummary(calories: 76, carbs: 1.9, protein: 8, fat: 4.8),
+  'milk': NutritionSummary(calories: 42, carbs: 5, protein: 3.4, fat: 1),
+  'greek yogurt':
+      NutritionSummary(calories: 59, carbs: 3.6, protein: 10, fat: 0.4),
+  'avocado': NutritionSummary(calories: 160, carbs: 8.5, protein: 2, fat: 14.7),
+};
+
+NutritionSummary _calculateNutrition(List<RecipeIngredient> ingredients) {
+  double totalCalories = 0;
+  double totalCarbs = 0;
+  double totalProtein = 0;
+  double totalFat = 0;
+
+  for (final ingredient in ingredients) {
+    final match = _ingredientNutritionPer100g.entries
+        .firstWhere(
+          (entry) =>
+              ingredient.name.toLowerCase().contains(entry.key) ||
+              entry.key.contains(ingredient.name.toLowerCase()),
+          orElse: () => const MapEntry(
+            '',
+            NutritionSummary(calories: 0, carbs: 0, protein: 0, fat: 0),
+          ),
+        )
+        .value;
+    final multiplier = ingredient.grams / 100;
+    totalCalories += match.calories * multiplier;
+    totalCarbs += match.carbs * multiplier;
+    totalProtein += match.protein * multiplier;
+    totalFat += match.fat * multiplier;
+  }
+
+  return NutritionSummary(
+    calories: totalCalories.round(),
+    carbs: totalCarbs,
+    protein: totalProtein,
+    fat: totalFat,
+  );
 }
 
 class _SectionLabel extends StatelessWidget {
@@ -1171,6 +2023,9 @@ class _PostCard extends StatelessWidget {
   final String timeAgo;
   final String content;
   final List<String> tags;
+  final CommunityPostType type;
+  final WorkoutPlanData? plan;
+  final RecipeData? recipe;
   final int likes;
   final int comments;
   final bool isLiked;
@@ -1187,6 +2042,9 @@ class _PostCard extends StatelessWidget {
     required this.timeAgo,
     required this.content,
     required this.tags,
+    required this.type,
+    required this.plan,
+    required this.recipe,
     required this.likes,
     required this.comments,
     required this.isLiked,
@@ -1256,6 +2114,16 @@ class _PostCard extends StatelessWidget {
               ),
             ),
           ),
+          if (type == CommunityPostType.plan && plan != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
+              child: _WorkoutPlanCard(plan: plan!),
+            ),
+          if (type == CommunityPostType.recipe && recipe != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
+              child: _RecipeCard(recipe: recipe!),
+            ),
           Padding(
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 2),
             child: Wrap(
@@ -1319,6 +2187,306 @@ class _PostCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _WorkoutPlanCard extends StatelessWidget {
+  final WorkoutPlanData plan;
+
+  const _WorkoutPlanCard({required this.plan});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3F7FF),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFC7DCFF), width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(
+                Icons.fitness_center,
+                color: Color(0xFF2563EB),
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  plan.title,
+                  style: const TextStyle(
+                    color: Color(0xFF1D4ED8),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            plan.summary,
+            style: const TextStyle(
+              color: Color(0xFF2563EB),
+              fontSize: 14,
+              height: 1.45,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 14),
+          ...List.generate(plan.steps.length, (index) {
+            final step = plan.steps[index];
+            return Padding(
+              padding: EdgeInsets.only(
+                bottom: index == plan.steps.length - 1 ? 0 : 10,
+              ),
+              child: Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(18),
+                ),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 18,
+                      backgroundColor: const Color(0xFFE8F0FF),
+                      child: Text(
+                        '${index + 1}',
+                        style: const TextStyle(
+                          color: Color(0xFF2563EB),
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            step.name,
+                            style: const TextStyle(
+                              color: Color(0xFF1F2937),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            '${step.minutes} minutes',
+                            style: const TextStyle(
+                              color: Color(0xFF6B7280),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _PlanMetricPill(
+                icon: Icons.schedule_outlined,
+                label: '${plan.totalMinutes} minutes',
+              ),
+              _PlanMetricPill(
+                icon: Icons.local_fire_department_outlined,
+                label: plan.difficulty,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlanMetricPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _PlanMetricPill({
+    required this.icon,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE8F0FF),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: const Color(0xFF2563EB)),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFF2563EB),
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RecipeCard extends StatelessWidget {
+  final RecipeData recipe;
+
+  const _RecipeCard({required this.recipe});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFBF3),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFF3D69A), width: 1.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.restaurant_menu,
+                  color: Color(0xFFD97706), size: 20),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  recipe.title,
+                  style: const TextStyle(
+                    color: Color(0xFFB45309),
+                    fontSize: 15,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            recipe.description,
+            style: const TextStyle(
+              color: Color(0xFF92400E),
+              fontSize: 14,
+              height: 1.45,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Ingredients',
+                  style: TextStyle(
+                    color: Color(0xFF1F2937),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                ...recipe.ingredients.map(
+                  (ingredient) => Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.circle,
+                            size: 7, color: Color(0xFFD97706)),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            ingredient.name,
+                            style: const TextStyle(
+                              color: Color(0xFF374151),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          '${ingredient.grams.toStringAsFixed(0)} g',
+                          style: const TextStyle(
+                            color: Color(0xFF6B7280),
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _RecipeMetricPill(label: '${recipe.cookMinutes} min'),
+              _RecipeMetricPill(label: '${recipe.nutrition.calories} kcal'),
+              _RecipeMetricPill(
+                  label:
+                      '${recipe.nutrition.protein.toStringAsFixed(1)}g protein'),
+              _RecipeMetricPill(
+                  label: '${recipe.nutrition.carbs.toStringAsFixed(1)}g carbs'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _RecipeMetricPill extends StatelessWidget {
+  final String label;
+
+  const _RecipeMetricPill({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Color(0xFFB45309),
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+        ),
       ),
     );
   }
@@ -5460,4 +6628,830 @@ class _FriendRequestsButton extends StatelessWidget {
       ),
     );
   }
+}
+
+enum CommunityPostType { journey, plan, recipe }
+
+class CommunityPost {
+  final String initial;
+  final String name;
+  final String timeAgo;
+  final String content;
+  final List<String> tags;
+  final int likes;
+  final List<String> commentThreads;
+  final bool isLiked;
+  final bool isSaved;
+  final CommunityPostType type;
+  final WorkoutPlanData? plan;
+  final RecipeData? recipe;
+
+  const CommunityPost({
+    required this.initial,
+    required this.name,
+    required this.timeAgo,
+    required this.content,
+    required this.tags,
+    required this.likes,
+    required this.commentThreads,
+    this.isLiked = false,
+    this.isSaved = false,
+    this.type = CommunityPostType.journey,
+    this.plan,
+    this.recipe,
+  });
+
+  int get commentCount => commentThreads.length;
+
+  CommunityPost copyWith({
+    String? initial,
+    String? name,
+    String? timeAgo,
+    String? content,
+    List<String>? tags,
+    int? likes,
+    List<String>? commentThreads,
+    bool? isLiked,
+    bool? isSaved,
+    CommunityPostType? type,
+    WorkoutPlanData? plan,
+    RecipeData? recipe,
+  }) {
+    return CommunityPost(
+      initial: initial ?? this.initial,
+      name: name ?? this.name,
+      timeAgo: timeAgo ?? this.timeAgo,
+      content: content ?? this.content,
+      tags: tags ?? this.tags,
+      likes: likes ?? this.likes,
+      commentThreads: commentThreads ?? this.commentThreads,
+      isLiked: isLiked ?? this.isLiked,
+      isSaved: isSaved ?? this.isSaved,
+      type: type ?? this.type,
+      plan: plan ?? this.plan,
+      recipe: recipe ?? this.recipe,
+    );
+  }
+}
+
+class WorkoutPlanData {
+  final String title;
+  final String summary;
+  final String difficulty;
+  final int totalMinutes;
+  final List<WorkoutPlanStep> steps;
+
+  const WorkoutPlanData({
+    required this.title,
+    required this.summary,
+    required this.difficulty,
+    required this.totalMinutes,
+    required this.steps,
+  });
+}
+
+class WorkoutPlanStep {
+  final String name;
+  final int minutes;
+
+  const WorkoutPlanStep({
+    required this.name,
+    required this.minutes,
+  });
+}
+
+class RecipeData {
+  final String title;
+  final String description;
+  final int cookMinutes;
+  final List<RecipeIngredient> ingredients;
+  final NutritionSummary nutrition;
+
+  const RecipeData({
+    required this.title,
+    required this.description,
+    required this.cookMinutes,
+    required this.ingredients,
+    required this.nutrition,
+  });
+}
+
+class RecipeIngredient {
+  final String name;
+  final double grams;
+
+  const RecipeIngredient({
+    required this.name,
+    required this.grams,
+  });
+}
+
+class NutritionSummary {
+  final int calories;
+  final double carbs;
+  final double protein;
+  final double fat;
+
+  const NutritionSummary({
+    required this.calories,
+    required this.carbs,
+    required this.protein,
+    required this.fat,
+  });
+}
+
+class CommunityStore extends ChangeNotifier {
+  final List<CommunityPost> _posts = [
+    const CommunityPost(
+      initial: 'S',
+      name: 'Sarah Chen',
+      timeAgo: '2 hours ago',
+      content:
+          'Just completed my first 5km slow jog! Feeling amazing and completely pain-free. The key is patience and consistency!',
+      tags: ['#MorningRun', '#PainFree', '#ProgressNotPerfection'],
+      likes: 24,
+      commentThreads: ['Love this progress!', 'So inspiring'],
+    ),
+    const CommunityPost(
+      initial: 'M',
+      name: 'Mike Johnson',
+      timeAgo: '5 hours ago',
+      content:
+          'Week 3 of slow jogging and my knee pain has completely disappeared. This approach really works! 💪',
+      tags: ['#SlowJoggingChallenge', '#HealthyHabits'],
+      likes: 18,
+      commentThreads: ['Needed to hear this today'],
+      type: CommunityPostType.plan,
+      plan: WorkoutPlanData(
+        title: 'Slow Jogging Plan',
+        summary:
+            'A 4-week plan to improve your slow jogging technique and reduce knee pain.',
+        difficulty: 'Medium',
+        totalMinutes: 40,
+        steps: [
+          WorkoutPlanStep(name: 'Warm-up', minutes: 5),
+          WorkoutPlanStep(name: 'Slow Jog', minutes: 30),
+          WorkoutPlanStep(name: 'Cool-down', minutes: 5),
+        ],
+      ),
+    ),
+    const CommunityPost(
+      initial: 'A',
+      name: 'Anna Lee',
+      timeAgo: 'Yesterday',
+      content:
+          'Tiny steps, steady breathing, and no pressure. Today felt like the first run I actually wanted to repeat.',
+      tags: ['#EasyMiles', '#KeepMoving'],
+      likes: 31,
+      commentThreads: ['Steady really wins', 'Saving this mindset'],
+    ),
+    const CommunityPost(
+      initial: 'J',
+      name: 'Jamie Wu',
+      timeAgo: 'Yesterday',
+      content: 'Quick post-run bowl that keeps me full and energized.',
+      tags: ['#RecoveryMeal', '#ProteinPacked'],
+      likes: 15,
+      commentThreads: ['Trying this tonight'],
+      type: CommunityPostType.recipe,
+      recipe: RecipeData(
+        title: 'Chicken Rice Recovery Bowl',
+        description: 'Balanced carbs and protein for after your workout.',
+        cookMinutes: 20,
+        ingredients: [
+          RecipeIngredient(name: 'Chicken breast', grams: 120),
+          RecipeIngredient(name: 'Rice', grams: 150),
+          RecipeIngredient(name: 'Broccoli', grams: 80),
+        ],
+        nutrition: NutritionSummary(
+          calories: 430,
+          carbs: 47,
+          protein: 35,
+          fat: 8,
+        ),
+      ),
+    ),
+  ];
+
+  List<CommunityPost> get posts => List.unmodifiable(_posts);
+
+  List<CommunityPost> get savedPosts =>
+      _posts.where((post) => post.isSaved).toList(growable: false);
+
+  int get savedCount => savedPosts.length;
+
+  void addPost({
+    required String initial,
+    required String name,
+    required String timeAgo,
+    required String content,
+    required List<String> tags,
+    CommunityPostType type = CommunityPostType.journey,
+    WorkoutPlanData? plan,
+    RecipeData? recipe,
+  }) {
+    _posts.insert(
+      0,
+      CommunityPost(
+        initial: initial,
+        name: name,
+        timeAgo: timeAgo,
+        content: content,
+        tags: tags,
+        likes: 0,
+        commentThreads: const [],
+        type: type,
+        plan: plan,
+        recipe: recipe,
+      ),
+    );
+    notifyListeners();
+  }
+
+  void updatePost(
+    int index, {
+    required String content,
+    required List<String> tags,
+    required CommunityPostType type,
+    WorkoutPlanData? plan,
+    RecipeData? recipe,
+  }) {
+    final post = _posts[index];
+    _posts[index] = post.copyWith(
+      content: content,
+      tags: tags,
+      type: type,
+      plan: plan,
+      recipe: recipe,
+    );
+    notifyListeners();
+  }
+
+  void toggleLike(int index) {
+    final post = _posts[index];
+    final isLiked = !post.isLiked;
+    _posts[index] = post.copyWith(
+      isLiked: isLiked,
+      likes: post.likes + (isLiked ? 1 : -1),
+    );
+    notifyListeners();
+  }
+
+  void toggleSave(int index) {
+    final post = _posts[index];
+    _posts[index] = post.copyWith(isSaved: !post.isSaved);
+    notifyListeners();
+  }
+
+  void addComment(int index, String comment) {
+    final post = _posts[index];
+    _posts[index] = post.copyWith(
+      commentThreads: [...post.commentThreads, comment],
+    );
+    notifyListeners();
+  }
+}
+
+class CommunityProfileScreen extends StatelessWidget {
+  final CommunityStore store;
+
+  const CommunityProfileScreen({super.key, required this.store});
+
+  List<CommunityPost> get _myPosts => store.posts
+      .where((post) => post.name == UserSession.displayName)
+      .toList(growable: false);
+
+  List<_ReplyEntry> get _replies => _myPosts
+      .expand(
+        (post) => post.commentThreads.map(
+          (reply) => _ReplyEntry(
+            reply: reply,
+            postPreview: post.content,
+            timeAgo: post.timeAgo,
+          ),
+        ),
+      )
+      .toList(growable: false);
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: store,
+      builder: (context, _) => DefaultTabController(
+        length: 2,
+        child: Scaffold(
+          backgroundColor: const Color(0xFFF8FAFC),
+          body: SafeArea(
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                  child: Row(
+                    children: [
+                      IconButton(
+                        onPressed: () => Navigator.pop(context),
+                        icon: const Icon(
+                          Icons.keyboard_arrow_down,
+                          color: Color(0xFF4A5568),
+                        ),
+                      ),
+                      const Spacer(),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 8, 24, 0),
+                  child: Column(
+                    children: [
+                      CircleAvatar(
+                        radius: 38,
+                        backgroundColor: Colors.black,
+                        child: Text(
+                          UserSession.displayInitial,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 28,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Text(
+                        UserSession.displayName,
+                        style: const TextStyle(
+                          color: Colors.black,
+                          fontSize: 28,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                        ),
+                        child: const Text(
+                          'Visible to you only',
+                          style: TextStyle(
+                            color: Color(0xFF718096),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFFE2E8F0)),
+                        ),
+                        child: Row(
+                          children: [
+                            _ProfileStat(
+                              label: 'Articles',
+                              value: _myPosts.length.toString(),
+                            ),
+                            Container(
+                              width: 1,
+                              height: 36,
+                              color: const Color(0xFFE2E8F0),
+                              margin:
+                                  const EdgeInsets.symmetric(horizontal: 20),
+                            ),
+                            _ProfileStat(
+                              label: 'Replies',
+                              value: _replies.length.toString(),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 20),
+                  decoration: const BoxDecoration(
+                    border: Border(
+                      bottom: BorderSide(color: Color(0xFFE2E8F0)),
+                    ),
+                  ),
+                  child: const TabBar(
+                    indicatorColor: Colors.black,
+                    labelColor: Colors.black,
+                    unselectedLabelColor: Color(0xFF718096),
+                    labelStyle: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    tabs: [
+                      Tab(text: 'Articles'),
+                      Tab(text: 'Replies'),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: TabBarView(
+                    children: [
+                      _ArticleTab(posts: _myPosts),
+                      _RepliesTab(replies: _replies),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ArticleTab extends StatelessWidget {
+  final List<CommunityPost> posts;
+
+  const _ArticleTab({required this.posts});
+
+  @override
+  Widget build(BuildContext context) {
+    if (posts.isEmpty) {
+      return const _EmptyProfileState(
+        title: 'No articles yet',
+        subtitle: 'Share your first jogging update from the community page.',
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+      itemCount: posts.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 12),
+      itemBuilder: (context, index) {
+        final post = posts[index];
+        return _ProfilePostCard(post: post);
+      },
+    );
+  }
+}
+
+class _RepliesTab extends StatelessWidget {
+  final List<_ReplyEntry> replies;
+
+  const _RepliesTab({required this.replies});
+
+  @override
+  Widget build(BuildContext context) {
+    if (replies.isEmpty) {
+      return const _EmptyProfileState(
+        title: 'No replies yet',
+        subtitle: 'Replies from other people on your posts will appear here.',
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+      itemCount: replies.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 12),
+      itemBuilder: (context, index) {
+        final reply = replies[index];
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0xFFE2E8F0)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(
+                children: [
+                  CircleAvatar(
+                    radius: 14,
+                    backgroundColor: Colors.black,
+                    child: Icon(Icons.reply, size: 14, color: Colors.white),
+                  ),
+                  SizedBox(width: 10),
+                  Text(
+                    'Reply on your post',
+                    style: TextStyle(
+                      color: Colors.black,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                reply.timeAgo,
+                style: const TextStyle(
+                  color: Color(0xFF718096),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                reply.reply,
+                style: const TextStyle(
+                  color: Colors.black,
+                  fontSize: 15,
+                  height: 1.45,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF8FAFC),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Text(
+                  'On: ${reply.postPreview}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xFF4A5568),
+                    fontSize: 13,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ProfilePostCard extends StatelessWidget {
+  final CommunityPost post;
+
+  const _ProfilePostCard({required this.post});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                radius: 15,
+                backgroundColor: Colors.black,
+                child: Text(
+                  post.initial,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      post.name,
+                      style: const TextStyle(
+                        color: Colors.black,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      post.timeAgo,
+                      style: const TextStyle(
+                        color: Color(0xFF718096),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Text(
+            post.content,
+            style: const TextStyle(
+              color: Colors.black,
+              fontSize: 15,
+              height: 1.45,
+            ),
+          ),
+          if (post.plan != null) ...[
+            const SizedBox(height: 12),
+            _WorkoutPlanCard(plan: post.plan!),
+          ],
+          if (post.recipe != null) ...[
+            const SizedBox(height: 12),
+            _RecipeCard(recipe: post.recipe!),
+          ],
+          if (post.tags.isNotEmpty) ...[
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: post.tags
+                  .map(
+                    (tag) => Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFECEFF3),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        tag,
+                        style: const TextStyle(
+                          color: Color(0xFF4A5568),
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              _MetaChip(
+                icon: Icons.favorite_border,
+                label: '${post.likes} likes',
+              ),
+              const SizedBox(width: 10),
+              _MetaChip(
+                icon: Icons.chat_bubble_outline,
+                label: '${post.commentCount} replies',
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MetaChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _MetaChip({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 15, color: const Color(0xFF4A5568)),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFF4A5568),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileStat extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _ProfileStat({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Expanded(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.black,
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Color(0xFF718096),
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyProfileState extends StatelessWidget {
+  final String title;
+  final String subtitle;
+
+  const _EmptyProfileState({
+    required this.title,
+    required this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 28),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                border: Border.all(color: const Color(0xFFE2E8F0)),
+              ),
+              child: const Icon(
+                Icons.forum_outlined,
+                color: Color(0xFF4A5568),
+                size: 28,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              title,
+              style: const TextStyle(
+                color: Colors.black,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              subtitle,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Color(0xFF718096),
+                fontSize: 14,
+                height: 1.5,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ReplyEntry {
+  final String reply;
+  final String postPreview;
+  final String timeAgo;
+
+  const _ReplyEntry({
+    required this.reply,
+    required this.postPreview,
+    required this.timeAgo,
+  });
 }
