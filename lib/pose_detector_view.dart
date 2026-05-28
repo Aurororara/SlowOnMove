@@ -36,7 +36,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
   final PoseAnalyzer _poseAnalyzer = PoseAnalyzer();
   double _accuracyRate = 0.0;
   int _stepCount = 0;
-  List<String> _feedback = [];
+  final List<String> _feedback = [];
   double _totalAccuracySum = 0.0;
   int _accuracySamples = 0;
 
@@ -161,8 +161,9 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
     // ⭐ 這裡也是：檢查 Platform 前先確定不是 Web
     if (format == null ||
         (!kIsWeb && Platform.isAndroid && format != InputImageFormat.nv21) ||
-        (!kIsWeb && Platform.isIOS && format != InputImageFormat.bgra8888))
+        (!kIsWeb && Platform.isIOS && format != InputImageFormat.bgra8888)) {
       return null;
+    }
 
     if (image.planes.isEmpty) return null;
 

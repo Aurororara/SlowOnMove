@@ -4,7 +4,6 @@ import 'onboarding_setup_screen.dart';
 import 'main_screen.dart';
 import 'services/auth/google_auth_service.dart';
 import 'services/auth/facebook_auth_service.dart';
-import 'services/auth/apple_auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});

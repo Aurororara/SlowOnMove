@@ -194,11 +194,11 @@ class ExerciseSelectionScreen extends StatelessWidget {
         border: Border.all(color: Colors.grey.shade200, width: 2),
       ),
       padding: const EdgeInsets.all(20),
-      child: Row(
+      child: const Row(
         children: [
-          const Text('💡', style: TextStyle(fontSize: 24)),
-          const SizedBox(width: 16),
-          const Expanded(
+          Text('💡', style: TextStyle(fontSize: 24)),
+          SizedBox(width: 16),
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [

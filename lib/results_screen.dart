@@ -47,7 +47,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
   double get distanceKm => (widget.stepCount * 0.7) / 1000.0;
 
   Future<void> _saveData() async {
-    final String baseUrl = ApiConfig.baseUrl; // ⭐ 改用共用的 API Config，解決實機連線失敗問題
+    const String baseUrl = ApiConfig.baseUrl; // ⭐ 改用共用的 API Config，解決實機連線失敗問題
     // 去除結尾的斜線避免網址拼接錯誤 (ApiConfig 裡面有寫斜線)
     final String url = baseUrl.endsWith('/') ? '${baseUrl}training-logs/' : '$baseUrl/training-logs/';
     

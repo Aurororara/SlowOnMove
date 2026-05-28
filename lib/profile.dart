@@ -1,13 +1,11 @@
 import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
+import 'community_screen.dart';
 import 'exercise_history_screen.dart';
 import 'edit_profile_screen.dart';
-import 'models/community_post.dart';
-import 'services/community_store.dart';
 import 'services/user_session.dart';
 import 'config/api_config.dart';
 import 'monthly_recap_screen.dart';

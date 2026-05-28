@@ -4,9 +4,7 @@ import 'profile.dart';
 import 'bottom_nav_bar.dart';
 import 'community_screen.dart';
 import 'leaderboard_page.dart';
-import 'services/community_store.dart';
 import 'services/user_session.dart';
-
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});

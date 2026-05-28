@@ -19,7 +19,7 @@ class PoseAnalyzer {
   
   // Track continuous bad posture
   int _leanForwardFrames = 0;
-  int _lowKneeFrames = 0;
+  final int _lowKneeFrames = 0;
   
   // To avoid redundant feedback
   final Set<String> _currentFeedback = {};

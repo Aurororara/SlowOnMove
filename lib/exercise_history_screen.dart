@@ -29,7 +29,7 @@ class _ExerciseHistoryScreenState
 
   // 抓取資料
   Future<void> _fetchHistoryData() async {
-    final String baseUrl = kIsWeb
+    const String baseUrl = kIsWeb
         ? "http://localhost:8000/api"
         : "http://10.0.2.2:8000/api";
 

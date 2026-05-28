@@ -8,17 +8,17 @@ class HomePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF6F6F6),
+    return const Scaffold(
+      backgroundColor: Color(0xFFF6F6F6),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+          padding: EdgeInsets.fromLTRB(20, 20, 20, 12),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const _HeaderSection(),
-              const SizedBox(height: 18),
-              const _MainDashboardCard(),
+              _HeaderSection(),
+              SizedBox(height: 18),
+              _MainDashboardCard(),
             ],
           ),
         ),
@@ -83,7 +83,7 @@ class _HeaderSection extends StatelessWidget {
 }
 
 class _MainDashboardCard extends StatefulWidget {
-  const _MainDashboardCard({super.key});
+  const _MainDashboardCard();
 
   @override
   State<_MainDashboardCard> createState() => _MainDashboardCardState();
@@ -547,7 +547,7 @@ class _DayStatusItem extends StatelessWidget {
 
 class _ProgressSection extends StatelessWidget {
   final int itemsCompleted;
-  const _ProgressSection({super.key, this.itemsCompleted = 0});
+  const _ProgressSection({this.itemsCompleted = 0});
 
   @override
   Widget build(BuildContext context) {
