@@ -291,6 +291,20 @@ class PoseAnalyzer {
           }
         }
       }
+      
+      // 🚨 防作弊：過濾掉「高抬腿」或「激烈快跑」 (適用於正/側面)
+      if (leftHip != null && rightHip != null && leftShoulder != null && rightShoulder != null) {
+        double torsoHeight = ((leftShoulder.y + rightShoulder.y) / 2 - (leftHip.y + rightHip.y) / 2).abs();
+        double hipY = (leftHip.y + rightHip.y) / 2;
+        double minKneeY = math.min(leftKnee!.y, rightKnee!.y);
+        
+        // 畫面中 Y 軸往下遞增，所以 minKneeY - hipY 是膝蓋到臀部的垂直距離
+        // 如果這個距離太小，代表膝蓋被抬得非常高（接近臀部高度）
+        if (torsoHeight > 0 && (minKneeY - hipY) < torsoHeight * 0.4) {
+          currentAccuracy -= 30.0;
+          _currentFeedback.add('膝蓋抬太高了！超慢跑只需要微微抬起腳步即可，不要變成高抬腿喔。');
+        }
+      }
 
       // 4. 超慢跑計步與怠速 (1.5 秒)
       double yDiff = leftKnee!.y - rightKnee!.y;
