@@ -100,17 +100,17 @@ class PoseAnalyzer {
     // 2. Leg Action Analysis (Step counting using knee Y differences)
     if (leftKnee != null && rightKnee != null) {
       // 在 ML Kit 中，Y 越小代表在畫面上越上方
-      // 左膝蓋比右膝蓋高出一定距離 (例如 15 單位)
       double yDiff = leftKnee.y - rightKnee.y;
       bool stepTaken = false;
       
-      if (yDiff < -12) {
+      // 將門檻從 12 提高到 30，避免相機雜訊（微小晃動）被誤判為走路
+      if (yDiff < -30) {
         if (!_isKneeHigh) {
           _stepCount++;
           _isKneeHigh = true;
           stepTaken = true;
         }
-      } else if (yDiff > 12) {
+      } else if (yDiff > 30) {
         if (_isKneeHigh) {
           _stepCount++;
           _isKneeHigh = false;
@@ -122,12 +122,12 @@ class PoseAnalyzer {
         _lastStepTime = DateTime.now();
         _standingStillFrames = 0;
       } else {
-        // 如果超過 3 秒沒有任何步伐動作，視為「定格/站直不動」，給予嚴厲扣分
+        // 把怠速時間縮短到 1.5 秒，並且加重扣分，讓測試時非常有感
         DateTime referenceTime = _lastStepTime ?? _firstFrameTime!;
-        if (DateTime.now().difference(referenceTime).inSeconds > 3) {
+        if (DateTime.now().difference(referenceTime).inMilliseconds > 1500) {
           _standingStillFrames++;
-          currentAccuracy -= 50.0; // 定格不動直接扣 50 分
-          if (_standingStillFrames > 15) {
+          currentAccuracy -= 80.0; // 定格不動直接扣 80 分（畫面上會直接掉到 20%）
+          if (_standingStillFrames > 10) {
              _currentFeedback.add('請保持動作，不要停下來喔！');
           }
         }
