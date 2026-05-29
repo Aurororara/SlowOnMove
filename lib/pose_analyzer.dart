@@ -31,7 +31,9 @@ class PoseAnalyzer {
   DateTime? _lastStepTime;
   int _standingStillFrames = 0;
 
-  PoseAnalysisResult analyze(List<Pose> poses) {
+  bool _isSquattingDown = false; // 深蹲狀態機
+
+  PoseAnalysisResult analyze(List<Pose> poses, {String exerciseType = '超慢跑'}) {
     if (poses.isEmpty) {
       return PoseAnalysisResult(
         accuracy: 0.0,
@@ -74,93 +76,176 @@ class PoseAnalyzer {
     }
 
     // ======== 核心演算法：角度相似度 (Angle Similarity) ========
-    // 滿分 100 分，由三個部位的角度相似度加總：軀幹(20分) + 手臂(40分) + 膝蓋(40分)
     double currentAccuracy = 0.0;
     
-    // 1. 軀幹前傾角度 (Torso Angle) - 權重 20分
+    // 擷取全身關鍵點
     final leftShoulder = pose.landmarks[PoseLandmarkType.leftShoulder];
     final leftHip = pose.landmarks[PoseLandmarkType.leftHip];
     final rightShoulder = pose.landmarks[PoseLandmarkType.rightShoulder];
     final rightHip = pose.landmarks[PoseLandmarkType.rightHip];
-
-    if (leftShoulder != null && leftHip != null && rightShoulder != null && rightHip != null) {
-      double leftTorsoAngle = _calculateAngleWithVertical(leftShoulder, leftHip);
-      double rightTorsoAngle = _calculateAngleWithVertical(rightShoulder, rightHip);
-      double avgTorsoAngle = (leftTorsoAngle + rightTorsoAngle) / 2;
-
-      // 🎥 2D影像修正：挺直(0度)到微前傾(20度)都是完美的
-      double torsoScore = 20.0;
-      if (avgTorsoAngle > 20) {
-        torsoScore -= (avgTorsoAngle - 20) * 1.5; // 太彎才扣分
-      }
-      if (torsoScore < 0) torsoScore = 0;
-      currentAccuracy += torsoScore;
-
-      if (avgTorsoAngle > 25) {
-        _leanForwardFrames++;
-        if (_leanForwardFrames > 15) _currentFeedback.add('身體太前傾了，請挺直腰桿！');
-      } else {
-        _leanForwardFrames = 0;
-      }
-    }
-
-    // 2. 手臂擺動與彎曲角度 (Arm Bend Angle) - 權重 40分 (左右手各 20分)
+    
     final leftElbow = pose.landmarks[PoseLandmarkType.leftElbow];
     final leftWrist = pose.landmarks[PoseLandmarkType.leftWrist];
     final rightElbow = pose.landmarks[PoseLandmarkType.rightElbow];
     final rightWrist = pose.landmarks[PoseLandmarkType.rightWrist];
 
-    double calculateArmScore(PoseLandmark? s, PoseLandmark? e, PoseLandmark? w) {
-      if (s == null || e == null || w == null) return 0;
-      double angle = _calculateAngle3P(s, e, w);
-      // 🎥 2D影像修正：正面拍攝時，手臂往前擺的 2D 投影角度看起來會接近 150 度甚至更直
-      // 因此放寬完美區間為 45° ~ 155°，只有在完全下垂不動(>155)時才扣分
-      double score = 20.0;
-      if (angle < 45) {
-        score -= (45 - angle) * 0.5;
-      } else if (angle > 155) {
-        score -= (angle - 155) * 0.8; // 完全直挺挺(180)會扣 20 分
-      }
-      return math.max(0.0, score);
-    }
-    
-    currentAccuracy += calculateArmScore(leftShoulder, leftElbow, leftWrist);
-    currentAccuracy += calculateArmScore(rightShoulder, rightElbow, rightWrist);
-
-    // 3. 膝蓋微彎與彈性 (Knee Angle) - 權重 40分 (左右腳各 20分)
     final leftAnkle = pose.landmarks[PoseLandmarkType.leftAnkle];
     final rightAnkle = pose.landmarks[PoseLandmarkType.rightAnkle];
 
-    double calculateKneeScore(PoseLandmark? h, PoseLandmark? k, PoseLandmark? a) {
-      if (h == null || k == null || a == null) return 0;
-      double angle = _calculateAngle3P(h, k, a);
-      
-      // 👗 長褲與正面視角補償
-      // 正面看膝蓋微彎時，2D 投影出來也常常是 170~175 度
-      double maxIdealAngle = 170.0; 
-      if (k.likelihood < 0.7) {
-        maxIdealAngle = 178.0; // 穿長褲或偵測模糊時，幾乎不扣打直的分數
+    // 🕵️ 自動視角辨識 (Auto-Perspective Detection)
+    bool isSideFacing = false;
+    if (leftShoulder != null && rightShoulder != null && leftHip != null && rightHip != null) {
+      double shoulderWidth = (leftShoulder.x - rightShoulder.x).abs();
+      double torsoHeight = ((leftShoulder.y + rightShoulder.y) / 2 - (leftHip.y + rightHip.y) / 2).abs();
+      if (torsoHeight > 0 && (shoulderWidth / torsoHeight) < 0.35) {
+        isSideFacing = true; // 側身時，肩膀在 2D 畫面上看起來會很窄
       }
-
-      // 完美膝蓋緩衝角度：90° ~ maxIdealAngle
-      double score = 20.0;
-      if (angle < 90) {
-        score -= (90 - angle) * 0.5; // 蹲太低
-      } else if (angle > maxIdealAngle) {
-        score -= (angle - maxIdealAngle) * 2.0; // 只有在明確鎖死大於 170/178 時才扣分
-      }
-      return math.max(0.0, score);
     }
 
-    currentAccuracy += calculateKneeScore(leftHip, leftKnee, leftAnkle);
-    currentAccuracy += calculateKneeScore(rightHip, rightKnee, rightAnkle);
+    // 計算關節角度輔助函數
+    double getAngle(PoseLandmark? a, PoseLandmark? b, PoseLandmark? c) {
+      if (a == null || b == null || c == null) return 180.0;
+      return _calculateAngle3P(a, b, c);
+    }
 
-    // ======== 動態步數計算與怠速懲罰 ========
-    if (leftKnee != null && rightKnee != null) {
-      double yDiff = leftKnee.y - rightKnee.y;
-      bool stepTaken = false;
+    double leftArmAngle = getAngle(leftShoulder, leftElbow, leftWrist);
+    double rightArmAngle = getAngle(rightShoulder, rightElbow, rightWrist);
+    double leftKneeAngle = getAngle(leftHip, leftKnee, leftAnkle);
+    double rightKneeAngle = getAngle(rightHip, rightKnee, rightAnkle);
+
+    bool stepTaken = false;
+
+    // ==========================================
+    // 🏋️‍♂️ 運動模式分流 (Exercise Mode Branching)
+    // ==========================================
+    if (exerciseType == '深蹲') {
       
-      // 🎥 2D影片人物比例可能較小，將門檻從 30 調回 15，避免影片中人物太遠抓不到步伐
+      // 1. 深蹲軀幹前傾 (20分)
+      if (leftShoulder != null && leftHip != null && rightShoulder != null && rightHip != null) {
+        double leftTorsoAngle = _calculateAngleWithVertical(leftShoulder, leftHip);
+        double rightTorsoAngle = _calculateAngleWithVertical(rightShoulder, rightHip);
+        double avgTorsoAngle = (leftTorsoAngle + rightTorsoAngle) / 2;
+        
+        double torsoScore = 20.0;
+        // 允許 0~45 度前傾
+        if (avgTorsoAngle > 50) {
+          torsoScore -= (avgTorsoAngle - 50) * 1.5;
+          _leanForwardFrames++;
+          if (_leanForwardFrames > 15) _currentFeedback.add('身體太往前趴了，注意腰部！');
+        } else {
+          _leanForwardFrames = 0;
+        }
+        currentAccuracy += math.max(0.0, torsoScore);
+      }
+
+      // 2. 深蹲手臂角度 (20分)
+      // 深蹲手部容錯率極大，只要不太誇張皆給分
+      double armScore = 20.0;
+      if (leftArmAngle < 30 || rightArmAngle < 30) armScore -= 5.0;
+      currentAccuracy += math.max(0.0, armScore);
+
+      // 3. 深蹲膝蓋深度 (60分，佔比最高)
+      double kneeScore = 60.0;
+      double avgKneeAngle = (leftKneeAngle + rightKneeAngle) / 2;
+      
+      if (avgKneeAngle < 60) {
+        kneeScore -= (60 - avgKneeAngle) * 2.0; // 蹲太深
+        _currentFeedback.add('蹲太深了，小心傷膝蓋！');
+      } else if (avgKneeAngle > 175) {
+        kneeScore -= (avgKneeAngle - 175) * 2.0; // 關節鎖死
+      }
+      currentAccuracy += math.max(0.0, kneeScore);
+
+      // 4. 深蹲計次與怠速 (Rep Counting)
+      if (avgKneeAngle < 120) {
+        if (!_isSquattingDown) {
+          _isSquattingDown = true;
+          stepTaken = true;
+        }
+      } else if (avgKneeAngle > 160) {
+        if (_isSquattingDown) {
+          _isSquattingDown = false;
+          _stepCount++; // 完成一次深蹲
+          stepTaken = true;
+        }
+      }
+
+      // 怠速判定 (4 秒)
+      if (stepTaken) {
+        _lastStepTime = DateTime.now();
+        _standingStillFrames = 0;
+      } else {
+        DateTime referenceTime = _lastStepTime ?? _firstFrameTime!;
+        if (DateTime.now().difference(referenceTime).inMilliseconds > 4000) {
+          _standingStillFrames++;
+          currentAccuracy -= 50.0;
+          if (_standingStillFrames > 10) _currentFeedback.add('請繼續深蹲，不要停下來！');
+        }
+      }
+
+    } else {
+      // ==========================================
+      // 🏃 超慢跑模式 (Slow Jogging)
+      // ==========================================
+      
+      // 1. 軀幹前傾 (20分)
+      if (leftShoulder != null && leftHip != null && rightShoulder != null && rightHip != null) {
+        double leftTorsoAngle = _calculateAngleWithVertical(leftShoulder, leftHip);
+        double rightTorsoAngle = _calculateAngleWithVertical(rightShoulder, rightHip);
+        double avgTorsoAngle = (leftTorsoAngle + rightTorsoAngle) / 2;
+
+        double torsoScore = 20.0;
+        double maxTorso = isSideFacing ? 15.0 : 20.0; // 正面視覺前傾容錯度較高
+        if (avgTorsoAngle > maxTorso) {
+          torsoScore -= (avgTorsoAngle - maxTorso) * 1.5;
+        }
+        currentAccuracy += math.max(0.0, torsoScore);
+
+        if (avgTorsoAngle > 25) {
+          _leanForwardFrames++;
+          if (_leanForwardFrames > 15) _currentFeedback.add('身體太前傾了，請挺直腰桿！');
+        } else {
+          _leanForwardFrames = 0;
+        }
+      }
+
+      // 2. 手臂擺動 (40分)
+      double calcArmScore(double angle) {
+        double score = 20.0;
+        if (isSideFacing) {
+          // 側面精準要求 75~110
+          if (angle < 75) score -= (75 - angle) * 0.5;
+          else if (angle > 110) score -= (angle - 110) * 0.8;
+        } else {
+          // 正面投影容錯放寬 45~155
+          if (angle < 45) score -= (45 - angle) * 0.5;
+          else if (angle > 155) score -= (angle - 155) * 0.8;
+        }
+        return math.max(0.0, score);
+      }
+      currentAccuracy += calcArmScore(leftArmAngle);
+      currentAccuracy += calcArmScore(rightArmAngle);
+
+      // 3. 膝蓋微彎 (40分)
+      double calcKneeScore(double angle, PoseLandmark? k) {
+        double score = 20.0;
+        double maxIdeal = isSideFacing ? 165.0 : 170.0;
+        if (k != null && k.likelihood < 0.7) maxIdeal = 178.0; // 長褲補償
+
+        if (isSideFacing) {
+          if (angle < 130) score -= (130 - angle) * 0.5;
+          else if (angle > maxIdeal) score -= (angle - maxIdeal) * 2.0;
+        } else {
+          if (angle < 90) score -= (90 - angle) * 0.5;
+          else if (angle > maxIdeal) score -= (angle - maxIdeal) * 2.0;
+        }
+        return math.max(0.0, score);
+      }
+      currentAccuracy += calcKneeScore(leftKneeAngle, leftKnee);
+      currentAccuracy += calcKneeScore(rightKneeAngle, rightKnee);
+
+      // 4. 超慢跑計步與怠速 (1.5 秒)
+      double yDiff = leftKnee.y - rightKnee.y;
       if (yDiff < -15) {
         if (!_isKneeHigh) {
           _stepCount++;
@@ -182,10 +267,8 @@ class PoseAnalyzer {
         DateTime referenceTime = _lastStepTime ?? _firstFrameTime!;
         if (DateTime.now().difference(referenceTime).inMilliseconds > 1500) {
           _standingStillFrames++;
-          currentAccuracy -= 50.0; // 定格不動再直接倒扣 50 分！
-          if (_standingStillFrames > 10) {
-             _currentFeedback.add('請保持動作，不要停下來喔！');
-          }
+          currentAccuracy -= 50.0;
+          if (_standingStillFrames > 10) _currentFeedback.add('請保持動作，不要停下來喔！');
         }
       }
     }

@@ -185,7 +185,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
 
     final poses = await _poseDetector.processImage(inputImage);
 
-    final analysisResult = _poseAnalyzer.analyze(poses);
+    final analysisResult = _poseAnalyzer.analyze(poses, exerciseType: widget.exerciseTitle);
     _accuracyRate = analysisResult.accuracy;
 
     for (var f in analysisResult.feedback) {
