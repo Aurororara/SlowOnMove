@@ -3,17 +3,16 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/foundation.dart';
 import 'services/user_session.dart';
+import 'config/api_config.dart';
 
 class ExerciseHistoryScreen extends StatefulWidget {
   const ExerciseHistoryScreen({super.key});
 
   @override
-  State<ExerciseHistoryScreen> createState() =>
-      _ExerciseHistoryScreenState();
+  State<ExerciseHistoryScreen> createState() => _ExerciseHistoryScreenState();
 }
 
-class _ExerciseHistoryScreenState
-    extends State<ExerciseHistoryScreen> {
+class _ExerciseHistoryScreenState extends State<ExerciseHistoryScreen> {
   bool _isLoading = true;
   List<dynamic> _historyLogs = [];
 
@@ -27,30 +26,28 @@ class _ExerciseHistoryScreenState
     _fetchHistoryData();
   }
 
-  // 抓取資料
+  // 抓取資料 (全面統一版本)
   Future<void> _fetchHistoryData() async {
-    const String baseUrl = kIsWeb
-        ? "http://localhost:8000/api"
-        : "http://10.0.2.2:8000/api";
+    // 1. 統一採用組員寫好的 ApiConfig IP 機制
+    final String baseUrl = ApiConfig.baseUrl;
 
+    // 2. 統一從 UserSession 拿取目前登入者的 Member ID
     final int currentMemberId = UserSession.memberId;
 
     try {
-      final response =
-          await http.get(Uri.parse('$baseUrl/training-logs/'));
+      // 3. 拼接正確的 baseUrl 路徑
+      final response = await http.get(Uri.parse('${baseUrl}training-logs/'));
 
       if (response.statusCode == 200) {
         final List allLogs = json.decode(response.body);
 
-        // 過濾自己的紀錄
-        final myLogs = allLogs
-            .where((log) => log['member'] == currentMemberId)
-            .toList();
+        // 4. 動態過濾自己的紀錄 (currentMemberId 是誰就過濾誰)
+        final myLogs =
+            allLogs.where((log) => log['member'] == currentMemberId).toList();
 
         // 時間排序（最新在前）
         myLogs.sort(
-          (a, b) =>
-              b['start_time'].compareTo(a['start_time']),
+          (a, b) => b['start_time'].compareTo(a['start_time']),
         );
 
         if (mounted) {
@@ -61,12 +58,13 @@ class _ExerciseHistoryScreenState
           });
         }
       } else {
+        debugPrint("API 錯誤，狀態碼: ${response.statusCode}");
         if (mounted) {
           setState(() => _isLoading = false);
         }
       }
     } catch (e) {
-      debugPrint("抓取失敗: $e");
+      debugPrint("抓取歷史失敗: $e");
 
       if (mounted) {
         setState(() => _isLoading = false);
@@ -77,15 +75,12 @@ class _ExerciseHistoryScreenState
   @override
   Widget build(BuildContext context) {
     // 分頁資料切割
-    final int startIndex =
-        (_currentPage - 1) * _itemsPerPage;
+    final int startIndex = (_currentPage - 1) * _itemsPerPage;
 
     final int endIndex =
-        (startIndex + _itemsPerPage)
-            .clamp(0, _historyLogs.length);
+        (startIndex + _itemsPerPage).clamp(0, _historyLogs.length);
 
-    final currentPageLogs =
-        _historyLogs.sublist(startIndex, endIndex);
+    final currentPageLogs = _historyLogs.sublist(startIndex, endIndex);
 
     return Scaffold(
       appBar: AppBar(
@@ -140,32 +135,31 @@ class _ExerciseHistoryScreenState
 
   // 歷史紀錄卡片
   Widget _buildRealHistoryCard(dynamic log) {
-    String fullStartTime =
-        log['start_time']?.toString() ?? "";
+    String fullStartTime = log['start_time']?.toString() ?? "";
 
-    String fullEndTime =
-        log['end_time']?.toString() ?? "";
+    String fullEndTime = log['end_time']?.toString() ?? "";
 
-    String dateStr = fullStartTime.isNotEmpty
-        ? fullStartTime.split('T')[0]
-        : "未知日期";
+    String dateStr =
+        fullStartTime.isNotEmpty ? fullStartTime.split('T')[0] : "未知日期";
 
-    String startTimeFull =
-        fullStartTime.contains('T')
-            ? fullStartTime
-                .split('T')[1]
-                .substring(0, 8)
-            : "00:00:00";
+    String startTimeFull = fullStartTime.contains('T')
+        ? fullStartTime.split('T')[1].substring(0, 8)
+        : "00:00:00";
 
-    String endTimeFull =
-        fullEndTime.contains('T')
-            ? fullEndTime
-                .split('T')[1]
-                .substring(0, 8)
-            : "00:00:00";
+    String endTimeFull = fullEndTime.contains('T')
+        ? fullEndTime.split('T')[1].substring(0, 8)
+        : "00:00:00";
 
     int accuracy = log['posture_score'] ?? 0;
+    final int duration = log['total_mins'] ?? 0;
 
+    final int calories = ((log['calories'] as num?)?.toDouble() ?? 0.0).round();
+
+    final double distance = (log['distance'] as num?)?.toDouble() ?? 0.0;
+
+    final String distanceText = distance < 1
+        ? '${(distance * 1000).round()} m'
+        : '${distance.toStringAsFixed(2)} km';
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       elevation: 0,
@@ -197,23 +191,26 @@ class _ExerciseHistoryScreenState
             ],
           ),
           subtitle: Padding(
-            padding:
-                const EdgeInsets.only(top: 20, bottom: 8),
+            padding: const EdgeInsets.only(top: 20, bottom: 8),
             child: Row(
-              mainAxisAlignment:
-                  MainAxisAlignment.spaceBetween,
               children: [
-                _buildStatItem(
-                  '${log['total_mins'] ?? 0} min',
-                  'Duration',
+                Expanded(
+                  child: _buildStatItem(
+                    '$duration min',
+                    'Duration',
+                  ),
                 ),
-                _buildStatItem(
-                  '${log['calories'] ?? 0} kcal',
-                  'Calories',
+                Expanded(
+                  child: _buildStatItem(
+                    '$calories kcal',
+                    'Calories',
+                  ),
                 ),
-                _buildStatItem(
-                  '${(log['distance'] as num?)?.toDouble() ?? 0.0} km',
-                  'Distance',
+                Expanded(
+                  child: _buildStatItem(
+                    distanceText,
+                    'Distance',
+                  ),
                 ),
               ],
             ),
@@ -256,8 +253,7 @@ class _ExerciseHistoryScreenState
 
   // 分頁 UI
   Widget _buildPagination() {
-    final int totalPages =
-        (_historyLogs.length / _itemsPerPage).ceil();
+    final int totalPages = (_historyLogs.length / _itemsPerPage).ceil();
 
     return Padding(
       padding: const EdgeInsets.only(
@@ -265,8 +261,7 @@ class _ExerciseHistoryScreenState
         top: 4,
       ),
       child: Row(
-        mainAxisAlignment:
-            MainAxisAlignment.center,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           IconButton(
             onPressed: _currentPage > 1
@@ -287,8 +282,7 @@ class _ExerciseHistoryScreenState
             ),
             decoration: BoxDecoration(
               color: Colors.black,
-              borderRadius:
-                  BorderRadius.circular(12),
+              borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
               '$_currentPage / $totalPages',
@@ -336,11 +330,12 @@ class _ExerciseHistoryScreenState
   ) {
     return Expanded(
       child: Column(
-        crossAxisAlignment:
-            CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
             'Slow Jog Session',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
@@ -388,18 +383,26 @@ class _ExerciseHistoryScreenState
     String label,
   ) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
-        Text(
-          value,
-          style: const TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF2D3748),
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF2D3748),
+            ),
           ),
         ),
         const SizedBox(height: 4),
         Text(
           label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: const TextStyle(
             fontSize: 11,
             color: Colors.grey,
@@ -419,8 +422,7 @@ class _ExerciseHistoryScreenState
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: color.withOpacity(0.05),
-        borderRadius:
-            BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(12),
       ),
       child: Row(
         children: [
@@ -455,8 +457,7 @@ class _ExerciseHistoryScreenState
   Widget _buildEmptyState() {
     return Center(
       child: Column(
-        mainAxisAlignment:
-            MainAxisAlignment.center,
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
             Icons.history_toggle_off,
