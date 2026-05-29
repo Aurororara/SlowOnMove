@@ -36,40 +36,56 @@ class _ResultsScreenState extends State<ResultsScreen> {
   @override
   void initState() {
     super.initState();
-    _confettiController = ConfettiController(duration: const Duration(seconds: 3));
+    _confettiController =
+        ConfettiController(duration: const Duration(seconds: 3));
     _confettiController.play();
-    
+
     _fetchAiFeedback(); // 獲取 AI 建議
-    _saveData();       // ⭐ 呼叫儲存函數，這下不會有紅字了！
+    _saveData(); // ⭐ 呼叫儲存函數，這下不會有紅字了！
   }
 
 // ⭐ 在 _ResultsScreenState 類別裡新增換算邏輯
   double get distanceKm => (widget.stepCount * 0.7) / 1000.0;
 
   Future<void> _saveData() async {
-    const String baseUrl = ApiConfig.baseUrl; // ⭐ 改用共用的 API Config，解決實機連線失敗問題
-    // 去除結尾的斜線避免網址拼接錯誤 (ApiConfig 裡面有寫斜線)
-    final String url = baseUrl.endsWith('/') ? '${baseUrl}training-logs/' : '$baseUrl/training-logs/';
-    
+    final String baseUrl = ApiConfig.baseUrl;
+    final String url = baseUrl.endsWith('/')
+        ? '${baseUrl}training-logs/'
+        : '$baseUrl/training-logs/';
+
+    final bool isSquat = widget.exerciseTitle == '深蹲';
+    final int totalMins = (widget.timeSeconds / 60).ceil();
+    final int fixedCalories =
+        caloriesBurned <= 0 ? (totalMins * 8) : caloriesBurned;
+    final int fixedSteps = isSquat ? 0 : widget.stepCount;
+    final double fixedDistance = isSquat ? 0.0 : distanceKm;
+
     try {
       final response = await http.post(
         Uri.parse(url),
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           "member": UserSession.memberId,
-          "exercise_type": widget.exerciseTitle == '深蹲' ? "squat" : "slow_jogging",
-          "start_time": DateTime.now().subtract(Duration(seconds: widget.timeSeconds)).toIso8601String(),
+          "exercise_type": isSquat ? "squat" : "slow_jogging",
+          "start_time": DateTime.now()
+              .subtract(Duration(seconds: widget.timeSeconds))
+              .toIso8601String(),
           "end_time": DateTime.now().toIso8601String(),
-          "total_mins": widget.timeSeconds ~/ 60,
+          "total_mins": totalMins,
           "posture_score": widget.averageAccuracy.toInt(),
-          "calories": caloriesBurned,
-          "step_count": widget.exerciseTitle == '深蹲' ? 0 : widget.stepCount, // 深蹲不傳步數
-          "distance": widget.exerciseTitle == '深蹲' ? 0.0 : distanceKm,        // 深蹲不傳里程
+          "calories": fixedCalories,
+          "step_count": fixedSteps,
+          "distance": fixedDistance,
         }),
       );
 
+      debugPrint(
+          "送出的運動資料：分鐘=$totalMins, 熱量=$fixedCalories, 步數=$fixedSteps, 里程=$fixedDistance");
+      debugPrint("後端回應狀態碼：${response.statusCode}");
+      debugPrint("後端回應內容：${response.body}");
+
       if (response.statusCode == 201) {
-        debugPrint("✅ 數據存入成功：${widget.stepCount}步 / ${distanceKm.toStringAsFixed(2)}km");
+        debugPrint("✅ 數據存入成功");
       } else {
         debugPrint("❌ 儲存失敗：${response.statusCode}");
       }
@@ -77,7 +93,6 @@ class _ResultsScreenState extends State<ResultsScreen> {
       debugPrint("⚠️ 連線異常: $e");
     }
   }
-
 
   Future<void> _fetchAiFeedback() async {
     // 暫時停用 Gemini API，改用固定的教練建議
@@ -124,8 +139,10 @@ class _ResultsScreenState extends State<ResultsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final String minutesStr = (widget.timeSeconds ~/ 60).toString().padLeft(2, '0');
-    final String secondsStr = (widget.timeSeconds % 60).toString().padLeft(2, '0');
+    final String minutesStr =
+        (widget.timeSeconds ~/ 60).toString().padLeft(2, '0');
+    final String secondsStr =
+        (widget.timeSeconds % 60).toString().padLeft(2, '0');
 
     return Scaffold(
       backgroundColor: const Color(0xFFE9F1F5),
@@ -137,42 +154,72 @@ class _ResultsScreenState extends State<ResultsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  const Text('運動完成！', style: TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
+                  const Text('運動完成！',
+                      style:
+                          TextStyle(fontSize: 32, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
-                  Text('恭喜你完成了這段時間的${widget.exerciseTitle}', style: const TextStyle(fontSize: 16, color: Colors.black54)),
+                  Text('恭喜你完成了這段時間的${widget.exerciseTitle}',
+                      style:
+                          const TextStyle(fontSize: 16, color: Colors.black54)),
                   const SizedBox(height: 40),
-                  
+
                   // 數據網格
                   Row(
                     children: [
-                      Expanded(child: _buildStatCard('運動時間', '$minutesStr:$secondsStr', Icons.timer_outlined, Colors.blueAccent)),
+                      Expanded(
+                          child: _buildStatCard(
+                              '運動時間',
+                              '$minutesStr:$secondsStr',
+                              Icons.timer_outlined,
+                              Colors.blueAccent)),
                       const SizedBox(width: 16),
-                      Expanded(child: _buildStatCard('消耗熱量', '$caloriesBurned kcal', Icons.local_fire_department_outlined, Colors.redAccent)),
+                      Expanded(
+                          child: _buildStatCard(
+                              '消耗熱量',
+                              '$caloriesBurned kcal',
+                              Icons.local_fire_department_outlined,
+                              Colors.redAccent)),
                     ],
                   ),
                   const SizedBox(height: 16),
                   Row(
                     children: [
-                      Expanded(child: _buildStatCard('平均準確率', '${widget.averageAccuracy.toStringAsFixed(1)}%', Icons.check_circle_outline, widget.averageAccuracy > 80 ? Colors.green : Colors.orange)),
+                      Expanded(
+                          child: _buildStatCard(
+                              '平均準確率',
+                              '${widget.averageAccuracy.toStringAsFixed(1)}%',
+                              Icons.check_circle_outline,
+                              widget.averageAccuracy > 80
+                                  ? Colors.green
+                                  : Colors.orange)),
                       const SizedBox(width: 16),
                       if (widget.exerciseTitle != '深蹲')
-                        Expanded(child: _buildStatCard('步數', '${widget.stepCount} 步', Icons.directions_walk_outlined, Colors.purpleAccent))
+                        Expanded(
+                            child: _buildStatCard(
+                                '步數',
+                                '${widget.stepCount} 步',
+                                Icons.directions_walk_outlined,
+                                Colors.purpleAccent))
                       else
                         Expanded(child: Container()), // 保持排版平衡
                     ],
                   ),
-                  
+
                   const SizedBox(height: 48),
-                  
+
                   // AI 建議區塊
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20),
-                      boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, 5))]
-                    ),
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: [
+                          BoxShadow(
+                              color: Colors.black.withOpacity(0.05),
+                              blurRadius: 10,
+                              offset: const Offset(0, 5))
+                        ]),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -180,20 +227,26 @@ class _ResultsScreenState extends State<ResultsScreen> {
                           children: [
                             Icon(Icons.tips_and_updates, color: Colors.amber),
                             SizedBox(width: 8),
-                            Text('AI 教練悄悄話', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                            Text('AI 教練悄悄話',
+                                style: TextStyle(
+                                    fontSize: 18, fontWeight: FontWeight.bold)),
                           ],
                         ),
                         const SizedBox(height: 16),
                         if (_isLoadingAi)
-                          const Center(child: CircularProgressIndicator(color: Colors.amber))
+                          const Center(
+                              child: CircularProgressIndicator(
+                                  color: Colors.amber))
                         else
-                          Text(_dynamicAiFeedback ?? '沒有建議', style: const TextStyle(fontSize: 16, height: 1.6)),
+                          Text(_dynamicAiFeedback ?? '沒有建議',
+                              style:
+                                  const TextStyle(fontSize: 16, height: 1.6)),
                       ],
                     ),
                   ),
-                  
+
                   const SizedBox(height: 60),
-                  
+
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
@@ -201,16 +254,21 @@ class _ResultsScreenState extends State<ResultsScreen> {
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.black87,
                         padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(30)),
                       ),
-                      child: const Text('回到主頁', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                      child: const Text('回到主頁',
+                          style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white)),
                     ),
                   ),
                 ],
               ),
             ),
           ),
-          
+
           // 慶祝彩帶
           Align(
             alignment: Alignment.topCenter,
@@ -222,7 +280,13 @@ class _ResultsScreenState extends State<ResultsScreen> {
               emissionFrequency: 0.05,
               numberOfParticles: 20,
               gravity: 0.1,
-              colors: const [Colors.green, Colors.blue, Colors.pink, Colors.orange, Colors.purple],
+              colors: const [
+                Colors.green,
+                Colors.blue,
+                Colors.pink,
+                Colors.orange,
+                Colors.purple
+              ],
             ),
           ),
         ],
@@ -230,22 +294,32 @@ class _ResultsScreenState extends State<ResultsScreen> {
     );
   }
 
-  Widget _buildStatCard(String title, String value, IconData icon, Color iconColor) {
+  Widget _buildStatCard(
+      String title, String value, IconData icon, Color iconColor) {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.03), blurRadius: 8, offset: const Offset(0, 4))]
-      ),
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+                color: Colors.black.withOpacity(0.03),
+                blurRadius: 8,
+                offset: const Offset(0, 4))
+          ]),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(icon, color: iconColor, size: 28),
           const SizedBox(height: 12),
-          Text(title, style: const TextStyle(fontSize: 14, color: Colors.black54)),
+          Text(title,
+              style: const TextStyle(fontSize: 14, color: Colors.black54)),
           const SizedBox(height: 4),
-          FittedBox(fit: BoxFit.scaleDown, child: Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold))),
+          FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(value,
+                  style: const TextStyle(
+                      fontSize: 20, fontWeight: FontWeight.bold))),
         ],
       ),
     );

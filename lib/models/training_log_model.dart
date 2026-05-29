@@ -6,6 +6,7 @@ class TrainingLogModel {
   final int totalMins;
   final int postureScore; // Based on average accuracy
   final int calories;
+  final int stepCount;
 
   TrainingLogModel({
     this.logId,
@@ -15,17 +16,24 @@ class TrainingLogModel {
     required this.totalMins,
     required this.postureScore,
     required this.calories,
+    required this.stepCount,
   });
 
   factory TrainingLogModel.fromJson(Map<String, dynamic> json, String id) {
     return TrainingLogModel(
       logId: id,
-      memberId: json['member_id']?.toString() ?? '',
-      startTime: json['start_time'] != null ? DateTime.parse(json['start_time']) : DateTime.now(),
-      endTime: json['end_time'] != null ? DateTime.parse(json['end_time']) : DateTime.now(),
-      totalMins: json['total_mins'] as int? ?? 0,
-      postureScore: json['posture_score'] as int? ?? 0,
-      calories: json['calories'] as int? ?? 0,
+      memberId:
+          json['member_id']?.toString() ?? json['member']?.toString() ?? '',
+      startTime: json['start_time'] != null
+          ? DateTime.parse(json['start_time'])
+          : DateTime.now(),
+      endTime: json['end_time'] != null
+          ? DateTime.parse(json['end_time'])
+          : DateTime.now(),
+      totalMins: (json['total_mins'] ?? 0).toInt(),
+      postureScore: (json['posture_score'] ?? 0).toInt(),
+      calories: (json['calories'] ?? 0).toInt(),
+      stepCount: (json['step_count'] ?? 0).toInt(),
     );
   }
 
@@ -37,6 +45,7 @@ class TrainingLogModel {
       'total_mins': totalMins,
       'posture_score': postureScore,
       'calories': calories,
+      'step_count': stepCount,
     };
   }
 }
