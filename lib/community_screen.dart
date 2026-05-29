@@ -53,21 +53,21 @@ class _CommunityScreenState extends State<CommunityScreen> {
   final Map<String, List<_ChatEntry>> _friendChats = {
     'Sarah Chen': const [
       _ChatEntry(
-        text: 'Want to do an easy recovery run this week?',
+        text: '這週想輕鬆跑恢復一下嗎？',
         isMine: false,
         timestamp: '9:12 AM',
       ),
       _ChatEntry(
-        text: 'Yes please, mornings are best for me.',
+        text: '好啊，早上對我最方便。',
         isMine: true,
         timestamp: '9:14 AM',
       ),
     ],
     'Mike Johnson': const [
       _ChatEntry(
-        text: 'How is your knee feeling after week 3?',
+        text: '第三週之後你的膝蓋感覺如何？',
         isMine: false,
-        timestamp: 'Yesterday',
+        timestamp: '昨天',
       ),
     ],
     'Jordan Lee': const [],
@@ -115,7 +115,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
     widget.store.addPost(
       initial: UserSession.displayInitial,
       name: UserSession.displayName,
-      timeAgo: 'Just now',
+      timeAgo: '剛剛',
       content: submission.content,
       tags: submission.tags,
       type: submission.type,
@@ -157,7 +157,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
           child: SingleChildScrollView(
             child: _PostComposer(
               initialSubmission: _submissionFromPost(post),
-              submitLabel: 'Save',
+              submitLabel: '儲存',
               onPost: (submission) {
                 widget.store.updatePost(
                   index,
@@ -250,7 +250,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
         _ChatEntry(
           text: text,
           isMine: true,
-          timestamp: 'Just now',
+          timestamp: '剛剛',
         ),
       ];
     });
@@ -280,9 +280,9 @@ class _CommunityScreenState extends State<CommunityScreen> {
             messages[i],
         _ChatEntry(
           text:
-              'Accepted! See you on ${invitation.date} at ${invitation.time}.',
+              '接受！${invitation.date} ${invitation.time} 見。',
           isMine: false,
-          timestamp: 'Just now',
+          timestamp: '剛剛',
         ),
       ];
     });
@@ -351,7 +351,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                     ),
                     const SizedBox(height: 18),
                     const Text(
-                      'Comments',
+                      '留言',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w900,
@@ -363,7 +363,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                       const Padding(
                         padding: EdgeInsets.only(bottom: 16),
                         child: Text(
-                          'No comments yet. Start the conversation.',
+                          '目前還沒有留言。開始對話吧。',
                           style: TextStyle(
                             color: Color(0xFF6B7280),
                             fontSize: 14,
@@ -398,7 +398,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                                           CrossAxisAlignment.start,
                                       children: [
                                         const Text(
-                                          'Community Member',
+                                          '社群成員',
                                           style: TextStyle(
                                             fontSize: 13,
                                             fontWeight: FontWeight.w800,
@@ -430,7 +430,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                           child: TextField(
                             controller: controller,
                             decoration: InputDecoration(
-                              hintText: 'Write a comment...',
+                              hintText: '寫下留言...',
                               filled: true,
                               fillColor: const Color(0xFFF8FAFC),
                               contentPadding: const EdgeInsets.symmetric(
@@ -465,7 +465,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                                 ),
                               ),
                               child: const Text(
-                                'Send',
+                                '送出',
                                 style: TextStyle(fontWeight: FontWeight.w800),
                               ),
                             );
@@ -509,8 +509,8 @@ class _CommunityScreenState extends State<CommunityScreen> {
                   ListTile(
                     leading:
                         const Icon(Icons.edit_outlined, color: Colors.black),
-                    title: const Text('Edit post'),
-                    subtitle: const Text('Update your content and details'),
+                    title: const Text('編輯貼文'),
+                    subtitle: const Text('更新你的內容與詳細資訊'),
                     onTap: () {
                       Navigator.pop(context);
                       _editPost(index);
@@ -520,8 +520,8 @@ class _CommunityScreenState extends State<CommunityScreen> {
                 ListTile(
                   leading:
                       const Icon(Icons.flag_outlined, color: Colors.redAccent),
-                  title: Text('Report ${post.name}\'s post'),
-                  subtitle: const Text('Flag this post for review'),
+                  title: Text('檢舉 ${post.name} 的貼文'),
+                  subtitle: const Text('標記這則貼文以供審查'),
                   onTap: () {
                     Navigator.pop(context);
                     _showReportReasons(post.name);
@@ -537,14 +537,14 @@ class _CommunityScreenState extends State<CommunityScreen> {
 
   Future<void> _showReportReasons(String authorName) async {
     const reasons = [
-      'Scam or fraud',
-      'Sexual harassment',
-      'Bullying or harassment',
-      'Hate speech',
-      'Violence or dangerous behavior',
-      'False health information',
-      'Spam',
-      'Something else',
+      '詐騙或欺詐',
+      '性騷擾',
+      '霸凌或騷擾',
+      '仇恨言論',
+      '暴力或危險行為',
+      '不實的健康資訊',
+      '垃圾訊息',
+      '其他',
     ];
 
     await showModalBottomSheet<void>(
@@ -576,7 +576,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                   ),
                   const SizedBox(height: 16),
                   Text(
-                    'Why are you reporting $authorName\'s post?',
+                    '你為何要檢舉 $authorName 的貼文？',
                     style: const TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w900,
@@ -585,7 +585,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    'Choose the reason that best fits this content.',
+                    '選擇最符合此內容的理由。',
                     style: TextStyle(
                       fontSize: 14,
                       color: Color(0xFF6B7280),
@@ -612,7 +612,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                       onTap: () {
                         Navigator.pop(context);
                         ScaffoldMessenger.of(this.context).showSnackBar(
-                          SnackBar(content: Text('Report submitted: $reason')),
+                          SnackBar(content: Text('檢舉已提交：$reason')),
                         );
                       },
                     ),
@@ -631,7 +631,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
       ('Instagram', Icons.camera_alt_outlined),
       ('Facebook', Icons.thumb_up_alt_outlined),
       ('Messenger', Icons.send_outlined),
-      ('Copy Link', Icons.link_outlined),
+      ('複製連結', Icons.link_outlined),
     ];
 
     await showModalBottomSheet<void>(
@@ -656,7 +656,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                 ),
                 const SizedBox(height: 16),
                 const Text(
-                  'Share to',
+                  '分享至',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w900,
@@ -675,7 +675,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                     onTap: () {
                       Navigator.pop(context);
                       ScaffoldMessenger.of(this.context).showSnackBar(
-                        SnackBar(content: Text('Shared to ${target.$1}')),
+                        SnackBar(content: Text('已分享至 ${target.$1}')),
                       );
                     },
                   );
@@ -713,7 +713,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                           _ChatEntry(
                             text: message,
                             isMine: true,
-                            timestamp: 'Just now',
+                            timestamp: '剛剛',
                           ),
                         ];
                       });
@@ -732,7 +732,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                               _ChatEntry.invitation(
                                 invitation: invitation,
                                 isMine: true,
-                                timestamp: 'Just now',
+                                timestamp: '剛剛',
                               ),
                             ];
                             _chatFriend = _inviteFriend;
@@ -780,7 +780,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                                           ),
                                   ),
                                   const SizedBox(height: 18),
-                                  const _SectionLabel('COMMUNITY FEED'),
+                                  const _SectionLabel('社群動態'),
                                   const SizedBox(height: 12),
                                   ...List.generate(_posts.length, (index) {
                                     final post = _posts[index];
@@ -842,7 +842,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                   Icon(Icons.chevron_left, size: 24, color: Color(0xFF4A5568)),
                   SizedBox(width: 2),
                   Text(
-                    'Back',
+                    '返回',
                     style: TextStyle(
                       color: Color(0xFF4A5568),
                       fontSize: 13,
@@ -866,14 +866,14 @@ class _CommunityScreenState extends State<CommunityScreen> {
               const SizedBox(width: 8),
               Text(
                 _chatFriend != null
-                    ? 'MESSAGES'
+                    ? '訊息'
                     : _inviteFriend != null
-                        ? 'INVITE TO RUN'
+                        ? '邀請跑步'
                         : _isFriendsOpen
-                            ? 'FRIENDS'
+                            ? '好友'
                             : _isGroupsOpen
-                                ? 'GROUPS'
-                                : 'COMMUNITY',
+                                ? '群組'
+                                : '社群',
                 style: const TextStyle(
                   color: Color(0xFF1A202C),
                   fontSize: 15,
@@ -922,7 +922,7 @@ class _SearchField extends StatelessWidget {
           SizedBox(width: 12),
           Expanded(
             child: Text(
-              'Search posts, people, or hashtags...',
+              '搜尋貼文、人物或標籤...',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -975,7 +975,7 @@ class _CreatePostCard extends StatelessWidget {
               const SizedBox(width: 13),
               const Expanded(
                 child: Text(
-                  'Share your jogging thoughts...',
+                  '分享你的慢跑心得...',
                   style: TextStyle(
                     color: Color(0xFFA0AEC0),
                     fontSize: 15,
@@ -1025,7 +1025,7 @@ class _PostComposer extends StatefulWidget {
   const _PostComposer({
     super.key,
     this.initialSubmission,
-    this.submitLabel = 'Post',
+    this.submitLabel = '發佈',
     required this.onPost,
     required this.onClose,
   });
@@ -1148,22 +1148,22 @@ class _PostComposerState extends State<_PostComposer> {
   String get _title {
     switch (_mode) {
       case _ComposerMode.journey:
-        return 'Share Your Journey';
+        return '分享你的旅程';
       case _ComposerMode.plan:
-        return 'Share Your Plan';
+        return '分享你的計畫';
       case _ComposerMode.recipe:
-        return 'Share Your Recipe';
+        return '分享你的食譜';
     }
   }
 
   String get _hintText {
     switch (_mode) {
       case _ComposerMode.journey:
-        return 'Share your slow jogging experience,\nhealth tips, or achievements...';
+        return '分享你的超慢跑經驗、\n健康秘訣或成就...';
       case _ComposerMode.plan:
-        return 'Describe what this training plan helps with,\nlike endurance, recovery, or form...';
+        return '描述此訓練計畫的幫助，\n例如耐力、恢復或姿勢...';
       case _ComposerMode.recipe:
-        return 'Tell everyone why this recipe works for you,\nlike pre-run energy or post-run recovery...';
+        return '告訴大家這份食譜對你的好處，\n例如跑前能量補充或跑後恢復...';
     }
   }
 
@@ -1370,20 +1370,20 @@ class _PostComposerState extends State<_PostComposer> {
                 const SizedBox(height: 14),
                 const _ComposerFieldLabel(
                   icon: Icons.route_outlined,
-                  text: 'Plan Details',
+                  text: '計畫詳情',
                 ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: _planTitleController,
                   decoration: _composerInputDecoration(
-                      'Plan title, e.g. 4-Week Knee-Friendly Plan'),
+                      '計畫標題，例如：4週友善膝蓋計畫'),
                 ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: _planSummaryController,
                   maxLines: 2,
                   decoration: _composerInputDecoration(
-                    'Short plan summary or goal',
+                    '簡短的計畫摘要或目標',
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -1412,7 +1412,7 @@ class _PostComposerState extends State<_PostComposer> {
                 const SizedBox(height: 10),
                 _SecondaryActionButton(
                   icon: Icons.add,
-                  label: 'Add Step',
+                  label: '新增步驟',
                   onTap: _addPlanStep,
                 ),
               ],
@@ -1420,19 +1420,19 @@ class _PostComposerState extends State<_PostComposer> {
                 const SizedBox(height: 14),
                 const _ComposerFieldLabel(
                   icon: Icons.restaurant_menu_outlined,
-                  text: 'Recipe Details',
+                  text: '食譜詳情',
                 ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: _recipeTitleController,
                   decoration: _composerInputDecoration(
-                      'Recipe title, e.g. Post-Run Protein Bowl'),
+                      '食譜標題，例如：跑後高蛋白餐'),
                 ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: _recipeCookMinutesController,
                   keyboardType: TextInputType.number,
-                  decoration: _composerInputDecoration('Cook time (minutes)'),
+                  decoration: _composerInputDecoration('烹調時間（分鐘）'),
                 ),
                 const SizedBox(height: 12),
                 ...List.generate(_recipeIngredients.length, (index) {
@@ -1450,7 +1450,7 @@ class _PostComposerState extends State<_PostComposer> {
                 const SizedBox(height: 10),
                 _SecondaryActionButton(
                   icon: Icons.add,
-                  label: 'Add Ingredient',
+                  label: '新增食材',
                   onTap: _addRecipeIngredient,
                 ),
                 const SizedBox(height: 12),
@@ -1466,7 +1466,7 @@ class _PostComposerState extends State<_PostComposer> {
                         color: Color(0xFF718096), size: 16),
                     SizedBox(width: 6),
                     Text(
-                      'Add Tags',
+                      '新增標籤',
                       style: TextStyle(
                         color: Color(0xFF4A5568),
                         fontSize: 12,
@@ -1515,8 +1515,8 @@ class _PostComposerState extends State<_PostComposer> {
                     ),
                     label: Text(
                       _mode == _ComposerMode.recipe
-                          ? 'Auto Nutrition'
-                          : 'Structured Post',
+                          ? '自動計算營養'
+                          : '結構化貼文',
                       style: const TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w800,
@@ -1598,17 +1598,17 @@ class _ComposerModeSwitcher extends StatelessWidget {
       runSpacing: 8,
       children: [
         _ModeChip(
-          label: 'Journey',
+          label: '旅程',
           isSelected: selectedMode == _ComposerMode.journey,
           onTap: () => onChanged(_ComposerMode.journey),
         ),
         _ModeChip(
-          label: 'Plan',
+          label: '計畫',
           isSelected: selectedMode == _ComposerMode.plan,
           onTap: () => onChanged(_ComposerMode.plan),
         ),
         _ModeChip(
-          label: 'Recipe',
+          label: '食譜',
           isSelected: selectedMode == _ComposerMode.recipe,
           onTap: () => onChanged(_ComposerMode.recipe),
         ),
@@ -1907,11 +1907,11 @@ class _RecipeNutritionPreview extends StatelessWidget {
         spacing: 10,
         runSpacing: 10,
         children: [
-          _NutritionPill(label: '${nutrition.calories} kcal'),
-          _NutritionPill(label: '${nutrition.carbs.toStringAsFixed(1)}g carbs'),
+          _NutritionPill(label: '${nutrition.calories} 大卡'),
+          _NutritionPill(label: '${nutrition.carbs.toStringAsFixed(1)}g 碳水'),
           _NutritionPill(
-              label: '${nutrition.protein.toStringAsFixed(1)}g protein'),
-          _NutritionPill(label: '${nutrition.fat.toStringAsFixed(1)}g fat'),
+              label: '${nutrition.protein.toStringAsFixed(1)}g 蛋白質'),
+          _NutritionPill(label: '${nutrition.fat.toStringAsFixed(1)}g 脂肪'),
         ],
       ),
     );
@@ -2302,7 +2302,7 @@ class _WorkoutPlanCard extends StatelessWidget {
             children: [
               _PlanMetricPill(
                 icon: Icons.schedule_outlined,
-                label: '${plan.totalMinutes} minutes',
+                label: '${plan.totalMinutes} 分鐘',
               ),
               _PlanMetricPill(
                 icon: Icons.local_fire_department_outlined,
@@ -2452,13 +2452,13 @@ class _RecipeCard extends StatelessWidget {
             spacing: 10,
             runSpacing: 10,
             children: [
-              _RecipeMetricPill(label: '${recipe.cookMinutes} min'),
-              _RecipeMetricPill(label: '${recipe.nutrition.calories} kcal'),
+              _RecipeMetricPill(label: '${recipe.cookMinutes} 分鐘'),
+              _RecipeMetricPill(label: '${recipe.nutrition.calories} 大卡'),
               _RecipeMetricPill(
                   label:
-                      '${recipe.nutrition.protein.toStringAsFixed(1)}g protein'),
+                      '${recipe.nutrition.protein.toStringAsFixed(1)}g 蛋白質'),
               _RecipeMetricPill(
-                  label: '${recipe.nutrition.carbs.toStringAsFixed(1)}g carbs'),
+                  label: '${recipe.nutrition.carbs.toStringAsFixed(1)}g 碳水'),
             ],
           ),
         ],
@@ -2820,7 +2820,7 @@ class _FriendTabs extends StatelessWidget {
       children: [
         Expanded(
           child: _FriendTabButton(
-            label: 'Friends\n($friendsCount)',
+            label: '好友\n($friendsCount)',
             isSelected: selectedIndex == 0,
             onTap: () => onChanged(0),
           ),
@@ -2828,7 +2828,7 @@ class _FriendTabs extends StatelessWidget {
         const SizedBox(width: 7),
         Expanded(
           child: _FriendTabButton(
-            label: 'Requests',
+            label: '請求',
             badge: requestsCount > 0 ? '$requestsCount' : null,
             isSelected: selectedIndex == 1,
             onTap: () => onChanged(1),
@@ -2837,7 +2837,7 @@ class _FriendTabs extends StatelessWidget {
         const SizedBox(width: 7),
         Expanded(
           child: _FriendTabButton(
-            label: 'Suggestions',
+            label: '建議',
             isSelected: selectedIndex == 2,
             onTap: () => onChanged(2),
           ),
@@ -3019,14 +3019,14 @@ class _RunningBuddyCard extends StatelessWidget {
                     const Icon(Icons.calendar_today_outlined,
                         color: Color(0xFF718096), size: 14),
                     const SizedBox(width: 5),
-                    Text('Last run: $lastRun', style: _friendMetaStyle),
+                    Text('最後一次跑步：$lastRun', style: _friendMetaStyle),
                   ],
                 ),
                 const SizedBox(height: 12),
                 Row(
                   children: [
                     _SmallFriendButton(
-                      label: 'Invite to\nRun',
+                      label: '邀請\n跑步',
                       icon: Icons.calendar_today_outlined,
                       isPrimary: true,
                       onTap: () {
@@ -3043,7 +3043,7 @@ class _RunningBuddyCard extends StatelessWidget {
                     ),
                     const SizedBox(width: 8),
                     _SmallFriendButton(
-                      label: 'Message',
+                      label: '訊息',
                       icon: Icons.chat_bubble_outline,
                       onTap: () {
                         onMessageTap?.call(
@@ -3308,7 +3308,7 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
               const SizedBox(height: 18),
               const _InviteFieldLabel(
                 icon: Icons.calendar_today_outlined,
-                text: 'Select Date',
+                text: '選擇日期',
               ),
               const SizedBox(height: 8),
               TextField(
@@ -3336,7 +3336,7 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
               const SizedBox(height: 18),
               const _InviteFieldLabel(
                 icon: Icons.access_time_outlined,
-                text: 'Select Time',
+                text: '選擇時間',
               ),
               const SizedBox(height: 10),
               Wrap(
@@ -3396,7 +3396,7 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
               const SizedBox(height: 18),
               const _InviteFieldLabel(
                 icon: Icons.edit_note_outlined,
-                text: 'Additional Notes (Optional)',
+                text: '額外備註（選填）',
               ),
               const SizedBox(height: 8),
               TextField(
@@ -3568,7 +3568,7 @@ class _FriendChatPanelState extends State<_FriendChatPanel> {
                   child: TextField(
                     controller: _controller,
                     decoration: InputDecoration(
-                      hintText: 'Write a message...',
+                      hintText: '寫下訊息...',
                       filled: true,
                       fillColor: const Color(0xFFF8FAFC),
                       contentPadding: const EdgeInsets.symmetric(
@@ -3751,7 +3751,7 @@ class _InvitationMessageBubble extends StatelessWidget {
                   ),
                 ),
                 child: const Text(
-                  'Accept',
+                  '接受',
                   style: TextStyle(fontWeight: FontWeight.w800),
                 ),
               ),
@@ -3863,7 +3863,7 @@ class _FriendRequestCard extends StatelessWidget {
                   children: [
                     Expanded(
                       child: _WideFriendButton(
-                        label: 'Accept',
+                        label: '接受',
                         icon: Icons.check,
                         isPrimary: true,
                         onTap: onAccept,
@@ -3872,7 +3872,7 @@ class _FriendRequestCard extends StatelessWidget {
                     const SizedBox(width: 8),
                     Expanded(
                       child: _WideFriendButton(
-                        label: 'Decline',
+                        label: '拒絕',
                         onTap: onDecline,
                       ),
                     ),
@@ -3921,14 +3921,14 @@ class _PendingFriendCard extends StatelessWidget {
                   children: [
                     Icon(Icons.access_time, color: Color(0xFF718096), size: 14),
                     SizedBox(width: 4),
-                    Text('Request pending', style: _friendMetaStyle),
+                    Text('請求待處理', style: _friendMetaStyle),
                   ],
                 ),
               ],
             ),
           ),
           _WideFriendButton(
-            label: 'Cancel',
+            label: '取消',
             onTap: onCancel,
           ),
         ],
@@ -3979,7 +3979,7 @@ class _SuggestionCard extends StatelessWidget {
             ),
           ),
           _WideFriendButton(
-            label: 'Add',
+            label: '新增',
             icon: Icons.person_add_alt_1_outlined,
             isPrimary: true,
             onTap: onAdd,
@@ -4271,13 +4271,13 @@ class _GroupsPanelState extends State<_GroupsPanel> {
       ],
       activities: [
         _GroupActivityEntry(
-          title: 'Sunrise Run',
-          subtitle: '6 members joined this morning session',
+          title: '日出跑步',
+          subtitle: '6名成員參加了今天的早晨活動',
           timestamp: 'Today',
         ),
         _GroupActivityEntry(
-          title: 'Weekly goal update',
-          subtitle: 'The group reached 32 runs this week',
+          title: '每週目標更新',
+          subtitle: '本週群組達成32次跑步',
           timestamp: '2h ago',
         ),
       ],
@@ -4313,9 +4313,9 @@ class _GroupsPanelState extends State<_GroupsPanel> {
       ],
       activities: [
         _GroupActivityEntry(
-          title: 'Central Park meetup',
-          subtitle: 'Saturday run event is open for RSVP',
-          timestamp: 'Yesterday',
+          title: '中央公園集合',
+          subtitle: '週六跑步活動開放報名中',
+          timestamp: '昨天',
         ),
       ],
     ),
@@ -4398,9 +4398,9 @@ class _GroupsPanelState extends State<_GroupsPanel> {
           ],
           activities: const [
             _GroupActivityEntry(
-              title: 'Group created',
-              subtitle: 'Welcome to your new running group',
-              timestamp: 'Just now',
+              title: '群組已建立',
+              subtitle: '歡迎來到你的新跑步群組',
+              timestamp: '剛剛',
             ),
           ],
         ),
@@ -4454,9 +4454,9 @@ class _GroupsPanelState extends State<_GroupsPanel> {
       ],
       activities: [
         _GroupActivityEntry(
-          title: '${friend.name} joined the group',
-          subtitle: 'Invited by $_currentUserName',
-          timestamp: 'Just now',
+          title: '${friend.name} 加入了群組',
+          subtitle: '由 $_currentUserName 邀請',
+          timestamp: '剛剛',
         ),
         ...group.activities,
       ],
@@ -4533,9 +4533,9 @@ class _GroupsPanelState extends State<_GroupsPanel> {
           ],
           activities: const [
             _GroupActivityEntry(
-              title: 'Welcome to the group',
-              subtitle: 'Your membership was just created',
-              timestamp: 'Just now',
+              title: '歡迎加入群組',
+              subtitle: '你的會員資格已建立',
+              timestamp: '剛剛',
             ),
           ],
         ),
@@ -4576,7 +4576,7 @@ class _GroupsPanelState extends State<_GroupsPanel> {
           children: [
             Expanded(
               child: _GroupTabButton(
-                label: 'My Groups (${_myGroups.length})',
+                label: '我的群組 (${_myGroups.length})',
                 isSelected: _selectedTab == 0,
                 onTap: () {
                   setState(() {
@@ -4588,7 +4588,7 @@ class _GroupsPanelState extends State<_GroupsPanel> {
             const SizedBox(width: 8),
             Expanded(
               child: _GroupTabButton(
-                label: 'Discover',
+                label: '探索',
                 isSelected: _selectedTab == 1,
                 onTap: () {
                   setState(() {
@@ -4828,7 +4828,7 @@ class _CreateGroupForm extends StatelessWidget {
           TextField(
             controller: nameController,
             decoration: InputDecoration(
-              hintText: 'e.g., Weekend Warriors',
+              hintText: '例如：週末勇士',
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
               border: OutlineInputBorder(
@@ -4856,7 +4856,7 @@ class _CreateGroupForm extends StatelessWidget {
             controller: descriptionController,
             maxLines: 2,
             decoration: InputDecoration(
-              hintText: 'What\'s your group about?',
+              hintText: '你的群組是關於什麼的？',
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
               border: OutlineInputBorder(
@@ -4872,7 +4872,7 @@ class _CreateGroupForm extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           const Text(
-            'EXERCISE TYPE',
+            '運動類型',
             style: TextStyle(
               color: Color(0xFF4A5568),
               fontSize: 12,
@@ -4912,8 +4912,8 @@ class _CreateGroupForm extends StatelessWidget {
             children: [
               Expanded(
                 child: _GroupPrivacyCard(
-                  title: 'Public',
-                  subtitle: 'Anyone can join',
+                  title: '公開',
+                  subtitle: '任何人皆可加入',
                   icon: Icons.public,
                   isSelected: !isPrivate,
                   onTap: () => onPrivacyChanged(false),
@@ -4922,8 +4922,8 @@ class _CreateGroupForm extends StatelessWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: _GroupPrivacyCard(
-                  title: 'Private',
-                  subtitle: 'Invite only',
+                  title: '私密',
+                  subtitle: '僅限邀請',
                   icon: Icons.lock_outline,
                   isSelected: isPrivate,
                   onTap: () => onPrivacyChanged(true),
@@ -4946,7 +4946,7 @@ class _CreateGroupForm extends StatelessWidget {
                 ),
               ),
               child: const Text(
-                'Create Group',
+                '建立群組',
                 style: TextStyle(fontWeight: FontWeight.w900),
               ),
             ),
@@ -5331,7 +5331,7 @@ class _GroupCard extends StatelessWidget {
                 Row(
                   children: [
                     const Text(
-                      'Weekly Goal',
+                      '每週目標',
                       style: TextStyle(
                         color: Color(0xFF4A5568),
                         fontSize: 11,
@@ -5496,7 +5496,7 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
           _GroupActivityEntry(
             title: title,
             subtitle: '$date • $time • $location',
-            timestamp: 'Just now',
+            timestamp: '剛剛',
           ),
           ..._group.activities,
         ],
@@ -5511,14 +5511,14 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Group run event created: $title')),
+      SnackBar(content: Text('已建立團跑活動：$title')),
     );
   }
 
   Future<void> _openInviteSheet() async {
     if (widget.inviteableFriends.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('No friends available right now')),
+        const SnackBar(content: Text('目前沒有可邀請的好友')),
       );
       return;
     }
@@ -5535,8 +5535,8 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
               children: [
                 Text(
                   _canDirectInvite
-                      ? 'Invite Your Friends'
-                      : 'Request a New Member',
+                      ? '邀請你的好友'
+                      : '請求新成員加入',
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w900,
@@ -5546,8 +5546,8 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
                 const SizedBox(height: 8),
                 Text(
                   _canDirectInvite
-                      ? 'Only your friends can be invited directly into this group.'
-                      : 'Only your own friends can be proposed, and the group owner must approve them first.',
+                      ? '只有你的好友可以直接受邀加入此群組。'
+                      : '只能推薦你自己的好友，且必須先由群組擁有者核准。',
                   style: const TextStyle(
                     fontSize: 13,
                     height: 1.45,
@@ -5576,7 +5576,7 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
                       ),
                       subtitle: Text(
                         alreadyInGroup
-                            ? 'Already in group'
+                            ? '已在群組中'
                             : '${friend.runsTogether} runs together',
                         style: TextStyle(
                           color: alreadyInGroup
@@ -5727,7 +5727,7 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
                     children: [
                       Expanded(
                         child: _GroupStatTile(
-                          label: 'Members',
+                          label: '成員',
                           value: '${group.members}',
                           icon: Icons.people_outline,
                         ),
@@ -5736,8 +5736,8 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
                       Expanded(
                         child: _GroupStatTile(
                           label: group.exerciseType == 'squat'
-                              ? 'Total Squats'
-                              : 'Total Runs',
+                              ? '總深蹲次數'
+                              : '總跑步次數',
                           value:
                               _groupMetricLabel(group.exerciseType, group.runs),
                           icon: Icons.trending_up,
@@ -5760,7 +5760,7 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
                                 size: 15, color: Color(0xFFD69E2E)),
                             const SizedBox(width: 6),
                             const Text(
-                              'Weekly Goal',
+                              '每週目標',
                               style: TextStyle(
                                 color: Color(0xFF475569),
                                 fontSize: 13,
@@ -5815,7 +5815,7 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
               children: [
                 Expanded(
                   child: _GroupTabButton(
-                    label: 'Members (${group.memberPreview.length})',
+                    label: '成員 (${group.memberPreview.length})',
                     isSelected: _selectedTab == 0,
                     onTap: () {
                       setState(() {
@@ -5827,7 +5827,7 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
                 const SizedBox(width: 8),
                 Expanded(
                   child: _GroupTabButton(
-                    label: 'Activity',
+                    label: '活動',
                     isSelected: _selectedTab == 1,
                     onTap: () {
                       setState(() {
@@ -5848,9 +5848,9 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
                 label: Text(
                   _isRunningGroup
                       ? (_isCreateEventOpen
-                          ? 'Hide Group Run Event Form'
-                          : 'Create Group Run Event')
-                      : 'Group Event for Slow Jogging Only',
+                          ? '隱藏團跑活動表單'
+                          : '建立團跑活動')
+                      : '僅限超慢跑的群組活動',
                   style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w900,
@@ -5890,8 +5890,8 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
                 ),
                 label: Text(
                   _canDirectInvite
-                      ? 'Invite Friend to Group'
-                      : 'Request Member Invite',
+                      ? '邀請好友加入群組'
+                      : '請求邀請成員',
                   style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w900,
@@ -5902,7 +5902,7 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
             const SizedBox(height: 14),
             if (_selectedTab == 0) ...[
               if (group.memberPreview.isEmpty)
-                const _EmptyState(text: 'No members to show yet.')
+                const _EmptyState(text: '目前沒有成員可顯示。')
               else
                 ...group.memberPreview.map(
                   (member) => Padding(
@@ -5926,7 +5926,7 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
                 ),
             ] else ...[
               if (group.activities.isEmpty)
-                const _EmptyState(text: 'No recent activity yet.')
+                const _EmptyState(text: '目前沒有最近的活動。')
               else
                 ...group.activities.map(
                   (activity) => Padding(
@@ -6071,7 +6071,7 @@ class _GroupMemberCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 6),
                 Text(
-                  'Joined ${member.joinedDate}',
+                  '加入於 ${member.joinedDate}',
                   style: const TextStyle(
                     color: Color(0xFF94A3B8),
                     fontSize: 12,
@@ -6236,7 +6236,7 @@ class _CreateGroupRunEventForm extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Create Group Run Event',
+            '建立團跑活動',
             style: TextStyle(
               color: Colors.black,
               fontSize: 16,
@@ -6246,13 +6246,13 @@ class _CreateGroupRunEventForm extends StatelessWidget {
           const SizedBox(height: 18),
           const _InviteFieldLabel(
             icon: Icons.flag_outlined,
-            text: 'Event Title',
+            text: '活動標題',
           ),
           const SizedBox(height: 8),
           TextField(
             controller: titleController,
             decoration: InputDecoration(
-              hintText: 'e.g., Sunrise Group Run',
+              hintText: '例如：日出團跑',
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               border: OutlineInputBorder(
@@ -6269,7 +6269,7 @@ class _CreateGroupRunEventForm extends StatelessWidget {
           const SizedBox(height: 18),
           const _InviteFieldLabel(
             icon: Icons.calendar_today_outlined,
-            text: 'Select Date',
+            text: '選擇日期',
           ),
           const SizedBox(height: 8),
           TextField(
@@ -6298,7 +6298,7 @@ class _CreateGroupRunEventForm extends StatelessWidget {
           const SizedBox(height: 18),
           const _InviteFieldLabel(
             icon: Icons.access_time_outlined,
-            text: 'Select Time',
+            text: '選擇時間',
           ),
           const SizedBox(height: 10),
           Wrap(
@@ -6327,13 +6327,13 @@ class _CreateGroupRunEventForm extends StatelessWidget {
           const SizedBox(height: 18),
           const _InviteFieldLabel(
             icon: Icons.location_on_outlined,
-            text: 'Location',
+            text: '地點',
           ),
           const SizedBox(height: 8),
           TextField(
             controller: locationController,
             decoration: InputDecoration(
-              hintText: 'Where will the group meet?',
+              hintText: '群組將在哪裡集合？',
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               border: OutlineInputBorder(
@@ -6350,14 +6350,14 @@ class _CreateGroupRunEventForm extends StatelessWidget {
           const SizedBox(height: 18),
           const _InviteFieldLabel(
             icon: Icons.edit_note_outlined,
-            text: 'Additional Notes (Optional)',
+            text: '額外備註（選填）',
           ),
           const SizedBox(height: 8),
           TextField(
             controller: notesController,
             maxLines: 4,
             decoration: InputDecoration(
-              hintText: 'Add pace, distance, or meetup instructions...',
+              hintText: '新增配速、距離或集合指示...',
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               border: OutlineInputBorder(
@@ -6387,7 +6387,7 @@ class _CreateGroupRunEventForm extends StatelessWidget {
               ),
               icon: const Icon(Icons.send_outlined, size: 18),
               label: const Text(
-                'Create Event',
+                '建立活動',
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w800,
@@ -6767,7 +6767,7 @@ class CommunityStore extends ChangeNotifier {
       name: 'Sarah Chen',
       timeAgo: '2 hours ago',
       content:
-          'Just completed my first 5km slow jog! Feeling amazing and completely pain-free. The key is patience and consistency!',
+          '剛完成了我的第一個5公里超慢跑！感覺超棒，完全沒有疼痛。關鍵在於耐心和持之以恆！',
       tags: ['#MorningRun', '#PainFree', '#ProgressNotPerfection'],
       likes: 24,
       commentThreads: ['Love this progress!', 'So inspiring'],
@@ -6777,15 +6777,15 @@ class CommunityStore extends ChangeNotifier {
       name: 'Mike Johnson',
       timeAgo: '5 hours ago',
       content:
-          'Week 3 of slow jogging and my knee pain has completely disappeared. This approach really works! 💪',
+          '超慢跑第三週，我的膝蓋痛完全消失了。這個方法真的有效！💪',
       tags: ['#SlowJoggingChallenge', '#HealthyHabits'],
       likes: 18,
       commentThreads: ['Needed to hear this today'],
       type: CommunityPostType.plan,
       plan: WorkoutPlanData(
-        title: 'Slow Jogging Plan',
+        title: '超慢跑計畫',
         summary:
-            'A 4-week plan to improve your slow jogging technique and reduce knee pain.',
+            '一個幫助你改善超慢跑技巧並減少膝蓋疼痛的4週計畫。',
         difficulty: 'Medium',
         totalMinutes: 40,
         steps: [
@@ -6798,9 +6798,9 @@ class CommunityStore extends ChangeNotifier {
     const CommunityPost(
       initial: 'A',
       name: 'Anna Lee',
-      timeAgo: 'Yesterday',
+      timeAgo: '昨天',
       content:
-          'Tiny steps, steady breathing, and no pressure. Today felt like the first run I actually wanted to repeat.',
+          '小步幅、穩定的呼吸，沒有壓力。今天的跑步感覺像是我第一次真的想再跑一次。',
       tags: ['#EasyMiles', '#KeepMoving'],
       likes: 31,
       commentThreads: ['Steady really wins', 'Saving this mindset'],
@@ -6808,20 +6808,20 @@ class CommunityStore extends ChangeNotifier {
     const CommunityPost(
       initial: 'J',
       name: 'Jamie Wu',
-      timeAgo: 'Yesterday',
-      content: 'Quick post-run bowl that keeps me full and energized.',
+      timeAgo: '昨天',
+      content: '跑後快速的一餐，讓我吃飽又充滿能量。',
       tags: ['#RecoveryMeal', '#ProteinPacked'],
       likes: 15,
       commentThreads: ['Trying this tonight'],
       type: CommunityPostType.recipe,
       recipe: RecipeData(
-        title: 'Chicken Rice Recovery Bowl',
-        description: 'Balanced carbs and protein for after your workout.',
+        title: '雞肉飯恢復餐',
+        description: '運動後均衡的碳水化合物和蛋白質。',
         cookMinutes: 20,
         ingredients: [
-          RecipeIngredient(name: 'Chicken breast', grams: 120),
-          RecipeIngredient(name: 'Rice', grams: 150),
-          RecipeIngredient(name: 'Broccoli', grams: 80),
+          RecipeIngredient(name: '雞胸肉', grams: 120),
+          RecipeIngredient(name: '白飯', grams: 150),
+          RecipeIngredient(name: '花椰菜', grams: 80),
         ],
         nutrition: NutritionSummary(
           calories: 430,
@@ -6996,7 +6996,7 @@ class CommunityProfileScreen extends StatelessWidget {
                           border: Border.all(color: const Color(0xFFE2E8F0)),
                         ),
                         child: const Text(
-                          'Visible to you only',
+                          '僅對你可見',
                           style: TextStyle(
                             color: Color(0xFF718096),
                             fontSize: 12,
@@ -7016,7 +7016,7 @@ class CommunityProfileScreen extends StatelessWidget {
                         child: Row(
                           children: [
                             _ProfileStat(
-                              label: 'Articles',
+                              label: '文章',
                               value: _myPosts.length.toString(),
                             ),
                             Container(
@@ -7053,7 +7053,7 @@ class CommunityProfileScreen extends StatelessWidget {
                       fontWeight: FontWeight.w700,
                     ),
                     tabs: [
-                      Tab(text: 'Articles'),
+                      Tab(text: '文章'),
                       Tab(text: 'Replies'),
                     ],
                   ),
@@ -7084,8 +7084,8 @@ class _ArticleTab extends StatelessWidget {
   Widget build(BuildContext context) {
     if (posts.isEmpty) {
       return const _EmptyProfileState(
-        title: 'No articles yet',
-        subtitle: 'Share your first jogging update from the community page.',
+        title: '目前沒有文章',
+        subtitle: '從社群頁面分享你的第一則慢跑近況。',
       );
     }
 
@@ -7111,7 +7111,7 @@ class _RepliesTab extends StatelessWidget {
     if (replies.isEmpty) {
       return const _EmptyProfileState(
         title: 'No replies yet',
-        subtitle: 'Replies from other people on your posts will appear here.',
+        subtitle: '其他人對你的貼文的回覆將顯示在這裡。',
       );
     }
 
@@ -7177,7 +7177,7 @@ class _RepliesTab extends StatelessWidget {
                   borderRadius: BorderRadius.circular(14),
                 ),
                 child: Text(
-                  'On: ${reply.postPreview}',
+                  '於：${reply.postPreview}',
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
