@@ -223,11 +223,11 @@ class PoseAnalyzer {
       double calcArmScore(double angle) {
         double score = 20.0;
         if (isSideFacing) {
-          // 側面精準要求 75~110
-          if (angle < 75) score -= (75 - angle) * 0.5;
-          else if (angle > 110) score -= (angle - 110) * 0.8;
+          // 🏃 跑步時手臂擺動，側面視角角度會從 60度(前擺) 到 140度(後擺) 劇烈變化
+          // 因此只要不是完全下垂(>155)或夾死(<45)，都應視為合理擺動
+          if (angle < 45) score -= (45 - angle) * 0.5;
+          else if (angle > 155) score -= (angle - 155) * 0.8;
         } else {
-          // 🎥 2D影片人物手舉高時，投影角度可能非常小
           // 正面投影容錯放寬 20~160
           if (angle < 20) score -= (20 - angle) * 0.5;
           else if (angle > 160) score -= (angle - 160) * 0.8;
@@ -236,7 +236,6 @@ class PoseAnalyzer {
       }
       
       if (isSideFacing) {
-        // 側面時只採信信心度較高的那一隻手，並將分數乘以 2 (滿分40)
         double leftArmConfidence = (leftElbow?.likelihood ?? 0) + (leftWrist?.likelihood ?? 0);
         double rightArmConfidence = (rightElbow?.likelihood ?? 0) + (rightWrist?.likelihood ?? 0);
         if (leftArmConfidence > rightArmConfidence) {
@@ -252,22 +251,17 @@ class PoseAnalyzer {
       // 3. 膝蓋微彎 (40分)
       double calcKneeScore(double angle, PoseLandmark? k) {
         double score = 20.0;
-        // 🎥 正面看膝蓋微彎時，2D 投影出來也常常是 170~175 度
-        double maxIdeal = isSideFacing ? 165.0 : 175.0;
-        if (k != null && k.likelihood < 0.7) maxIdeal = 179.0; // 長褲補償
+        // 🏃 跑步的動態週期中，腳踩地的「支撐腳」角度會非常接近 170~175度
+        // 所以絕不能看到膝蓋直就扣分！只要不是立正鎖死(180)即可。
+        double maxIdeal = 175.0; 
+        if (k != null && k.likelihood < 0.7) maxIdeal = 179.0; // 長褲或模糊補償
 
-        if (isSideFacing) {
-          if (angle < 130) score -= (130 - angle) * 0.5;
-          else if (angle > maxIdeal) score -= (angle - maxIdeal) * 2.0;
-        } else {
-          if (angle < 90) score -= (90 - angle) * 0.5;
-          else if (angle > maxIdeal) score -= (angle - maxIdeal) * 2.0;
-        }
+        if (angle < 90) score -= (90 - angle) * 0.5;
+        else if (angle > maxIdeal) score -= (angle - maxIdeal) * 2.0;
         return math.max(0.0, score);
       }
       
       if (isSideFacing) {
-        // 側面時只採信信心度較高的那一隻腳，並將分數乘以 2 (滿分40)
         if ((leftKnee?.likelihood ?? 0) > (rightKnee?.likelihood ?? 0)) {
           currentAccuracy += calcKneeScore(leftKneeAngle, leftKnee) * 2;
         } else {
