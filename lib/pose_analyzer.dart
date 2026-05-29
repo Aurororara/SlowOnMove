@@ -270,6 +270,16 @@ class PoseAnalyzer {
       } else {
         currentAccuracy += calcKneeScore(leftKneeAngle, leftKnee);
         currentAccuracy += calcKneeScore(rightKneeAngle, rightKnee);
+        
+        // 🚨 防作弊：過濾掉「開合跳」、「側弓步」等雙腳張太開的非慢跑動作
+        if (leftShoulder != null && rightShoulder != null && leftAnkle != null && rightAnkle != null) {
+          double shoulderWidth = (leftShoulder.x - rightShoulder.x).abs();
+          double ankleWidth = (leftAnkle.x - rightAnkle.x).abs();
+          if (shoulderWidth > 0 && ankleWidth > shoulderWidth * 1.5) {
+            currentAccuracy -= 40.0; // 腳張太開直接重扣
+            _currentFeedback.add('雙腳太開囉！超慢跑的步伐應該與肩同寬。');
+          }
+        }
       }
 
       // 4. 超慢跑計步與怠速 (1.5 秒)
