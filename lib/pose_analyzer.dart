@@ -245,7 +245,7 @@ class PoseAnalyzer {
       currentAccuracy += calcKneeScore(rightKneeAngle, rightKnee);
 
       // 4. 超慢跑計步與怠速 (1.5 秒)
-      double yDiff = leftKnee.y - rightKnee.y;
+      double yDiff = leftKnee!.y - rightKnee!.y;
       if (yDiff < -15) {
         if (!_isKneeHigh) {
           _stepCount++;
