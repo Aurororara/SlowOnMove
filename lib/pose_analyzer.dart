@@ -88,12 +88,10 @@ class PoseAnalyzer {
       double rightTorsoAngle = _calculateAngleWithVertical(rightShoulder, rightHip);
       double avgTorsoAngle = (leftTorsoAngle + rightTorsoAngle) / 2;
 
-      // 完美慢跑軀幹角度：5° ~ 15°
+      // 🎥 2D影像修正：挺直(0度)到微前傾(20度)都是完美的
       double torsoScore = 20.0;
-      if (avgTorsoAngle < 5) {
-        torsoScore -= (5 - avgTorsoAngle) * 2; // 太直
-      } else if (avgTorsoAngle > 15) {
-        torsoScore -= (avgTorsoAngle - 15) * 1.5; // 太彎
+      if (avgTorsoAngle > 20) {
+        torsoScore -= (avgTorsoAngle - 20) * 1.5; // 太彎才扣分
       }
       if (torsoScore < 0) torsoScore = 0;
       currentAccuracy += torsoScore;
@@ -113,14 +111,15 @@ class PoseAnalyzer {
     final rightWrist = pose.landmarks[PoseLandmarkType.rightWrist];
 
     double calculateArmScore(PoseLandmark? s, PoseLandmark? e, PoseLandmark? w) {
-      if (s == null || e == null || w == null) return 0; // 沒抓到手給0分
+      if (s == null || e == null || w == null) return 0;
       double angle = _calculateAngle3P(s, e, w);
-      // 完美手肘角度：75° ~ 105° (約 90°)
+      // 🎥 2D影像修正：正面拍攝時，手臂往前擺的 2D 投影角度看起來會接近 150 度甚至更直
+      // 因此放寬完美區間為 45° ~ 155°，只有在完全下垂不動(>155)時才扣分
       double score = 20.0;
-      if (angle < 75) {
-        score -= (75 - angle) * 0.5;
-      } else if (angle > 105) {
-        score -= (angle - 105) * 0.5; // 伸直(180)會大扣分 (180-105)*0.5 = 37.5 -> 變0分
+      if (angle < 45) {
+        score -= (45 - angle) * 0.5;
+      } else if (angle > 155) {
+        score -= (angle - 155) * 0.8; // 完全直挺挺(180)會扣 20 分
       }
       return math.max(0.0, score);
     }
@@ -136,18 +135,19 @@ class PoseAnalyzer {
       if (h == null || k == null || a == null) return 0;
       double angle = _calculateAngle3P(h, k, a);
       
-      // 👗 長褲誤差補償機制 (Clothing Compensation)
-      double maxIdealAngle = 165.0; // 預設最大完美角度 (超過代表站太直)
+      // 👗 長褲與正面視角補償
+      // 正面看膝蓋微彎時，2D 投影出來也常常是 170~175 度
+      double maxIdealAngle = 170.0; 
       if (k.likelihood < 0.7) {
-        maxIdealAngle = 175.0; // 若信心度低(可能穿長褲)，放寬容錯至175度
+        maxIdealAngle = 178.0; // 穿長褲或偵測模糊時，幾乎不扣打直的分數
       }
 
-      // 完美膝蓋緩衝角度：130° ~ maxIdealAngle
+      // 完美膝蓋緩衝角度：90° ~ maxIdealAngle
       double score = 20.0;
-      if (angle < 130) {
-        score -= (130 - angle) * 0.5; // 蹲太低
+      if (angle < 90) {
+        score -= (90 - angle) * 0.5; // 蹲太低
       } else if (angle > maxIdealAngle) {
-        score -= (angle - maxIdealAngle) * 1.5; // 站直(180)大扣分 (180-165)*1.5 = 22.5 -> 變0分
+        score -= (angle - maxIdealAngle) * 2.0; // 只有在明確鎖死大於 170/178 時才扣分
       }
       return math.max(0.0, score);
     }
@@ -160,13 +160,14 @@ class PoseAnalyzer {
       double yDiff = leftKnee.y - rightKnee.y;
       bool stepTaken = false;
       
-      if (yDiff < -30) {
+      // 🎥 2D影片人物比例可能較小，將門檻從 30 調回 15，避免影片中人物太遠抓不到步伐
+      if (yDiff < -15) {
         if (!_isKneeHigh) {
           _stepCount++;
           _isKneeHigh = true;
           stepTaken = true;
         }
-      } else if (yDiff > 30) {
+      } else if (yDiff > 15) {
         if (_isKneeHigh) {
           _stepCount++;
           _isKneeHigh = false;
@@ -181,7 +182,7 @@ class PoseAnalyzer {
         DateTime referenceTime = _lastStepTime ?? _firstFrameTime!;
         if (DateTime.now().difference(referenceTime).inMilliseconds > 1500) {
           _standingStillFrames++;
-          currentAccuracy -= 50.0; // 除了角度拿不到滿分外，定格不動再直接倒扣 50 分！
+          currentAccuracy -= 50.0; // 定格不動再直接倒扣 50 分！
           if (_standingStillFrames > 10) {
              _currentFeedback.add('請保持動作，不要停下來喔！');
           }
