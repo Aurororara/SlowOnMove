@@ -227,9 +227,10 @@ class PoseAnalyzer {
           if (angle < 75) score -= (75 - angle) * 0.5;
           else if (angle > 110) score -= (angle - 110) * 0.8;
         } else {
-          // 正面投影容錯放寬 45~155
-          if (angle < 45) score -= (45 - angle) * 0.5;
-          else if (angle > 155) score -= (angle - 155) * 0.8;
+          // 🎥 2D影片人物手舉高時，投影角度可能非常小
+          // 正面投影容錯放寬 20~160
+          if (angle < 20) score -= (20 - angle) * 0.5;
+          else if (angle > 160) score -= (angle - 160) * 0.8;
         }
         return math.max(0.0, score);
       }
@@ -251,8 +252,9 @@ class PoseAnalyzer {
       // 3. 膝蓋微彎 (40分)
       double calcKneeScore(double angle, PoseLandmark? k) {
         double score = 20.0;
-        double maxIdeal = isSideFacing ? 165.0 : 170.0;
-        if (k != null && k.likelihood < 0.7) maxIdeal = 178.0; // 長褲補償
+        // 🎥 正面看膝蓋微彎時，2D 投影出來也常常是 170~175 度
+        double maxIdeal = isSideFacing ? 165.0 : 175.0;
+        if (k != null && k.likelihood < 0.7) maxIdeal = 179.0; // 長褲補償
 
         if (isSideFacing) {
           if (angle < 130) score -= (130 - angle) * 0.5;
@@ -278,13 +280,22 @@ class PoseAnalyzer {
 
       // 4. 超慢跑計步與怠速 (1.5 秒)
       double yDiff = leftKnee!.y - rightKnee!.y;
-      if (yDiff < -15) {
+      
+      // 🎥 動態步伐門檻 (Dynamic Step Threshold)
+      // 若影片人物較遠，15像素可能太大。改用軀幹長度的比例來判定 (約 8%)
+      double torsoHeight = 100.0; // default
+      if (leftShoulder != null && leftHip != null && rightShoulder != null && rightHip != null) {
+         torsoHeight = ((leftShoulder.y + rightShoulder.y) / 2 - (leftHip.y + rightHip.y) / 2).abs();
+      }
+      double stepThreshold = math.max(4.0, torsoHeight * 0.08);
+
+      if (yDiff < -stepThreshold) {
         if (!_isKneeHigh) {
           _stepCount++;
           _isKneeHigh = true;
           stepTaken = true;
         }
-      } else if (yDiff > 15) {
+      } else if (yDiff > stepThreshold) {
         if (_isKneeHigh) {
           _stepCount++;
           _isKneeHigh = false;
