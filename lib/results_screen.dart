@@ -79,16 +79,16 @@ class _ResultsScreenState extends State<ResultsScreen> {
         }),
       );
 
-      debugPrint(
-          "送出的運動資料：分鐘=$totalMins, 熱量=$fixedCalories, 步數=$fixedSteps, 里程=$fixedDistance");
-      debugPrint("後端回應狀態碼：${response.statusCode}");
-      debugPrint("後端回應內容：${response.body}");
+      //   debugPrint(
+      //       "送出的運動資料：分鐘=$totalMins, 熱量=$fixedCalories, 步數=$fixedSteps, 里程=$fixedDistance");
+      //   debugPrint("後端回應狀態碼：${response.statusCode}");
+      //   debugPrint("後端回應內容：${response.body}");
 
-      if (response.statusCode == 201) {
-        debugPrint("✅ 數據存入成功");
-      } else {
-        debugPrint("❌ 儲存失敗：${response.statusCode}");
-      }
+      //   if (response.statusCode == 201) {
+      //     debugPrint("✅ 數據存入成功");
+      //   } else {
+      //     debugPrint("❌ 儲存失敗：${response.statusCode}");
+      //   }
     } catch (e) {
       debugPrint("⚠️ 連線異常: $e");
     }

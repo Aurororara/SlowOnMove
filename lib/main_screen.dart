@@ -341,16 +341,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
         final int currentStreak = _calculateCurrentStreak(activeDates);
 
-        debugPrint('首頁目前會員 ID：$currentMemberId');
-        debugPrint('首頁我的最新 5 筆：${jsonEncode(myLogs.take(5).toList())}');
-        debugPrint('首頁今日原始資料：${jsonEncode(todayLogs)}');
-        debugPrint('首頁全部紀錄數量：${allLogs.length}');
-        debugPrint('首頁我的紀錄數量：${myLogs.length}');
-        debugPrint('首頁今日紀錄數量：$todayTrainingCount');
-        debugPrint('首頁今日熱量：$todayCalories');
-        debugPrint('首頁今日步數：$todaySteps');
-        debugPrint('首頁今日里程：$todayDistance');
-        debugPrint('首頁今日分鐘：$todayMins');
+        // debugPrint('首頁目前會員 ID：$currentMemberId');
+        // debugPrint('首頁我的最新 5 筆：${jsonEncode(myLogs.take(5).toList())}');
+        // debugPrint('首頁今日原始資料：${jsonEncode(todayLogs)}');
+        // debugPrint('首頁全部紀錄數量：${allLogs.length}');
+        // debugPrint('首頁我的紀錄數量：${myLogs.length}');
+        // debugPrint('首頁今日紀錄數量：$todayTrainingCount');
+        // debugPrint('首頁今日熱量：$todayCalories');
+        // debugPrint('首頁今日步數：$todaySteps');
+        // debugPrint('首頁今日里程：$todayDistance');
+        // debugPrint('首頁今日分鐘：$todayMins');
 
         if (mounted) {
           setState(() {
