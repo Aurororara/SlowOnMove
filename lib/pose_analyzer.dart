@@ -50,7 +50,6 @@ class PoseAnalyzer {
 
     final pose = poses.first;
     _currentFeedback.clear();
-    double currentAccuracy = 100.0;
 
     final leftKnee = pose.landmarks[PoseLandmarkType.leftKnee];
     final rightKnee = pose.landmarks[PoseLandmarkType.rightKnee];
