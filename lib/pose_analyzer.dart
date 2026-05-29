@@ -74,7 +74,11 @@ class PoseAnalyzer {
       return _lastResult!;
     }
 
-    // 1. Core Posture Analysis (Back should be straight)
+    // ======== 核心演算法：角度相似度 (Angle Similarity) ========
+    // 滿分 100 分，由三個部位的角度相似度加總：軀幹(20分) + 手臂(40分) + 膝蓋(40分)
+    double currentAccuracy = 0.0;
+    
+    // 1. 軀幹前傾角度 (Torso Angle) - 權重 20分
     final leftShoulder = pose.landmarks[PoseLandmarkType.leftShoulder];
     final leftHip = pose.landmarks[PoseLandmarkType.leftHip];
     final rightShoulder = pose.landmarks[PoseLandmarkType.rightShoulder];
@@ -85,25 +89,78 @@ class PoseAnalyzer {
       double rightTorsoAngle = _calculateAngleWithVertical(rightShoulder, rightHip);
       double avgTorsoAngle = (leftTorsoAngle + rightTorsoAngle) / 2;
 
-      // 超慢跑允許微微前傾，大於 25 度才開始扣分
+      // 完美慢跑軀幹角度：5° ~ 15°
+      double torsoScore = 20.0;
+      if (avgTorsoAngle < 5) {
+        torsoScore -= (5 - avgTorsoAngle) * 2; // 太直
+      } else if (avgTorsoAngle > 15) {
+        torsoScore -= (avgTorsoAngle - 15) * 1.5; // 太彎
+      }
+      if (torsoScore < 0) torsoScore = 0;
+      currentAccuracy += torsoScore;
+
       if (avgTorsoAngle > 25) {
         _leanForwardFrames++;
-        currentAccuracy -= (avgTorsoAngle - 25); // 減輕扣分幅度
-        if (_leanForwardFrames > 15) {
-          _currentFeedback.add('身體太前傾了，請挺直腰桿！');
-        }
+        if (_leanForwardFrames > 15) _currentFeedback.add('身體太前傾了，請挺直腰桿！');
       } else {
         _leanForwardFrames = 0;
       }
     }
 
-    // 2. Leg Action Analysis (Step counting using knee Y differences)
+    // 2. 手臂擺動與彎曲角度 (Arm Bend Angle) - 權重 40分 (左右手各 20分)
+    final leftElbow = pose.landmarks[PoseLandmarkType.leftElbow];
+    final leftWrist = pose.landmarks[PoseLandmarkType.leftWrist];
+    final rightElbow = pose.landmarks[PoseLandmarkType.rightElbow];
+    final rightWrist = pose.landmarks[PoseLandmarkType.rightWrist];
+
+    double calculateArmScore(PoseLandmark? s, PoseLandmark? e, PoseLandmark? w) {
+      if (s == null || e == null || w == null) return 0; // 沒抓到手給0分
+      double angle = _calculateAngle3P(s, e, w);
+      // 完美手肘角度：75° ~ 105° (約 90°)
+      double score = 20.0;
+      if (angle < 75) {
+        score -= (75 - angle) * 0.5;
+      } else if (angle > 105) {
+        score -= (angle - 105) * 0.5; // 伸直(180)會大扣分 (180-105)*0.5 = 37.5 -> 變0分
+      }
+      return math.max(0.0, score);
+    }
+    
+    currentAccuracy += calculateArmScore(leftShoulder, leftElbow, leftWrist);
+    currentAccuracy += calculateArmScore(rightShoulder, rightElbow, rightWrist);
+
+    // 3. 膝蓋微彎與彈性 (Knee Angle) - 權重 40分 (左右腳各 20分)
+    final leftAnkle = pose.landmarks[PoseLandmarkType.leftAnkle];
+    final rightAnkle = pose.landmarks[PoseLandmarkType.rightAnkle];
+
+    double calculateKneeScore(PoseLandmark? h, PoseLandmark? k, PoseLandmark? a) {
+      if (h == null || k == null || a == null) return 0;
+      double angle = _calculateAngle3P(h, k, a);
+      
+      // 👗 長褲誤差補償機制 (Clothing Compensation)
+      double maxIdealAngle = 165.0; // 預設最大完美角度 (超過代表站太直)
+      if (k.likelihood < 0.7) {
+        maxIdealAngle = 175.0; // 若信心度低(可能穿長褲)，放寬容錯至175度
+      }
+
+      // 完美膝蓋緩衝角度：130° ~ maxIdealAngle
+      double score = 20.0;
+      if (angle < 130) {
+        score -= (130 - angle) * 0.5; // 蹲太低
+      } else if (angle > maxIdealAngle) {
+        score -= (angle - maxIdealAngle) * 1.5; // 站直(180)大扣分 (180-165)*1.5 = 22.5 -> 變0分
+      }
+      return math.max(0.0, score);
+    }
+
+    currentAccuracy += calculateKneeScore(leftHip, leftKnee, leftAnkle);
+    currentAccuracy += calculateKneeScore(rightHip, rightKnee, rightAnkle);
+
+    // ======== 動態步數計算與怠速懲罰 ========
     if (leftKnee != null && rightKnee != null) {
-      // 在 ML Kit 中，Y 越小代表在畫面上越上方
       double yDiff = leftKnee.y - rightKnee.y;
       bool stepTaken = false;
       
-      // 將門檻從 12 提高到 30，避免相機雜訊（微小晃動）被誤判為走路
       if (yDiff < -30) {
         if (!_isKneeHigh) {
           _stepCount++;
@@ -122,20 +179,15 @@ class PoseAnalyzer {
         _lastStepTime = DateTime.now();
         _standingStillFrames = 0;
       } else {
-        // 把怠速時間縮短到 1.5 秒，並且加重扣分，讓測試時非常有感
         DateTime referenceTime = _lastStepTime ?? _firstFrameTime!;
         if (DateTime.now().difference(referenceTime).inMilliseconds > 1500) {
           _standingStillFrames++;
-          currentAccuracy -= 80.0; // 定格不動直接扣 80 分（畫面上會直接掉到 20%）
+          currentAccuracy -= 50.0; // 除了角度拿不到滿分外，定格不動再直接倒扣 50 分！
           if (_standingStillFrames > 10) {
              _currentFeedback.add('請保持動作，不要停下來喔！');
           }
         }
       }
-      
-      // 移除原本不合理的膝蓋高度扣分邏輯，因為：
-      // 1. 原本的 leftHip.y - leftKnee.y 是負數，導致永遠小於 threshold，永遠被扣分
-      // 2. 超慢跑本來就「不需要」高抬膝，步伐小是正常的
     }
 
     if (currentAccuracy < 0) currentAccuracy = 0;
@@ -154,6 +206,17 @@ class PoseAnalyzer {
     double dx = bottom.x - top.x;
     double dy = bottom.y - top.y;
     double angle = math.atan2(dx.abs(), dy.abs()) * 180 / math.pi;
+    return angle;
+  }
+
+  // Calculate angle between 3 points (a -> b -> c)
+  double _calculateAngle3P(PoseLandmark a, PoseLandmark b, PoseLandmark c) {
+    double radians = math.atan2(c.y - b.y, c.x - b.x) - math.atan2(a.y - b.y, a.x - b.x);
+    double angle = radians * 180.0 / math.pi;
+    angle = angle.abs();
+    if (angle > 180.0) {
+      angle = 360.0 - angle;
+    }
     return angle;
   }
 
