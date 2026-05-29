@@ -26,6 +26,10 @@ class PoseAnalyzer {
 
   DateTime? _lastAnalyzeTime;
   PoseAnalysisResult? _lastResult;
+  
+  DateTime? _firstFrameTime;
+  DateTime? _lastStepTime;
+  int _standingStillFrames = 0;
 
   PoseAnalysisResult analyze(List<Pose> poses) {
     if (poses.isEmpty) {
@@ -42,6 +46,7 @@ class PoseAnalyzer {
       return _lastResult!;
     }
     _lastAnalyzeTime = currentTime;
+    _firstFrameTime ??= currentTime;
 
     final pose = poses.first;
     _currentFeedback.clear();
@@ -97,16 +102,34 @@ class PoseAnalyzer {
       // 在 ML Kit 中，Y 越小代表在畫面上越上方
       // 左膝蓋比右膝蓋高出一定距離 (例如 15 單位)
       double yDiff = leftKnee.y - rightKnee.y;
+      bool stepTaken = false;
       
       if (yDiff < -12) {
         if (!_isKneeHigh) {
           _stepCount++;
           _isKneeHigh = true;
+          stepTaken = true;
         }
       } else if (yDiff > 12) {
         if (_isKneeHigh) {
           _stepCount++;
           _isKneeHigh = false;
+          stepTaken = true;
+        }
+      }
+      
+      if (stepTaken) {
+        _lastStepTime = DateTime.now();
+        _standingStillFrames = 0;
+      } else {
+        // 如果超過 3 秒沒有任何步伐動作，視為「定格/站直不動」，給予嚴厲扣分
+        DateTime referenceTime = _lastStepTime ?? _firstFrameTime!;
+        if (DateTime.now().difference(referenceTime).inSeconds > 3) {
+          _standingStillFrames++;
+          currentAccuracy -= 50.0; // 定格不動直接扣 50 分
+          if (_standingStillFrames > 15) {
+             _currentFeedback.add('請保持動作，不要停下來喔！');
+          }
         }
       }
       
