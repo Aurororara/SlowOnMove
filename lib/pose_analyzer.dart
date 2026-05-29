@@ -306,15 +306,15 @@ class PoseAnalyzer {
         }
       }
 
-      // 4. 超慢跑計步與怠速 (1.5 秒)
-      double yDiff = leftKnee!.y - rightKnee!.y;
+      // 4. 超慢跑計步與腳步判定 (改用「腳踝」判斷步伐，因為慢跑時腳踝的高低差遠大於膝蓋！)
+      double yDiff = leftAnkle!.y - rightAnkle!.y;
       
-      // 🎥 動態步伐門檻：大幅降低門檻到軀幹的 4%，確保微小的慢跑步伐也能被偵測，避免冤枉扣怠速分
+      // 🎥 動態步伐門檻：腳踝高低差只要大於軀幹的 5% 就視為踏步
       double torsoHeight = 100.0;
       if (leftShoulder != null && leftHip != null && rightShoulder != null && rightHip != null) {
          torsoHeight = ((leftShoulder.y + rightShoulder.y) / 2 - (leftHip.y + rightHip.y) / 2).abs();
       }
-      double stepThreshold = math.max(3.0, torsoHeight * 0.04);
+      double stepThreshold = math.max(5.0, torsoHeight * 0.05);
 
       if (yDiff < -stepThreshold) {
         if (!_isKneeHigh) {
@@ -330,6 +330,30 @@ class PoseAnalyzer {
         }
       }
       
+      // 5. 🦶 腳掌落地判定 (Forefoot vs Heel Strike) - 僅側面能精準判定
+      if (isSideFacing) {
+        final leftHeel = pose.landmarks[PoseLandmarkType.leftHeel];
+        final leftToe = pose.landmarks[PoseLandmarkType.leftFootIndex];
+        final rightHeel = pose.landmarks[PoseLandmarkType.rightHeel];
+        final rightToe = pose.landmarks[PoseLandmarkType.rightFootIndex];
+        
+        if (leftHeel != null && leftToe != null && rightHeel != null && rightToe != null) {
+          // 找出目前「著地」的那隻腳 (Y 座標最大的，也就是最底下的)
+          bool isLeftLegDown = leftAnkle.y > rightAnkle.y;
+          PoseLandmark activeHeel = isLeftLegDown ? leftHeel : rightHeel;
+          PoseLandmark activeToe = isLeftLegDown ? leftToe : rightToe;
+          
+          // 如果腳跟的 Y 座標「明顯大於」腳尖 (腳跟比腳尖低)，代表是「腳跟重落地 (Heel Strike)」
+          // 正常的超慢跑應該是前腳掌/全腳掌著地，腳尖高度會低於或等於腳跟
+          // 這裡加上一個小寬容值避免誤判
+          if (activeHeel.y > activeToe.y + (torsoHeight * 0.05)) {
+            currentAccuracy -= 20.0; 
+            _currentFeedback.add('請以前腳掌或全腳掌輕觸地面，腳跟再自然跟上，避免腳跟重落地！');
+          }
+        }
+      }
+      
+      // 怠速判定 (1.5 秒)
       if (stepTaken) {
         _lastStepTime = DateTime.now();
         _standingStillFrames = 0;
