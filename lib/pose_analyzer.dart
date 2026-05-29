@@ -228,9 +228,9 @@ class PoseAnalyzer {
           if (angle < 45) score -= (45 - angle) * 0.5;
           else if (angle > 155) score -= (angle - 155) * 0.8;
         } else {
-          // 正面投影容錯放寬 20~160
+          // 正面投影容錯放寬 20~140 (不允許手完全伸直，例如T字或立正)
           if (angle < 20) score -= (20 - angle) * 0.5;
-          else if (angle > 160) score -= (angle - 160) * 0.8;
+          else if (angle > 140) score -= (angle - 140) * 0.8;
         }
         return math.max(0.0, score);
       }
@@ -278,6 +278,16 @@ class PoseAnalyzer {
           if (shoulderWidth > 0 && ankleWidth > shoulderWidth * 1.5) {
             currentAccuracy -= 40.0; // 腳張太開直接重扣
             _currentFeedback.add('雙腳太開囉！超慢跑的步伐應該與肩同寬。');
+          }
+        }
+
+        // 🚨 防作弊：過濾掉「T字手」、「大字型」等手臂張太開的動作
+        if (leftShoulder != null && rightShoulder != null && leftWrist != null && rightWrist != null) {
+          double shoulderWidth = (leftShoulder.x - rightShoulder.x).abs();
+          double wristWidth = (leftWrist.x - rightWrist.x).abs();
+          if (shoulderWidth > 0 && wristWidth > shoulderWidth * 2.5) {
+            currentAccuracy -= 40.0; // 手張太開直接重扣
+            _currentFeedback.add('手臂張太開囉！超慢跑請將雙臂自然擺放在身體兩側。');
           }
         }
       }
