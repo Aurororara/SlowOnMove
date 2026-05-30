@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'services/user_session.dart';
 
@@ -1877,6 +1878,81 @@ class _PlanStepEditor extends StatelessWidget {
     required this.onRemove,
   });
 
+  Future<void> _pickMinutes(BuildContext context) async {
+    final currentMinutes = int.tryParse(step.minutes.text.trim()) ?? 10;
+    final initialMinutes = currentMinutes.clamp(1, 180);
+    var selectedMinutes = initialMinutes;
+    final pickerController =
+        FixedExtentScrollController(initialItem: initialMinutes - 1);
+
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) {
+        return SafeArea(
+          top: false,
+          child: SizedBox(
+            height: 300,
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                  child: Row(
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.of(sheetContext).pop(),
+                        child: const Text('取消'),
+                      ),
+                      const Spacer(),
+                      const Text(
+                        '選擇分鐘數',
+                        style: TextStyle(
+                          color: Colors.black,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () {
+                          step.minutes.text = selectedMinutes.toString();
+                          Navigator.of(sheetContext).pop();
+                        },
+                        child: const Text('完成'),
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: CupertinoPicker(
+                    scrollController: pickerController,
+                    itemExtent: 40,
+                    useMagnifier: true,
+                    magnification: 1.08,
+                    onSelectedItemChanged: (value) {
+                      selectedMinutes = value + 1;
+                    },
+                    children: List.generate(
+                      180,
+                      (index) => Center(
+                        child: Text(
+                          '${index + 1} 分鐘',
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Container(
@@ -1915,10 +1991,15 @@ class _PlanStepEditor extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          TextField(
-            controller: step.minutes,
-            keyboardType: TextInputType.number,
-            decoration: _composerInputDecoration('分鐘數'),
+          InkWell(
+            onTap: () => _pickMinutes(context),
+            borderRadius: BorderRadius.circular(16),
+            child: IgnorePointer(
+              child: TextField(
+                controller: step.minutes,
+                decoration: _composerInputDecoration('分鐘數'),
+              ),
+            ),
           ),
         ],
       ),
@@ -4546,6 +4627,7 @@ class _GroupsPanelState extends State<_GroupsPanel> {
       MaterialPageRoute(
         builder: (_) => _GroupDetailScreen(
           group: group,
+          onGroupUpdated: _updateGroup,
           onMessageTap: widget.onMessageTap,
           inviteableFriends: _availableInviteFriends,
           onInviteFriend: _inviteFriendToGroup,
@@ -4554,6 +4636,25 @@ class _GroupsPanelState extends State<_GroupsPanel> {
         ),
       ),
     );
+  }
+
+  void _updateGroup(_MyGroup updatedGroup) {
+    setState(() {
+      final index =
+          _myGroups.indexWhere((item) => item.name == updatedGroup.name);
+      if (index != -1) {
+        _myGroups[index] = updatedGroup;
+      }
+
+      final discoverIndex =
+          _discoverGroups.indexWhere((item) => item.name == updatedGroup.name);
+      if (discoverIndex != -1) {
+        _discoverGroups[discoverIndex] =
+            _discoverGroups[discoverIndex].copyWith(
+          exerciseType: updatedGroup.exerciseType,
+        );
+      }
+    });
   }
 
   void _leaveGroup(_MyGroup group) {
@@ -5522,6 +5623,7 @@ class _CreateGroupButton extends StatelessWidget {
 
 class _GroupDetailScreen extends StatefulWidget {
   final _MyGroup group;
+  final ValueChanged<_MyGroup> onGroupUpdated;
   final ValueChanged<_RunInviteFriend> onMessageTap;
   final List<_RunInviteFriend> inviteableFriends;
   final _MyGroup Function(_MyGroup group, _RunInviteFriend friend)
@@ -5531,6 +5633,7 @@ class _GroupDetailScreen extends StatefulWidget {
 
   const _GroupDetailScreen({
     required this.group,
+    required this.onGroupUpdated,
     required this.onMessageTap,
     required this.inviteableFriends,
     required this.onInviteFriend,
@@ -5646,6 +5749,7 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
 
     setState(() {
       _group = _group.copyWith(
+        exerciseType: _selectedEventActivityType,
         activities: [
           _GroupActivityEntry(
             title: title,
@@ -5663,6 +5767,8 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
       _selectedEventTime = null;
       _selectedTab = 1;
     });
+
+    widget.onGroupUpdated(_group);
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('已建立群組活動：$title')),
