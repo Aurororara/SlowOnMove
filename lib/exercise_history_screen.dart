@@ -85,7 +85,7 @@ class _ExerciseHistoryScreenState extends State<ExerciseHistoryScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          'Exercise History',
+          '運動歷史紀錄',
           style: TextStyle(
             color: Colors.black,
             fontWeight: FontWeight.bold,
@@ -196,20 +196,20 @@ class _ExerciseHistoryScreenState extends State<ExerciseHistoryScreen> {
               children: [
                 Expanded(
                   child: _buildStatItem(
-                    '$duration min',
-                    'Duration',
+                    '$duration 分鐘',
+                    '運動時間',
                   ),
                 ),
                 Expanded(
                   child: _buildStatItem(
-                    '$calories kcal',
-                    'Calories',
+                    '$calories 大卡',
+                    '消耗熱量',
                   ),
                 ),
                 Expanded(
                   child: _buildStatItem(
                     distanceText,
-                    'Distance',
+                    '運動距離',
                   ),
                 ),
               ],
@@ -231,14 +231,14 @@ class _ExerciseHistoryScreenState extends State<ExerciseHistoryScreen> {
                 children: [
                   _buildDetailRow(
                     Icons.timer_outlined,
-                    "Time Range",
+                    "時間範圍",
                     "$startTimeFull - $endTimeFull",
                     Colors.blueGrey,
                   ),
                   const SizedBox(height: 12),
                   _buildDetailRow(
                     Icons.gps_fixed,
-                    "Posture Accuracy",
+                    "姿勢準確度",
                     "$accuracy%",
                     Colors.green,
                   ),
@@ -333,7 +333,7 @@ class _ExerciseHistoryScreenState extends State<ExerciseHistoryScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Slow Jog Session',
+            '超慢跑紀錄',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(

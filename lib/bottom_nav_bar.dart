@@ -29,15 +29,15 @@ class NavBar extends StatelessWidget {
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              _buildNavItem(Icons.home_outlined, 'Home', 0),
-              _buildNavItem(Icons.chat_bubble_outline, 'Community', 1),
+              _buildNavItem(Icons.home_outlined, '主頁', 0),
+              _buildNavItem(Icons.chat_bubble_outline, '社群', 1),
               // 中間的主按鈕：點擊後切換到 index 2 (運動頁面)
               GestureDetector(
                 onTap: () => onTap(2),
                 child: _buildMainPlayButton(),
               ),
-              _buildNavItem(Icons.emoji_events_outlined, 'Ranking', 3),
-              _buildNavItem(Icons.person, 'Me', 4),
+              _buildNavItem(Icons.emoji_events_outlined, '排行榜', 3),
+              _buildNavItem(Icons.person, '我的', 4),
             ],
           ),
         ),
@@ -88,15 +88,17 @@ class NavBar extends StatelessWidget {
             shape: BoxShape.circle,
             color: Colors.black,
             boxShadow: [
-              BoxShadow(color: Colors.black26, blurRadius: 12, offset: Offset(0, 4)),
+              BoxShadow(
+                  color: Colors.black26, blurRadius: 12, offset: Offset(0, 4)),
             ],
           ),
           child: const Icon(Icons.play_arrow, color: Colors.white, size: 32),
         ),
         const SizedBox(height: 6),
         const Text(
-          'Start',
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black),
+          '開始運動',
+          style: TextStyle(
+              fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black),
         ),
       ],
     );

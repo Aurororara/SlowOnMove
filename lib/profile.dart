@@ -135,7 +135,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         ),
                         _buildMenuButton(
                           icon: Icons.shopping_bag_outlined,
-                          title: 'Purchase',
+                          title: '方案購買',
                           subtitle: '查看可購買方案與解鎖內容',
                           iconColor: Colors.amber,
                           onTap: () => Navigator.push(
@@ -468,7 +468,7 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
       backgroundColor: const Color(0xFFF7F9FC),
       appBar: AppBar(
         title: const Text(
-          'Purchase',
+          '儲值方案',
           style: TextStyle(
             color: Colors.black,
             fontWeight: FontWeight.bold,
