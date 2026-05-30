@@ -155,11 +155,6 @@ class _ExerciseHistoryScreenState extends State<ExerciseHistoryScreen> {
 
     final int calories = ((log['calories'] as num?)?.toDouble() ?? 0.0).round();
 
-    final double distance = (log['distance'] as num?)?.toDouble() ?? 0.0;
-
-    final String distanceText = distance < 1
-        ? '${(distance * 1000).round()} m'
-        : '${distance.toStringAsFixed(2)} km';
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
       elevation: 0,
@@ -204,12 +199,6 @@ class _ExerciseHistoryScreenState extends State<ExerciseHistoryScreen> {
                   child: _buildStatItem(
                     '$calories 大卡',
                     '消耗熱量',
-                  ),
-                ),
-                Expanded(
-                  child: _buildStatItem(
-                    distanceText,
-                    '運動距離',
                   ),
                 ),
               ],

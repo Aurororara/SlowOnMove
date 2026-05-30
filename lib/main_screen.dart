@@ -1,7 +1,6 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 
@@ -46,7 +45,10 @@ class _MainScreenState extends State<MainScreen> {
     ];
 
     return Scaffold(
-      body: IndexedStack(index: _selectedIndex, children: pages),
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: pages,
+      ),
       bottomNavigationBar: NavBar(
         currentIndex: _selectedIndex,
         onTap: _onNavTap,
@@ -66,12 +68,10 @@ class _HomeScreenState extends State<HomeScreen> {
   static const List<String> _labels = ['一', '二', '三', '四', '五', '六', '日'];
 
   bool _isLoading = true;
-  final FlutterSecureStorage _storage = const FlutterSecureStorage();
 
   int _todayTrainingCount = 0;
   int _todayCalories = 0;
   int _todaySteps = 0;
-  double _todayDistance = 0.0;
   int _todayMins = 0;
 
   int _weeklyCompletedDays = 0;
@@ -103,66 +103,306 @@ class _HomeScreenState extends State<HomeScreen> {
     return DateTime(date.year, date.month, date.day);
   }
 
-  String _dateKey(DateTime date) => DateFormat('yyyy-MM-dd').format(date);
-
-  String get _checkInStorageKey =>
-      'check_in_dates_member_${UserSession.memberId}';
-
   bool _isSameDay(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 
-  Future<Set<DateTime>> _loadCheckInDates() async {
-    final String? raw = await _storage.read(key: _checkInStorageKey);
+  num _readNum(Map log, List<String> keys) {
+    for (final key in keys) {
+      final value = log[key];
 
-    if (raw == null || raw.isEmpty) {
-      return {};
+      if (value == null) continue;
+
+      if (value is num) {
+        return value;
+      }
+
+      if (value is String) {
+        final parsed = num.tryParse(value);
+
+        if (parsed != null) {
+          return parsed;
+        }
+      }
     }
 
-    try {
-      final List<dynamic> values = jsonDecode(raw) as List<dynamic>;
-      return values
-          .map((value) => DateTime.tryParse(value.toString()))
-          .whereType<DateTime>()
-          .map(_onlyDate)
-          .toSet();
-    } catch (_) {
-      return {};
+    return 0;
+  }
+
+  int _readCalories(Map log) {
+    final num directCalories = _readNum(
+      log,
+      [
+        'calories',
+        'calorie',
+        'kcal',
+        'calories_burned',
+        'calorie_burned',
+      ],
+    );
+
+    if (directCalories > 0) {
+      return directCalories.round();
     }
+
+    final int totalMins = _readNum(
+      log,
+      [
+        'total_mins',
+        'total_minutes',
+      ],
+    ).round();
+
+    if (totalMins > 0) {
+      return (totalMins * 8.0).round();
+    }
+
+    return 0;
   }
 
-  Future<void> _saveCheckInDates(Set<DateTime> dates) async {
-    final List<DateTime> sortedDates = dates.toList()..sort();
-    final List<String> values = sortedDates.map(_dateKey).toList();
+  int _calculateCurrentStreak(Set<DateTime> activeDates) {
+    int streak = 0;
+    DateTime checkingDate = _onlyDate(DateTime.now());
 
-    await _storage.write(key: _checkInStorageKey, value: jsonEncode(values));
+    while (activeDates.contains(checkingDate)) {
+      streak++;
+      checkingDate = checkingDate.subtract(const Duration(days: 1));
+    }
+
+    return streak;
   }
 
-  Future<void> _handleTodayCheckIn() async {
+  void _syncWeeklyState(Set<DateTime> activeDates) {
     final DateTime today = _onlyDate(DateTime.now());
+    final DateTime weekStart = today.subtract(
+      Duration(days: today.weekday - 1),
+    );
+    final DateTime weekEnd = weekStart.add(const Duration(days: 6));
+    final List<bool> weekdayCompleted = List<bool>.filled(7, false);
 
-    if (_activeDates.contains(today)) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('今天已經簽到過了')));
-      return;
+    for (final activeDate in activeDates) {
+      final bool isThisWeek =
+          !activeDate.isBefore(weekStart) && !activeDate.isAfter(weekEnd);
+      final bool isNotFuture = !activeDate.isAfter(today);
+
+      if (isThisWeek && isNotFuture) {
+        weekdayCompleted[activeDate.weekday - 1] = true;
+      }
     }
 
-    final Set<DateTime> updatedDates = {..._activeDates, today};
+    _activeDates = activeDates;
+    _weekdayCompleted = weekdayCompleted;
+    _weeklyCompletedDays =
+        weekdayCompleted.where((completed) => completed).length;
+    _currentStreak = _calculateCurrentStreak(activeDates);
+  }
 
-    setState(() {
-      _syncWeeklyCheckInState(updatedDates);
-    });
-
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('今日簽到成功')));
+  Future<void> _fetchHomeData() async {
+    final int currentMemberId = UserSession.memberId;
 
     try {
-      await _saveCheckInDates(updatedDates);
+      final response = await http.get(
+        Uri.parse(_buildUrl('training-logs/')),
+      );
+
+      if (response.statusCode == 200) {
+        final List allLogs = json.decode(response.body);
+        final DateTime now = DateTime.now();
+
+        final List myLogs = allLogs.where((rawLog) {
+          final Map log = rawLog as Map;
+
+          final bool isMyLog =
+              log['member']?.toString() == currentMemberId.toString();
+
+          return isMyLog;
+        }).toList();
+
+        final List todayLogs = myLogs.where((rawLog) {
+          final Map log = rawLog as Map;
+
+          final String? startTimeText = log['start_time']?.toString();
+          final String? createdAtText = log['created_at']?.toString();
+
+          bool isStartTimeToday = false;
+          bool isCreatedAtToday = false;
+
+          if (startTimeText != null && startTimeText.isNotEmpty) {
+            final DateTime startTime = DateTime.parse(startTimeText).toLocal();
+            isStartTimeToday = _isSameDay(startTime, now);
+          }
+
+          if (createdAtText != null && createdAtText.isNotEmpty) {
+            final DateTime createdAt = DateTime.parse(createdAtText).toLocal();
+            isCreatedAtToday = _isSameDay(createdAt, now);
+          }
+
+          return isStartTimeToday || isCreatedAtToday;
+        }).toList();
+
+        todayLogs.sort((a, b) {
+          final String aTime =
+              (a['created_at'] ?? a['start_time'] ?? '').toString();
+          final String bTime =
+              (b['created_at'] ?? b['start_time'] ?? '').toString();
+
+          return bTime.compareTo(aTime);
+        });
+
+        final int todayTrainingCount = todayLogs.length;
+
+        final int todayCalories = todayLogs.fold<int>(
+          0,
+          (sum, rawLog) {
+            final Map log = rawLog as Map;
+            return sum + _readCalories(log);
+          },
+        );
+
+        final int todaySteps = todayLogs.fold<int>(
+          0,
+          (sum, rawLog) {
+            final Map log = rawLog as Map;
+
+            return sum +
+                _readNum(
+                  log,
+                  ['step_count', 'steps', 'stepCount'],
+                ).round();
+          },
+        );
+
+        final int todayMins = todayLogs.fold<int>(
+          0,
+          (sum, rawLog) {
+            final Map log = rawLog as Map;
+
+            return sum +
+                _readNum(
+                  log,
+                  ['total_mins', 'total_minutes'],
+                ).round();
+          },
+        );
+
+        final Set<DateTime> activeDates = {};
+
+        for (final rawLog in myLogs) {
+          final Map log = rawLog as Map;
+
+          final String? createdAtText = log['created_at']?.toString();
+          final String? startTimeText = log['start_time']?.toString();
+
+          final String? dateText =
+              createdAtText != null && createdAtText.isNotEmpty
+                  ? createdAtText
+                  : startTimeText;
+
+          if (dateText == null || dateText.isEmpty) {
+            continue;
+          }
+
+          final DateTime date = DateTime.parse(dateText).toLocal();
+          activeDates.add(_onlyDate(date));
+        }
+
+        if (mounted) {
+          setState(() {
+            _todayTrainingCount = todayTrainingCount;
+            _todayCalories = todayCalories;
+            _todaySteps = todaySteps;
+            _todayMins = todayMins;
+            _syncWeeklyState(activeDates);
+            _isLoading = false;
+          });
+        }
+      } else {
+        debugPrint('首頁 API 錯誤，狀態碼：${response.statusCode}');
+
+        if (mounted) {
+          setState(() => _isLoading = false);
+        }
+      }
     } catch (e) {
-      debugPrint('儲存簽到資料失敗：$e');
+      debugPrint('首頁抓取資料失敗：$e');
+
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
+  }
+
+  int get _dailyGoalCompletedCount {
+    int count = 0;
+
+    for (final goal in _dailyGoals) {
+      if (goal.isCompleted) {
+        count++;
+      }
+    }
+
+    return count;
+  }
+
+  bool get _isDailyGoalRewardUnlocked {
+    return _dailyGoalCompletedCount == _dailyGoals.length;
+  }
+
+  List<_DailyGoalItem> get _dailyGoals {
+    return [
+      _DailyGoalItem(
+        title: '完成 1 次訓練',
+        subtitle: '今天至少完成一次運動紀錄',
+        isCompleted: _todayTrainingCount >= 1,
+      ),
+      _DailyGoalItem(
+        title: '累積 30 分鐘',
+        subtitle: '今天運動時間達到 30 分鐘',
+        isCompleted: _todayMins >= 30,
+      ),
+      _DailyGoalItem(
+        title: '走滿 10000 步',
+        subtitle: '今天累積步數達到 10000 步',
+        isCompleted: _todaySteps >= 10000,
+      ),
+    ];
+  }
+
+  Future<void> _openDailyGoalSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(12, 24, 12, 12),
+            padding: const EdgeInsets.fromLTRB(18, 14, 18, 20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(28),
+            ),
+            child: SingleChildScrollView(
+              child: _buildDailyGoalPanel(Theme.of(sheetContext)),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  String _formatDate(DateTime date) {
+    const weekdays = [
+      '星期一',
+      '星期二',
+      '星期三',
+      '星期四',
+      '星期五',
+      '星期六',
+      '星期日',
+    ];
+
+    return '${date.month}月${date.day}日，${weekdays[date.weekday - 1]}';
   }
 
   String _formatMonthTitle(DateTime date) {
@@ -176,13 +416,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   int _monthLongestStreak(DateTime month) {
-    final List<DateTime> monthDates =
-        _activeDates
-            .where(
-              (date) => date.year == month.year && date.month == month.month,
-            )
-            .toList()
-          ..sort();
+    final List<DateTime> monthDates = _activeDates
+        .where(
+          (date) => date.year == month.year && date.month == month.month,
+        )
+        .toList()
+      ..sort();
 
     if (monthDates.isEmpty) {
       return 0;
@@ -219,7 +458,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Future<void> _openMonthlyCheckInSheet() async {
+  Future<void> _openMonthlyActivitySheet() async {
     DateTime visibleMonth = DateTime(DateTime.now().year, DateTime.now().month);
 
     await showModalBottomSheet<void>(
@@ -261,7 +500,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       children: [
                         const Expanded(
                           child: Text(
-                            '月打卡月曆',
+                            '月運動紀錄',
                             style: TextStyle(
                               color: Colors.black,
                               fontSize: 20,
@@ -308,7 +547,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       children: [
                         Expanded(
                           child: _CalendarSummaryCard(
-                            label: '本月打卡',
+                            label: '本月運動',
                             value: '$completedCount 天',
                           ),
                         ),
@@ -347,16 +586,16 @@ class _HomeScreenState extends State<HomeScreen> {
                       itemCount: days.length,
                       gridDelegate:
                           const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 7,
-                            mainAxisSpacing: 10,
-                            crossAxisSpacing: 10,
-                            childAspectRatio: 1,
-                          ),
+                        crossAxisCount: 7,
+                        mainAxisSpacing: 10,
+                        crossAxisSpacing: 10,
+                        childAspectRatio: 1,
+                      ),
                       itemBuilder: (context, index) {
                         final DateTime date = days[index];
                         final bool isCurrentMonth =
                             date.month == visibleMonth.month &&
-                            date.year == visibleMonth.year;
+                                date.year == visibleMonth.year;
                         final bool isCompleted = _activeDates.contains(
                           _onlyDate(date),
                         );
@@ -372,7 +611,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 14),
                     const Text(
-                      '有打卡的日期會以綠色標示，方便快速查看整個月的運動情況。',
+                      '有運動紀錄的日期會以綠色標示，資料來源為後端運動紀錄。',
                       style: TextStyle(
                         color: Color(0xFF6B7280),
                         fontSize: 12,
@@ -389,292 +628,17 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  num _readNum(Map log, List<String> keys) {
-    for (final key in keys) {
-      final value = log[key];
-
-      if (value == null) continue;
-
-      if (value is num) {
-        return value;
-      }
-
-      if (value is String) {
-        final parsed = num.tryParse(value);
-
-        if (parsed != null) {
-          return parsed;
-        }
-      }
-    }
-
-    return 0;
-  }
-
-  int _readCalories(Map log) {
-    final num directCalories = _readNum(log, [
-      'calories',
-      'calorie',
-      'kcal',
-      'calories_burned',
-      'calorie_burned',
-    ]);
-
-    if (directCalories > 0) {
-      return directCalories.round();
-    }
-
-    final int totalMins = _readNum(log, [
-      'total_mins',
-      'total_minutes',
-    ]).round();
-
-    if (totalMins > 0) {
-      return (totalMins * 8.0).round();
-    }
-
-    return 0;
-  }
-
-  int _calculateCurrentStreak(Set<DateTime> activeDates) {
-    int streak = 0;
-    DateTime checkingDate = _onlyDate(DateTime.now());
-
-    while (activeDates.contains(checkingDate)) {
-      streak++;
-      checkingDate = checkingDate.subtract(const Duration(days: 1));
-    }
-
-    return streak;
-  }
-
-  void _syncWeeklyCheckInState(Set<DateTime> activeDates) {
-    final DateTime today = _onlyDate(DateTime.now());
-    final DateTime weekStart = today.subtract(
-      Duration(days: today.weekday - 1),
-    );
-    final DateTime weekEnd = weekStart.add(const Duration(days: 6));
-    final List<bool> weekdayCompleted = List<bool>.filled(7, false);
-
-    for (final activeDate in activeDates) {
-      final bool isThisWeek =
-          !activeDate.isBefore(weekStart) && !activeDate.isAfter(weekEnd);
-      final bool isNotFuture = !activeDate.isAfter(today);
-
-      if (isThisWeek && isNotFuture) {
-        weekdayCompleted[activeDate.weekday - 1] = true;
-      }
-    }
-
-    _activeDates = activeDates;
-    _weekdayCompleted = weekdayCompleted;
-    _weeklyCompletedDays = weekdayCompleted
-        .where((completed) => completed)
-        .length;
-    _currentStreak = _calculateCurrentStreak(activeDates);
-  }
-
-  Future<void> _fetchHomeData() async {
-    final int currentMemberId = UserSession.memberId;
-
-    try {
-      final Set<DateTime> checkInDates = await _loadCheckInDates();
-      final response = await http.get(Uri.parse(_buildUrl('training-logs/')));
-
-      if (response.statusCode == 200) {
-        final List allLogs = json.decode(response.body);
-
-        final DateTime now = DateTime.now();
-
-        final List myLogs = allLogs.where((rawLog) {
-          final Map log = rawLog as Map;
-
-          final bool isMyLog =
-              log['member']?.toString() == currentMemberId.toString();
-
-          return isMyLog;
-        }).toList();
-
-        final List todayLogs = myLogs.where((rawLog) {
-          final Map log = rawLog as Map;
-
-          final String? startTimeText = log['start_time']?.toString();
-          final String? createdAtText = log['created_at']?.toString();
-
-          bool isStartTimeToday = false;
-          bool isCreatedAtToday = false;
-
-          if (startTimeText != null && startTimeText.isNotEmpty) {
-            final DateTime startTime = DateTime.parse(startTimeText).toLocal();
-            isStartTimeToday = _isSameDay(startTime, now);
-          }
-
-          if (createdAtText != null && createdAtText.isNotEmpty) {
-            final DateTime createdAt = DateTime.parse(createdAtText).toLocal();
-            isCreatedAtToday = _isSameDay(createdAt, now);
-          }
-
-          return isStartTimeToday || isCreatedAtToday;
-        }).toList();
-
-        todayLogs.sort((a, b) {
-          final String aTime = (a['created_at'] ?? a['start_time'] ?? '')
-              .toString();
-          final String bTime = (b['created_at'] ?? b['start_time'] ?? '')
-              .toString();
-
-          return bTime.compareTo(aTime);
-        });
-
-        final int todayTrainingCount = todayLogs.length;
-
-        final int todayCalories = todayLogs.fold<int>(0, (sum, rawLog) {
-          final Map log = rawLog as Map;
-          return sum + _readCalories(log);
-        });
-
-        final int todaySteps = todayLogs.fold<int>(0, (sum, rawLog) {
-          final Map log = rawLog as Map;
-
-          return sum +
-              _readNum(log, ['step_count', 'steps', 'stepCount']).round();
-        });
-
-        final double todayDistance = todayLogs.fold<double>(0.0, (sum, rawLog) {
-          final Map log = rawLog as Map;
-
-          return sum +
-              _readNum(log, [
-                'distance',
-                'distance_km',
-                'distanceKm',
-              ]).toDouble();
-        });
-
-        final int todayMins = todayLogs.fold<int>(0, (sum, rawLog) {
-          final Map log = rawLog as Map;
-
-          return sum + _readNum(log, ['total_mins', 'total_minutes']).round();
-        });
-
-        final Set<DateTime> activeDates = {...checkInDates};
-
-        // debugPrint('首頁目前會員 ID：$currentMemberId');
-        // debugPrint('首頁我的最新 5 筆：${jsonEncode(myLogs.take(5).toList())}');
-        // debugPrint('首頁今日原始資料：${jsonEncode(todayLogs)}');
-        // debugPrint('首頁全部紀錄數量：${allLogs.length}');
-        // debugPrint('首頁我的紀錄數量：${myLogs.length}');
-        // debugPrint('首頁今日紀錄數量：$todayTrainingCount');
-        // debugPrint('首頁今日熱量：$todayCalories');
-        // debugPrint('首頁今日步數：$todaySteps');
-        // debugPrint('首頁今日里程：$todayDistance');
-        // debugPrint('首頁今日分鐘：$todayMins');
-
-        if (mounted) {
-          setState(() {
-            _todayTrainingCount = todayTrainingCount;
-            _todayCalories = todayCalories;
-            _todaySteps = todaySteps;
-            _todayDistance = todayDistance;
-            _todayMins = todayMins;
-            _syncWeeklyCheckInState(activeDates);
-            _isLoading = false;
-          });
-        }
-      } else {
-        debugPrint('首頁 API 錯誤，狀態碼：${response.statusCode}');
-
-        if (mounted) {
-          setState(() => _isLoading = false);
-        }
-      }
-    } catch (e) {
-      debugPrint('首頁抓取資料失敗：$e');
-
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
-    }
-  }
-
-  int get _dailyGoalCompletedCount {
-    int count = 0;
-
-    for (final goal in _dailyGoals) {
-      if (goal.isCompleted) {
-        count++;
-      }
-    }
-
-    return count;
-  }
-
-  bool get _isDailyGoalRewardUnlocked =>
-      _dailyGoalCompletedCount == _dailyGoals.length;
-
-  List<_DailyGoalItem> get _dailyGoals {
-    final DateTime today = _onlyDate(DateTime.now());
-
-    return [
-      _DailyGoalItem(
-        title: '完成簽到',
-        subtitle: '點一下今天的日期完成每日簽到',
-        isCompleted: _activeDates.contains(today),
-      ),
-      _DailyGoalItem(
-        title: '完成 1 次訓練',
-        subtitle: '今天至少完成一次運動紀錄',
-        isCompleted: _todayTrainingCount >= 1,
-      ),
-      _DailyGoalItem(
-        title: '累積 10 分鐘',
-        subtitle: '今天運動時間達到 10 分鐘',
-        isCompleted: _todayMins >= 10,
-      ),
-      _DailyGoalItem(
-        title: '走滿 1000 步',
-        subtitle: '用日常活動完成今天的步數目標',
-        isCompleted: _todaySteps >= 1000,
-      ),
-    ];
-  }
-
-  Future<void> _openDailyGoalSheet() async {
-    await showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (sheetContext) {
-        return SafeArea(
-          child: Container(
-            margin: const EdgeInsets.fromLTRB(12, 24, 12, 12),
-            padding: const EdgeInsets.fromLTRB(18, 14, 18, 20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(28),
-            ),
-            child: SingleChildScrollView(
-              child: _buildDailyGoalPanel(Theme.of(sheetContext)),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  String _formatDate(DateTime date) {
-    const weekdays = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'];
-
-    return '${date.month}月${date.day}日，${weekdays[date.weekday - 1]}';
-  }
-
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final DateTime today = DateTime.now();
 
     if (_isLoading) {
-      return const SafeArea(child: Center(child: CircularProgressIndicator()));
+      return const SafeArea(
+        child: Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
     }
 
     return SafeArea(
@@ -733,7 +697,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     Align(
                       alignment: Alignment.centerRight,
                       child: TextButton.icon(
-                        onPressed: _openMonthlyCheckInSheet,
+                        onPressed: _openMonthlyActivitySheet,
                         style: TextButton.styleFrom(
                           foregroundColor: const Color(0xFF6B7280),
                           padding: const EdgeInsets.symmetric(
@@ -748,7 +712,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           size: 16,
                         ),
                         label: const Text(
-                          '查看整月打卡',
+                          '查看整月紀錄',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
@@ -757,7 +721,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    const Divider(color: Color(0xFFE5E7EB), height: 1),
+                    const Divider(
+                      color: Color(0xFFE5E7EB),
+                      height: 1,
+                    ),
                     const SizedBox(height: 16),
                     _buildWeeklyProgress(theme),
                     const SizedBox(height: 18),
@@ -798,22 +765,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                     const SizedBox(height: 14),
                     _MetricCard(
-                      icon: Icons.route_outlined,
-                      iconColor: const Color(0xFF2563EB),
-                      title: '今日里程',
-                      value: _todayDistance < 1
-                          ? NumberFormat(
-                              '#,###',
-                            ).format((_todayDistance * 1000).round())
-                          : _todayDistance.toStringAsFixed(2),
-                      unit: _todayDistance < 1 ? 'm' : 'km',
-                      percentText:
-                          '${(_todayDistance / 3 * 100).clamp(0, 100).toInt()}%',
-                      progress: (_todayDistance / 3).clamp(0.0, 1.0),
-                      progressColor: const Color(0xFF2563EB),
-                    ),
-                    const SizedBox(height: 14),
-                    _MetricCard(
                       icon: Icons.timer_outlined,
                       iconColor: const Color(0xFF7C3AED),
                       title: '今日時長',
@@ -825,7 +776,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       progressColor: const Color(0xFF7C3AED),
                     ),
                     const SizedBox(height: 18),
-                    const Divider(color: Color(0xFFE5E7EB), height: 1),
+                    const Divider(
+                      color: Color(0xFFE5E7EB),
+                      height: 1,
+                    ),
                     const SizedBox(height: 16),
                     _buildDailyGoalSummaryRow(theme),
                   ],
@@ -852,7 +806,10 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+          padding: const EdgeInsets.symmetric(
+            horizontal: 10,
+            vertical: 8,
+          ),
           decoration: BoxDecoration(
             color: const Color(0xFFF8FAFC),
             borderRadius: BorderRadius.circular(18),
@@ -900,11 +857,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 14,
+        vertical: 10,
+      ),
       decoration: BoxDecoration(
         color: const Color(0xFFFFF1FB),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE9C8F6)),
+        border: Border.all(
+          color: const Color(0xFFE9C8F6),
+        ),
       ),
       child: Text(
         message,
@@ -932,20 +894,6 @@ class _HomeScreenState extends State<HomeScreen> {
             isCompleted: _weekdayCompleted[index],
             isToday: index == today.weekday - 1,
             isFuture: weekStart.add(Duration(days: index)).isAfter(today),
-            onTap: () {
-              if (index == today.weekday - 1) {
-                _handleTodayCheckIn();
-                return;
-              }
-
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    index < today.weekday - 1 ? '過去日期無法補簽，請直接查看整月打卡' : '只能簽到今天',
-                  ),
-                ),
-              );
-            },
           ),
         ),
       ),
@@ -982,7 +930,9 @@ class _HomeScreenState extends State<HomeScreen> {
             value: _weeklyCompletedDays / 7,
             minHeight: 8,
             backgroundColor: const Color(0xFFE5E7EB),
-            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF65C16F)),
+            valueColor: const AlwaysStoppedAnimation<Color>(
+              Color(0xFF65C16F),
+            ),
           ),
         ),
       ],
@@ -995,7 +945,9 @@ class _HomeScreenState extends State<HomeScreen> {
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(
+          color: const Color(0xFFE5E7EB),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1003,7 +955,7 @@ class _HomeScreenState extends State<HomeScreen> {
           Row(
             children: [
               Text(
-                '今日目標 ($_dailyGoalCompletedCount/4)',
+                '今日目標 ($_dailyGoalCompletedCount/${_dailyGoals.length})',
                 style: theme.textTheme.titleSmall?.copyWith(
                   color: Colors.black,
                   fontWeight: FontWeight.w900,
@@ -1033,15 +985,20 @@ class _HomeScreenState extends State<HomeScreen> {
             const SizedBox(height: 6),
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 14,
+                vertical: 12,
+              ),
               decoration: BoxDecoration(
                 color: const Color(0xFFECFDF3),
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFFBBF7D0)),
+                border: Border.all(
+                  color: const Color(0xFFBBF7D0),
+                ),
               ),
-              child: const Text(
-                '四個小任務已完成，今日額外獲得 10 點。',
-                style: TextStyle(
+              child: Text(
+                '${_dailyGoals.length} 個小任務已完成，今日額外獲得 10 點。',
+                style: const TextStyle(
                   color: Color(0xFF166534),
                   fontSize: 13,
                   fontWeight: FontWeight.w800,
@@ -1056,11 +1013,16 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildDailyGoalSummaryRow(ThemeData theme) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 14,
+        vertical: 12,
+      ),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(
+          color: const Color(0xFFE5E7EB),
+        ),
       ),
       child: Row(
         children: [
@@ -1068,7 +1030,10 @@ class _HomeScreenState extends State<HomeScreen> {
             borderRadius: BorderRadius.circular(8),
             onTap: _openDailyGoalSheet,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 2,
+                vertical: 4,
+              ),
               child: Text(
                 '今日目標',
                 style: theme.textTheme.titleSmall?.copyWith(
@@ -1080,7 +1045,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const SizedBox(width: 8),
           Text(
-            '($_dailyGoalCompletedCount/4)',
+            '($_dailyGoalCompletedCount/${_dailyGoals.length})',
             style: const TextStyle(
               color: Color(0xFF6B7280),
               fontSize: 13,
@@ -1110,60 +1075,60 @@ class _DayButton extends StatelessWidget {
     required this.isCompleted,
     required this.isToday,
     required this.isFuture,
-    required this.onTap,
   });
 
   final String label;
   final bool isCompleted;
   final bool isToday;
   final bool isFuture;
-  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(18),
-      onTap: isFuture ? null : onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: isToday
-                    ? Colors.black
-                    : isFuture
-                    ? const Color(0xFFD1D5DB)
-                    : const Color(0xFF6B7280),
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+        vertical: 8,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: isToday
+                  ? Colors.black
+                  : isFuture
+                      ? const Color(0xFFD1D5DB)
+                      : const Color(0xFF6B7280),
+            ),
+          ),
+          const SizedBox(height: 10),
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: isCompleted ? const Color(0xFF65C16F) : Colors.white,
+              border: Border.all(
+                color: isCompleted
+                    ? const Color(0xFF4CAF50)
+                    : isToday
+                        ? Colors.black
+                        : const Color(0xFFD1D5DB),
+                width: isToday ? 2.2 : 2,
               ),
             ),
-            const SizedBox(height: 10),
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: isCompleted ? const Color(0xFF65C16F) : Colors.white,
-                border: Border.all(
-                  color: isCompleted
-                      ? const Color(0xFF4CAF50)
-                      : isToday
-                      ? Colors.black
-                      : const Color(0xFFD1D5DB),
-                  width: isToday ? 2.2 : 2,
-                ),
-              ),
-              child: isCompleted
-                  ? const Icon(Icons.check, size: 18, color: Colors.white)
-                  : null,
-            ),
-          ],
-        ),
+            child: isCompleted
+                ? const Icon(
+                    Icons.check,
+                    size: 18,
+                    color: Colors.white,
+                  )
+                : null,
+          ),
+        ],
       ),
     );
   }
@@ -1184,12 +1149,17 @@ class _DailyGoalItem {
 class _DailyGoalTile extends StatelessWidget {
   final _DailyGoalItem goal;
 
-  const _DailyGoalTile({required this.goal});
+  const _DailyGoalTile({
+    required this.goal,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 14,
+        vertical: 12,
+      ),
       decoration: BoxDecoration(
         color: goal.isCompleted ? const Color(0xFFF0FDF4) : Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -1211,7 +1181,11 @@ class _DailyGoalTile extends StatelessWidget {
               shape: BoxShape.circle,
             ),
             child: goal.isCompleted
-                ? const Icon(Icons.check, size: 16, color: Colors.white)
+                ? const Icon(
+                    Icons.check,
+                    size: 16,
+                    color: Colors.white,
+                  )
                 : const Icon(
                     Icons.radio_button_unchecked,
                     size: 16,
@@ -1250,7 +1224,10 @@ class _DailyGoalTile extends StatelessWidget {
 }
 
 class _CalendarMonthButton extends StatelessWidget {
-  const _CalendarMonthButton({required this.icon, required this.onTap});
+  const _CalendarMonthButton({
+    required this.icon,
+    required this.onTap,
+  });
 
   final IconData icon;
   final VoidCallback onTap;
@@ -1266,7 +1243,10 @@ class _CalendarMonthButton extends StatelessWidget {
         child: SizedBox(
           width: 40,
           height: 40,
-          child: Icon(icon, color: Colors.black),
+          child: Icon(
+            icon,
+            color: Colors.black,
+          ),
         ),
       ),
     );
@@ -1274,7 +1254,10 @@ class _CalendarMonthButton extends StatelessWidget {
 }
 
 class _CalendarSummaryCard extends StatelessWidget {
-  const _CalendarSummaryCard({required this.label, required this.value});
+  const _CalendarSummaryCard({
+    required this.label,
+    required this.value,
+  });
 
   final String label;
   final String value;
@@ -1286,7 +1269,9 @@ class _CalendarSummaryCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        border: Border.all(
+          color: const Color(0xFFE5E7EB),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1344,8 +1329,8 @@ class _CalendarDayCell extends StatelessWidget {
         color: isCompleted
             ? const Color(0xFF65C16F)
             : isCurrentMonth
-            ? const Color(0xFFF8FAFC)
-            : const Color(0xFFEFF3F7),
+                ? const Color(0xFFF8FAFC)
+                : const Color(0xFFEFF3F7),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isToday ? Colors.black : const Color(0xFFE5E7EB),
@@ -1371,8 +1356,8 @@ class _CalendarDayCell extends StatelessWidget {
               color: isCompleted
                   ? Colors.white
                   : isCurrentMonth
-                  ? const Color(0xFFD1D5DB)
-                  : Colors.transparent,
+                      ? const Color(0xFFD1D5DB)
+                      : Colors.transparent,
               shape: BoxShape.circle,
             ),
           ),
@@ -1407,7 +1392,12 @@ class _MetricCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+      padding: const EdgeInsets.fromLTRB(
+        12,
+        12,
+        12,
+        10,
+      ),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(22),
@@ -1423,7 +1413,11 @@ class _MetricCard extends StatelessWidget {
                   color: Colors.white,
                   shape: BoxShape.circle,
                 ),
-                child: Icon(icon, color: iconColor, size: 22),
+                child: Icon(
+                  icon,
+                  color: iconColor,
+                  size: 22,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1503,7 +1497,9 @@ class _MetricCard extends StatelessWidget {
               value: progress,
               minHeight: 6,
               backgroundColor: const Color(0xFFE5E7EB),
-              valueColor: AlwaysStoppedAnimation<Color>(progressColor),
+              valueColor: AlwaysStoppedAnimation<Color>(
+                progressColor,
+              ),
             ),
           ),
         ],

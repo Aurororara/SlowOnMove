@@ -1,10 +1,10 @@
 import 'dart:math';
-import 'dart:convert'; // ⭐ 處理 JSON 必備
+import 'dart:convert'; //
 import 'package:flutter/material.dart';
 import 'package:confetti/confetti.dart';
-import 'package:http/http.dart' as http; // ⭐ 處理網路請求必備
+import 'package:http/http.dart' as http;
 import 'services/ai_coach_service.dart';
-import 'package:flutter/foundation.dart'; // ⭐ 判斷是否為網頁版
+import 'package:flutter/foundation.dart';
 import 'services/user_session.dart';
 import 'config/api_config.dart';
 
@@ -41,11 +41,8 @@ class _ResultsScreenState extends State<ResultsScreen> {
     _confettiController.play();
 
     _fetchAiFeedback(); // 獲取 AI 建議
-    _saveData(); // ⭐ 呼叫儲存函數，這下不會有紅字了！
+    _saveData();
   }
-
-// ⭐ 在 _ResultsScreenState 類別裡新增換算邏輯
-  double get distanceKm => (widget.stepCount * 0.7) / 1000.0;
 
   Future<void> _saveData() async {
     final String baseUrl = ApiConfig.baseUrl;
@@ -54,11 +51,9 @@ class _ResultsScreenState extends State<ResultsScreen> {
         : '$baseUrl/training-logs/';
 
     final bool isSquat = widget.exerciseTitle == '深蹲';
-    final int totalMins = (widget.timeSeconds / 60).ceil();
-    final int fixedCalories =
-        caloriesBurned <= 0 ? (totalMins * 8) : caloriesBurned;
+    final int totalMins = widget.timeSeconds ~/ 60;
+    final int fixedCalories = caloriesBurned;
     final int fixedSteps = isSquat ? 0 : widget.stepCount;
-    final double fixedDistance = isSquat ? 0.0 : distanceKm;
 
     try {
       final response = await http.post(
@@ -75,20 +70,8 @@ class _ResultsScreenState extends State<ResultsScreen> {
           "posture_score": widget.averageAccuracy.toInt(),
           "calories": fixedCalories,
           "step_count": fixedSteps,
-          "distance": fixedDistance,
         }),
       );
-
-      //   debugPrint(
-      //       "送出的運動資料：分鐘=$totalMins, 熱量=$fixedCalories, 步數=$fixedSteps, 里程=$fixedDistance");
-      //   debugPrint("後端回應狀態碼：${response.statusCode}");
-      //   debugPrint("後端回應內容：${response.body}");
-
-      //   if (response.statusCode == 201) {
-      //     debugPrint("✅ 數據存入成功");
-      //   } else {
-      //     debugPrint("❌ 儲存失敗：${response.statusCode}");
-      //   }
     } catch (e) {
       debugPrint("⚠️ 連線異常: $e");
     }

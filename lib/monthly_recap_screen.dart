@@ -119,13 +119,6 @@ class _MonthlyRecapScreenState extends State<MonthlyRecapScreen> {
     );
   }
 
-  double get totalDistance {
-    return _monthLogs.fold(
-      0.0,
-      (sum, log) => sum + ((log['distance'] as num?)?.toDouble() ?? 0.0),
-    );
-  }
-
   int get avgAccuracy {
     if (_monthLogs.isEmpty) return 0;
 
@@ -147,7 +140,6 @@ class _MonthlyRecapScreenState extends State<MonthlyRecapScreen> {
 
   String get badgeTitle {
     if (_monthLogs.length >= 12) return '穩定慢跑王';
-    if (totalDistance >= 20) return '長距離挑戰者';
     if (avgAccuracy >= 85) return '姿勢控制大師';
     if (totalCalories >= 1500) return '燃脂達人';
     if (_monthLogs.length >= 4) return '習慣養成者';
@@ -301,14 +293,14 @@ class _MonthlyRecapScreenState extends State<MonthlyRecapScreen> {
           Row(
             children: [
               _buildStatBox('$totalMinutes', '分鐘'),
-              _buildStatBox(totalDistance.toStringAsFixed(2), '公里'),
+              _buildStatBox('$totalSteps', '步數'),
             ],
           ),
           const SizedBox(height: 16),
           Row(
             children: [
               _buildStatBox('$totalCalories', 'kcal'),
-              _buildStatBox('$totalSteps', '步數'),
+              _buildStatBox('$avgAccuracy%', '平均準確率'),
             ],
           ),
         ],
@@ -527,36 +519,40 @@ class _MonthlyRecapScreenState extends State<MonthlyRecapScreen> {
                       '${_monthLogs.length}',
                       '跑步次數',
                     ),
-                    _buildSummaryItem(Icons.timer, '$totalMinutes', '分鐘'),
+                    _buildSummaryItem(
+                      Icons.timer,
+                      '$totalMinutes',
+                      '分鐘',
+                    ),
                   ],
                 ),
                 const SizedBox(height: 18),
                 Row(
                   children: [
-                    _buildSummaryItem(
-                      Icons.route,
-                      totalDistance.toStringAsFixed(2),
-                      '公里',
-                    ),
                     _buildSummaryItem(
                       Icons.local_fire_department,
                       '$totalCalories',
                       'kcal',
                     ),
+                    _buildSummaryItem(
+                      Icons.directions_walk,
+                      '$totalSteps',
+                      '步數',
+                    ),
                   ],
                 ),
                 const SizedBox(height: 18),
                 Row(
                   children: [
                     _buildSummaryItem(
-                      Icons.directions_walk,
-                      '$totalSteps',
-                      '步數',
-                    ),
-                    _buildSummaryItem(
                       Icons.gps_fixed,
                       '$avgAccuracy%',
                       '準確率',
+                    ),
+                    _buildSummaryItem(
+                      Icons.emoji_events,
+                      '${_monthLogs.length >= 4 ? '已養成' : '持續中'}',
+                      '習慣狀態',
                     ),
                   ],
                 ),

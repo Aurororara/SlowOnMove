@@ -46,5 +46,4 @@ class TrainingLog(models.Model):
     posture_score = models.IntegerField()
     calories = models.IntegerField()
     step_count = models.IntegerField(default=0)
-    distance = models.FloatField(default=0.0)
     created_at = models.DateTimeField(auto_now_add=True)
