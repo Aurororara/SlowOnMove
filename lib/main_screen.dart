@@ -46,10 +46,7 @@ class _MainScreenState extends State<MainScreen> {
     ];
 
     return Scaffold(
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: pages,
-      ),
+      body: IndexedStack(index: _selectedIndex, children: pages),
       bottomNavigationBar: NavBar(
         currentIndex: _selectedIndex,
         onTap: _onNavTap,
@@ -66,15 +63,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  static const List<String> _labels = [
-    '一',
-    '二',
-    '三',
-    '四',
-    '五',
-    '六',
-    '日',
-  ];
+  static const List<String> _labels = ['一', '二', '三', '四', '五', '六', '日'];
 
   bool _isLoading = true;
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
@@ -146,19 +135,16 @@ class _HomeScreenState extends State<HomeScreen> {
     final List<DateTime> sortedDates = dates.toList()..sort();
     final List<String> values = sortedDates.map(_dateKey).toList();
 
-    await _storage.write(
-      key: _checkInStorageKey,
-      value: jsonEncode(values),
-    );
+    await _storage.write(key: _checkInStorageKey, value: jsonEncode(values));
   }
 
   Future<void> _handleTodayCheckIn() async {
     final DateTime today = _onlyDate(DateTime.now());
 
     if (_activeDates.contains(today)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('今天已經簽到過了')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('今天已經簽到過了')));
       return;
     }
 
@@ -168,9 +154,9 @@ class _HomeScreenState extends State<HomeScreen> {
       _syncWeeklyCheckInState(updatedDates);
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('今日簽到成功')),
-    );
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('今日簽到成功')));
 
     try {
       await _saveCheckInDates(updatedDates);
@@ -190,10 +176,13 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   int _monthLongestStreak(DateTime month) {
-    final List<DateTime> monthDates = _activeDates
-        .where((date) => date.year == month.year && date.month == month.month)
-        .toList()
-      ..sort();
+    final List<DateTime> monthDates =
+        _activeDates
+            .where(
+              (date) => date.year == month.year && date.month == month.month,
+            )
+            .toList()
+          ..sort();
 
     if (monthDates.isEmpty) {
       return 0;
@@ -358,18 +347,19 @@ class _HomeScreenState extends State<HomeScreen> {
                       itemCount: days.length,
                       gridDelegate:
                           const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 7,
-                        mainAxisSpacing: 10,
-                        crossAxisSpacing: 10,
-                        childAspectRatio: 1,
-                      ),
+                            crossAxisCount: 7,
+                            mainAxisSpacing: 10,
+                            crossAxisSpacing: 10,
+                            childAspectRatio: 1,
+                          ),
                       itemBuilder: (context, index) {
                         final DateTime date = days[index];
                         final bool isCurrentMonth =
                             date.month == visibleMonth.month &&
-                                date.year == visibleMonth.year;
-                        final bool isCompleted =
-                            _activeDates.contains(_onlyDate(date));
+                            date.year == visibleMonth.year;
+                        final bool isCompleted = _activeDates.contains(
+                          _onlyDate(date),
+                        );
                         final bool isToday = _isSameDay(date, today);
 
                         return _CalendarDayCell(
@@ -422,28 +412,22 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   int _readCalories(Map log) {
-    final num directCalories = _readNum(
-      log,
-      [
-        'calories',
-        'calorie',
-        'kcal',
-        'calories_burned',
-        'calorie_burned',
-      ],
-    );
+    final num directCalories = _readNum(log, [
+      'calories',
+      'calorie',
+      'kcal',
+      'calories_burned',
+      'calorie_burned',
+    ]);
 
     if (directCalories > 0) {
       return directCalories.round();
     }
 
-    final int totalMins = _readNum(
-      log,
-      [
-        'total_mins',
-        'total_minutes',
-      ],
-    ).round();
+    final int totalMins = _readNum(log, [
+      'total_mins',
+      'total_minutes',
+    ]).round();
 
     if (totalMins > 0) {
       return (totalMins * 8.0).round();
@@ -484,8 +468,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     _activeDates = activeDates;
     _weekdayCompleted = weekdayCompleted;
-    _weeklyCompletedDays =
-        weekdayCompleted.where((completed) => completed).length;
+    _weeklyCompletedDays = weekdayCompleted
+        .where((completed) => completed)
+        .length;
     _currentStreak = _calculateCurrentStreak(activeDates);
   }
 
@@ -494,9 +479,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     try {
       final Set<DateTime> checkInDates = await _loadCheckInDates();
-      final response = await http.get(
-        Uri.parse(_buildUrl('training-logs/')),
-      );
+      final response = await http.get(Uri.parse(_buildUrl('training-logs/')));
 
       if (response.statusCode == 200) {
         final List allLogs = json.decode(response.body);
@@ -535,73 +518,44 @@ class _HomeScreenState extends State<HomeScreen> {
         }).toList();
 
         todayLogs.sort((a, b) {
-          final String aTime =
-              (a['created_at'] ?? a['start_time'] ?? '').toString();
-          final String bTime =
-              (b['created_at'] ?? b['start_time'] ?? '').toString();
+          final String aTime = (a['created_at'] ?? a['start_time'] ?? '')
+              .toString();
+          final String bTime = (b['created_at'] ?? b['start_time'] ?? '')
+              .toString();
 
           return bTime.compareTo(aTime);
         });
 
         final int todayTrainingCount = todayLogs.length;
 
-        final int todayCalories = todayLogs.fold<int>(
-          0,
-          (sum, rawLog) {
-            final Map log = rawLog as Map;
-            return sum + _readCalories(log);
-          },
-        );
+        final int todayCalories = todayLogs.fold<int>(0, (sum, rawLog) {
+          final Map log = rawLog as Map;
+          return sum + _readCalories(log);
+        });
 
-        final int todaySteps = todayLogs.fold<int>(
-          0,
-          (sum, rawLog) {
-            final Map log = rawLog as Map;
+        final int todaySteps = todayLogs.fold<int>(0, (sum, rawLog) {
+          final Map log = rawLog as Map;
 
-            return sum +
-                _readNum(
-                  log,
-                  [
-                    'step_count',
-                    'steps',
-                    'stepCount',
-                  ],
-                ).round();
-          },
-        );
+          return sum +
+              _readNum(log, ['step_count', 'steps', 'stepCount']).round();
+        });
 
-        final double todayDistance = todayLogs.fold<double>(
-          0.0,
-          (sum, rawLog) {
-            final Map log = rawLog as Map;
+        final double todayDistance = todayLogs.fold<double>(0.0, (sum, rawLog) {
+          final Map log = rawLog as Map;
 
-            return sum +
-                _readNum(
-                  log,
-                  [
-                    'distance',
-                    'distance_km',
-                    'distanceKm',
-                  ],
-                ).toDouble();
-          },
-        );
+          return sum +
+              _readNum(log, [
+                'distance',
+                'distance_km',
+                'distanceKm',
+              ]).toDouble();
+        });
 
-        final int todayMins = todayLogs.fold<int>(
-          0,
-          (sum, rawLog) {
-            final Map log = rawLog as Map;
+        final int todayMins = todayLogs.fold<int>(0, (sum, rawLog) {
+          final Map log = rawLog as Map;
 
-            return sum +
-                _readNum(
-                  log,
-                  [
-                    'total_mins',
-                    'total_minutes',
-                  ],
-                ).round();
-          },
-        );
+          return sum + _readNum(log, ['total_mins', 'total_minutes']).round();
+        });
 
         final Set<DateTime> activeDates = {...checkInDates};
 
@@ -709,15 +663,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   String _formatDate(DateTime date) {
-    const weekdays = [
-      '星期一',
-      '星期二',
-      '星期三',
-      '星期四',
-      '星期五',
-      '星期六',
-      '星期日',
-    ];
+    const weekdays = ['星期一', '星期二', '星期三', '星期四', '星期五', '星期六', '星期日'];
 
     return '${date.month}月${date.day}日，${weekdays[date.weekday - 1]}';
   }
@@ -728,11 +674,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final DateTime today = DateTime.now();
 
     if (_isLoading) {
-      return const SafeArea(
-        child: Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
+      return const SafeArea(child: Center(child: CircularProgressIndicator()));
     }
 
     return SafeArea(
@@ -815,10 +757,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    const Divider(
-                      color: Color(0xFFE5E7EB),
-                      height: 1,
-                    ),
+                    const Divider(color: Color(0xFFE5E7EB), height: 1),
                     const SizedBox(height: 16),
                     _buildWeeklyProgress(theme),
                     const SizedBox(height: 18),
@@ -863,9 +802,9 @@ class _HomeScreenState extends State<HomeScreen> {
                       iconColor: const Color(0xFF2563EB),
                       title: '今日里程',
                       value: _todayDistance < 1
-                          ? NumberFormat('#,###').format(
-                              (_todayDistance * 1000).round(),
-                            )
+                          ? NumberFormat(
+                              '#,###',
+                            ).format((_todayDistance * 1000).round())
                           : _todayDistance.toStringAsFixed(2),
                       unit: _todayDistance < 1 ? 'm' : 'km',
                       percentText:
@@ -886,10 +825,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       progressColor: const Color(0xFF7C3AED),
                     ),
                     const SizedBox(height: 18),
-                    const Divider(
-                      color: Color(0xFFE5E7EB),
-                      height: 1,
-                    ),
+                    const Divider(color: Color(0xFFE5E7EB), height: 1),
                     const SizedBox(height: 16),
                     _buildDailyGoalSummaryRow(theme),
                   ],
@@ -916,10 +852,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
         Container(
-          padding: const EdgeInsets.symmetric(
-            horizontal: 10,
-            vertical: 8,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
           decoration: BoxDecoration(
             color: const Color(0xFFF8FAFC),
             borderRadius: BorderRadius.circular(18),
@@ -967,16 +900,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(
-        horizontal: 14,
-        vertical: 10,
-      ),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: const Color(0xFFFFF1FB),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: const Color(0xFFE9C8F6),
-        ),
+        border: Border.all(color: const Color(0xFFE9C8F6)),
       ),
       child: Text(
         message,
@@ -991,8 +919,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildWeekDaysRow() {
     final DateTime today = _onlyDate(DateTime.now());
-    final DateTime weekStart =
-        today.subtract(Duration(days: today.weekday - 1));
+    final DateTime weekStart = today.subtract(
+      Duration(days: today.weekday - 1),
+    );
 
     return Row(
       children: List.generate(
@@ -1053,9 +982,7 @@ class _HomeScreenState extends State<HomeScreen> {
             value: _weeklyCompletedDays / 7,
             minHeight: 8,
             backgroundColor: const Color(0xFFE5E7EB),
-            valueColor: const AlwaysStoppedAnimation<Color>(
-              Color(0xFF65C16F),
-            ),
+            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF65C16F)),
           ),
         ),
       ],
@@ -1198,9 +1125,7 @@ class _DayButton extends StatelessWidget {
       borderRadius: BorderRadius.circular(18),
       onTap: isFuture ? null : onTap,
       child: Padding(
-        padding: const EdgeInsets.symmetric(
-          vertical: 8,
-        ),
+        padding: const EdgeInsets.symmetric(vertical: 8),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -1212,8 +1137,8 @@ class _DayButton extends StatelessWidget {
                 color: isToday
                     ? Colors.black
                     : isFuture
-                        ? const Color(0xFFD1D5DB)
-                        : const Color(0xFF6B7280),
+                    ? const Color(0xFFD1D5DB)
+                    : const Color(0xFF6B7280),
               ),
             ),
             const SizedBox(height: 10),
@@ -1228,20 +1153,14 @@ class _DayButton extends StatelessWidget {
                   color: isCompleted
                       ? const Color(0xFF4CAF50)
                       : isToday
-                          ? Colors.black
-                          : const Color(0xFFD1D5DB),
+                      ? Colors.black
+                      : const Color(0xFFD1D5DB),
                   width: isToday ? 2.2 : 2,
                 ),
               ),
-              child: Icon(
-                isCompleted ? Icons.check : Icons.add,
-                size: 18,
-                color: isCompleted
-                    ? Colors.white
-                    : isFuture
-                        ? const Color(0xFFD1D5DB)
-                        : const Color(0xFF9CA3AF),
-              ),
+              child: isCompleted
+                  ? const Icon(Icons.check, size: 18, color: Colors.white)
+                  : null,
             ),
           ],
         ),
@@ -1291,11 +1210,13 @@ class _DailyGoalTile extends StatelessWidget {
                   : const Color(0xFFF8FAFC),
               shape: BoxShape.circle,
             ),
-            child: Icon(
-              goal.isCompleted ? Icons.check : Icons.radio_button_unchecked,
-              size: 16,
-              color: goal.isCompleted ? Colors.white : const Color(0xFF94A3B8),
-            ),
+            child: goal.isCompleted
+                ? const Icon(Icons.check, size: 16, color: Colors.white)
+                : const Icon(
+                    Icons.radio_button_unchecked,
+                    size: 16,
+                    color: Color(0xFF94A3B8),
+                  ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -1329,10 +1250,7 @@ class _DailyGoalTile extends StatelessWidget {
 }
 
 class _CalendarMonthButton extends StatelessWidget {
-  const _CalendarMonthButton({
-    required this.icon,
-    required this.onTap,
-  });
+  const _CalendarMonthButton({required this.icon, required this.onTap});
 
   final IconData icon;
   final VoidCallback onTap;
@@ -1356,10 +1274,7 @@ class _CalendarMonthButton extends StatelessWidget {
 }
 
 class _CalendarSummaryCard extends StatelessWidget {
-  const _CalendarSummaryCard({
-    required this.label,
-    required this.value,
-  });
+  const _CalendarSummaryCard({required this.label, required this.value});
 
   final String label;
   final String value;
@@ -1429,8 +1344,8 @@ class _CalendarDayCell extends StatelessWidget {
         color: isCompleted
             ? const Color(0xFF65C16F)
             : isCurrentMonth
-                ? const Color(0xFFF8FAFC)
-                : const Color(0xFFEFF3F7),
+            ? const Color(0xFFF8FAFC)
+            : const Color(0xFFEFF3F7),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: isToday ? Colors.black : const Color(0xFFE5E7EB),
@@ -1456,8 +1371,8 @@ class _CalendarDayCell extends StatelessWidget {
               color: isCompleted
                   ? Colors.white
                   : isCurrentMonth
-                      ? const Color(0xFFD1D5DB)
-                      : Colors.transparent,
+                  ? const Color(0xFFD1D5DB)
+                  : Colors.transparent,
               shape: BoxShape.circle,
             ),
           ),
@@ -1492,12 +1407,7 @@ class _MetricCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(
-        12,
-        12,
-        12,
-        10,
-      ),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
       decoration: BoxDecoration(
         color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(22),
@@ -1513,11 +1423,7 @@ class _MetricCard extends StatelessWidget {
                   color: Colors.white,
                   shape: BoxShape.circle,
                 ),
-                child: Icon(
-                  icon,
-                  color: iconColor,
-                  size: 22,
-                ),
+                child: Icon(icon, color: iconColor, size: 22),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1597,9 +1503,7 @@ class _MetricCard extends StatelessWidget {
               value: progress,
               minHeight: 6,
               backgroundColor: const Color(0xFFE5E7EB),
-              valueColor: AlwaysStoppedAnimation<Color>(
-                progressColor,
-              ),
+              valueColor: AlwaysStoppedAnimation<Color>(progressColor),
             ),
           ),
         ],

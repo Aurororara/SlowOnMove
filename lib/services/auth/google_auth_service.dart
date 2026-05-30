@@ -14,7 +14,7 @@ class GoogleAuthService {
   static const String googleWebClientId = String.fromEnvironment(
     'GOOGLE_WEB_CLIENT_ID',
     defaultValue:
-        '231442028986-mo83ph02ucmr0vg0jl34224f1gomsgsr.apps.googleusercontent.com',
+        '785504219544-9b97t2lpbduebhifurb4vb3cm3basm92.apps.googleusercontent.com',
   );
 
   late final GoogleSignIn _googleSignIn = GoogleSignIn(

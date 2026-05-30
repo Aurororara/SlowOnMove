@@ -207,15 +207,6 @@ class _LoginScreenState extends State<LoginScreen> {
                               color: Color(0xFF5B6B7A),
                             ),
                           ),
-                          const SizedBox(height: 34),
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                            children: [
-                              _buildStatItem('5萬+', '使用者'),
-                              _buildStatItem('200萬+', '運動次數'),
-                              _buildStatItem('4.9★', '評分'),
-                            ],
-                          ),
                           const SizedBox(height: 30),
                           const Text(
                             '選擇登入方式',
@@ -293,13 +284,7 @@ class _LoginScreenState extends State<LoginScreen> {
               color: Colors.black,
             ),
           ),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 12,
-              color: Colors.grey,
-            ),
-          ),
+          Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
         ],
       ),
     );

@@ -15,7 +15,7 @@ Future<void> main() async {
   // Facebook Web 初始化
   if (kIsWeb) {
     await FacebookAuth.i.webAndDesktopInitialize(
-      appId: '1544257417341589',
+      appId: '1486365623030140',
       cookie: true,
       xfbml: true,
       version: 'v19.0',

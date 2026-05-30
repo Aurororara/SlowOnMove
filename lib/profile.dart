@@ -43,12 +43,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       final logStatsResponse = await http.get(
         Uri.parse(
-            '${baseUrl}training-logs/my-stats/?member_id=$currentMemberId'),
+          '${baseUrl}training-logs/my-stats/?member_id=$currentMemberId',
+        ),
       );
 
-      final bodyResponse = await http.get(
-        Uri.parse('${baseUrl}body-records/'),
-      );
+      final bodyResponse = await http.get(Uri.parse('${baseUrl}body-records/'));
 
       if (logStatsResponse.statusCode == 200 &&
           bodyResponse.statusCode == 200) {
@@ -107,7 +106,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         const SizedBox(height: 24),
                         _buildStatsGrid(),
                         const SizedBox(height: 32),
-                        _buildSectionTitle('MY DATA & PROGRESS'),
+                        _buildSectionTitle('我的資料與紀錄'),
                         _buildMenuButton(
                           icon: Icons.history,
                           title: '歷史紀錄',
@@ -168,17 +167,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           onTap: () => debugPrint("跳轉到我的菜單"),
                         ),
                         const SizedBox(height: 32),
-                        _buildSectionTitle('PERSONAL INFORMATION'),
+                        _buildSectionTitle('個人資料'),
                         const SizedBox(height: 16),
                         _buildInfoTile(
                           icon: Icons.person_outline,
-                          label: 'Full Name',
+                          label: '姓名',
                           value: _fullName,
                         ),
                         const SizedBox(height: 12),
                         _buildInfoTile(
                           icon: Icons.mail_outline,
-                          label: 'Email Address',
+                          label: 'Email',
                           value: _email,
                         ),
                         const SizedBox(height: 32),
@@ -421,8 +420,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               Text(
                 value,
-                style:
-                    const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ],
           ),
@@ -438,7 +439,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: OutlinedButton.icon(
         onPressed: () {},
         icon: const Icon(Icons.logout, color: Color(0xFFE53935)),
-        label: const Text('Log Out'),
+        label: const Text('登出'),
         style: OutlinedButton.styleFrom(
           side: const BorderSide(color: Color(0xFFE53935)),
         ),
@@ -467,13 +468,12 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
     _TopUpPlan(price: 3290, points: 6480, bonusPoints: 600),
   ];
 
-  _TopUpPlan get _selectedPlan => _topUpPlans.firstWhere(
-        (plan) => plan.price == _selectedAmount,
-      );
+  _TopUpPlan get _selectedPlan =>
+      _topUpPlans.firstWhere((plan) => plan.price == _selectedAmount);
 
   Future<void> _showPaymentMethods(int totalPoints) async {
-    final _PaymentMethodOption? method =
-        await showModalBottomSheet<_PaymentMethodOption>(
+    final _PaymentMethodOption?
+    method = await showModalBottomSheet<_PaymentMethodOption>(
       context: context,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) {
@@ -543,10 +543,7 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
                                   color: const Color(0xFFE5E7EB),
                                 ),
                               ),
-                              child: Icon(
-                                method.icon,
-                                color: Colors.black,
-                              ),
+                              child: Icon(method.icon, color: Colors.black),
                             ),
                             const SizedBox(width: 14),
                             Expanded(
@@ -614,10 +611,7 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
       appBar: AppBar(
         title: const Text(
           '儲值方案',
-          style: TextStyle(
-            color: Colors.black,
-            fontWeight: FontWeight.bold,
-          ),
+          style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold),
         ),
         centerTitle: true,
         backgroundColor: Colors.white,
@@ -639,11 +633,7 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
     );
   }
 
-  Widget _buildBalanceCard(
-    int balanceAfterTopUp,
-    int bonus,
-    int totalPoints,
-  ) {
+  Widget _buildBalanceCard(int balanceAfterTopUp, int bonus, int totalPoints) {
     const List<int> milestones = [1000, 2000, 6000, 10000];
 
     return Container(
@@ -693,7 +683,8 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
           const SizedBox(height: 18),
           LayoutBuilder(
             builder: (context, constraints) {
-              final double progressWidth = constraints.maxWidth *
+              final double progressWidth =
+                  constraints.maxWidth *
                   (balanceAfterTopUp / 10000).clamp(0, 1);
 
               return Column(
@@ -779,10 +770,7 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
     );
   }
 
-  Widget _buildMilestoneNode({
-    required int milestone,
-    required bool reached,
-  }) {
+  Widget _buildMilestoneNode({required int milestone, required bool reached}) {
     return Column(
       children: [
         Container(
@@ -895,8 +883,9 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
                     color: isSelected ? Colors.black : const Color(0xFFF8FAFC),
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                      color:
-                          isSelected ? Colors.black : const Color(0xFFE5E7EB),
+                      color: isSelected
+                          ? Colors.black
+                          : const Color(0xFFE5E7EB),
                     ),
                   ),
                   child: Padding(
