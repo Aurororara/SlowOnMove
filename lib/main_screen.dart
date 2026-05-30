@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 
@@ -76,6 +77,7 @@ class _HomeScreenState extends State<HomeScreen> {
   ];
 
   bool _isLoading = true;
+  final FlutterSecureStorage _storage = const FlutterSecureStorage();
 
   int _todayTrainingCount = 0;
   int _todayCalories = 0;
@@ -86,6 +88,7 @@ class _HomeScreenState extends State<HomeScreen> {
   int _weeklyCompletedDays = 0;
   int _currentStreak = 0;
   List<bool> _weekdayCompleted = List<bool>.filled(7, false);
+  Set<DateTime> _activeDates = {};
 
   @override
   void initState() {
@@ -98,7 +101,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   String _buildUrl(String path) {
-    final String baseUrl = ApiConfig.baseUrl;
+    const String baseUrl = ApiConfig.baseUrl;
 
     if (baseUrl.endsWith('/')) {
       return '$baseUrl$path';
@@ -111,8 +114,289 @@ class _HomeScreenState extends State<HomeScreen> {
     return DateTime(date.year, date.month, date.day);
   }
 
+  String _dateKey(DateTime date) => DateFormat('yyyy-MM-dd').format(date);
+
+  String get _checkInStorageKey =>
+      'check_in_dates_member_${UserSession.memberId}';
+
   bool _isSameDay(DateTime a, DateTime b) {
     return a.year == b.year && a.month == b.month && a.day == b.day;
+  }
+
+  Future<Set<DateTime>> _loadCheckInDates() async {
+    final String? raw = await _storage.read(key: _checkInStorageKey);
+
+    if (raw == null || raw.isEmpty) {
+      return {};
+    }
+
+    try {
+      final List<dynamic> values = jsonDecode(raw) as List<dynamic>;
+      return values
+          .map((value) => DateTime.tryParse(value.toString()))
+          .whereType<DateTime>()
+          .map(_onlyDate)
+          .toSet();
+    } catch (_) {
+      return {};
+    }
+  }
+
+  Future<void> _saveCheckInDates(Set<DateTime> dates) async {
+    final List<DateTime> sortedDates = dates.toList()..sort();
+    final List<String> values = sortedDates.map(_dateKey).toList();
+
+    await _storage.write(
+      key: _checkInStorageKey,
+      value: jsonEncode(values),
+    );
+  }
+
+  Future<void> _handleTodayCheckIn() async {
+    final DateTime today = _onlyDate(DateTime.now());
+
+    if (_activeDates.contains(today)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('今天已經簽到過了')),
+      );
+      return;
+    }
+
+    final Set<DateTime> updatedDates = {..._activeDates, today};
+
+    setState(() {
+      _syncWeeklyCheckInState(updatedDates);
+    });
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('今日簽到成功')),
+    );
+
+    try {
+      await _saveCheckInDates(updatedDates);
+    } catch (e) {
+      debugPrint('儲存簽到資料失敗：$e');
+    }
+  }
+
+  String _formatMonthTitle(DateTime date) {
+    return '${date.year} 年 ${date.month} 月';
+  }
+
+  int _monthCompletedCount(DateTime month) {
+    return _activeDates.where((date) {
+      return date.year == month.year && date.month == month.month;
+    }).length;
+  }
+
+  int _monthLongestStreak(DateTime month) {
+    final List<DateTime> monthDates = _activeDates
+        .where((date) => date.year == month.year && date.month == month.month)
+        .toList()
+      ..sort();
+
+    if (monthDates.isEmpty) {
+      return 0;
+    }
+
+    int longest = 1;
+    int current = 1;
+
+    for (int i = 1; i < monthDates.length; i++) {
+      final int diff = monthDates[i].difference(monthDates[i - 1]).inDays;
+
+      if (diff == 1) {
+        current++;
+        if (current > longest) {
+          longest = current;
+        }
+      } else if (diff > 1) {
+        current = 1;
+      }
+    }
+
+    return longest;
+  }
+
+  List<DateTime> _buildCalendarDays(DateTime month) {
+    final DateTime firstDayOfMonth = DateTime(month.year, month.month, 1);
+    final DateTime gridStart = firstDayOfMonth.subtract(
+      Duration(days: firstDayOfMonth.weekday - 1),
+    );
+
+    return List<DateTime>.generate(
+      42,
+      (index) => gridStart.add(Duration(days: index)),
+    );
+  }
+
+  Future<void> _openMonthlyCheckInSheet() async {
+    DateTime visibleMonth = DateTime(DateTime.now().year, DateTime.now().month);
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            final List<DateTime> days = _buildCalendarDays(visibleMonth);
+            final int completedCount = _monthCompletedCount(visibleMonth);
+            final int longestStreak = _monthLongestStreak(visibleMonth);
+            final DateTime today = _onlyDate(DateTime.now());
+
+            return SafeArea(
+              child: Container(
+                margin: const EdgeInsets.fromLTRB(12, 24, 12, 12),
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(28),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Center(
+                      child: Container(
+                        width: 42,
+                        height: 5,
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFE5E7EB),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            '月打卡月曆',
+                            style: TextStyle(
+                              color: Colors.black,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ),
+                        _CalendarMonthButton(
+                          icon: Icons.chevron_left_rounded,
+                          onTap: () {
+                            setSheetState(() {
+                              visibleMonth = DateTime(
+                                visibleMonth.year,
+                                visibleMonth.month - 1,
+                              );
+                            });
+                          },
+                        ),
+                        const SizedBox(width: 8),
+                        _CalendarMonthButton(
+                          icon: Icons.chevron_right_rounded,
+                          onTap: () {
+                            setSheetState(() {
+                              visibleMonth = DateTime(
+                                visibleMonth.year,
+                                visibleMonth.month + 1,
+                              );
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      _formatMonthTitle(visibleMonth),
+                      style: const TextStyle(
+                        color: Color(0xFF6B7280),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _CalendarSummaryCard(
+                            label: '本月打卡',
+                            value: '$completedCount 天',
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _CalendarSummaryCard(
+                            label: '最長連續',
+                            value: '$longestStreak 天',
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: _labels
+                          .map(
+                            (label) => Expanded(
+                              child: Center(
+                                child: Text(
+                                  label,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF6B7280),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          )
+                          .toList(),
+                    ),
+                    const SizedBox(height: 10),
+                    GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: days.length,
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 7,
+                        mainAxisSpacing: 10,
+                        crossAxisSpacing: 10,
+                        childAspectRatio: 1,
+                      ),
+                      itemBuilder: (context, index) {
+                        final DateTime date = days[index];
+                        final bool isCurrentMonth =
+                            date.month == visibleMonth.month &&
+                                date.year == visibleMonth.year;
+                        final bool isCompleted =
+                            _activeDates.contains(_onlyDate(date));
+                        final bool isToday = _isSameDay(date, today);
+
+                        return _CalendarDayCell(
+                          day: date.day,
+                          isCurrentMonth: isCurrentMonth,
+                          isCompleted: isCompleted,
+                          isToday: isToday,
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 14),
+                    const Text(
+                      '有打卡的日期會以綠色標示，方便快速查看整個月的運動情況。',
+                      style: TextStyle(
+                        color: Color(0xFF6B7280),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   num _readNum(Map log, List<String> keys) {
@@ -180,10 +464,36 @@ class _HomeScreenState extends State<HomeScreen> {
     return streak;
   }
 
+  void _syncWeeklyCheckInState(Set<DateTime> activeDates) {
+    final DateTime today = _onlyDate(DateTime.now());
+    final DateTime weekStart = today.subtract(
+      Duration(days: today.weekday - 1),
+    );
+    final DateTime weekEnd = weekStart.add(const Duration(days: 6));
+    final List<bool> weekdayCompleted = List<bool>.filled(7, false);
+
+    for (final activeDate in activeDates) {
+      final bool isThisWeek =
+          !activeDate.isBefore(weekStart) && !activeDate.isAfter(weekEnd);
+      final bool isNotFuture = !activeDate.isAfter(today);
+
+      if (isThisWeek && isNotFuture) {
+        weekdayCompleted[activeDate.weekday - 1] = true;
+      }
+    }
+
+    _activeDates = activeDates;
+    _weekdayCompleted = weekdayCompleted;
+    _weeklyCompletedDays =
+        weekdayCompleted.where((completed) => completed).length;
+    _currentStreak = _calculateCurrentStreak(activeDates);
+  }
+
   Future<void> _fetchHomeData() async {
     final int currentMemberId = UserSession.memberId;
 
     try {
+      final Set<DateTime> checkInDates = await _loadCheckInDates();
       final response = await http.get(
         Uri.parse(_buildUrl('training-logs/')),
       );
@@ -192,15 +502,6 @@ class _HomeScreenState extends State<HomeScreen> {
         final List allLogs = json.decode(response.body);
 
         final DateTime now = DateTime.now();
-        final DateTime today = _onlyDate(now);
-
-        final DateTime weekStart = today.subtract(
-          Duration(days: today.weekday - 1),
-        );
-
-        final DateTime weekEnd = weekStart.add(
-          const Duration(days: 6),
-        );
 
         final List myLogs = allLogs.where((rawLog) {
           final Map log = rawLog as Map;
@@ -302,44 +603,7 @@ class _HomeScreenState extends State<HomeScreen> {
           },
         );
 
-        final Set<DateTime> activeDates = {};
-
-        for (final rawLog in myLogs) {
-          final Map log = rawLog as Map;
-
-          final String? createdAtText = log['created_at']?.toString();
-          final String? startTimeText = log['start_time']?.toString();
-
-          final String? dateText =
-              createdAtText != null && createdAtText.isNotEmpty
-                  ? createdAtText
-                  : startTimeText;
-
-          if (dateText == null || dateText.isEmpty) {
-            continue;
-          }
-
-          final DateTime date = DateTime.parse(dateText).toLocal();
-          activeDates.add(_onlyDate(date));
-        }
-
-        final List<bool> weekdayCompleted = List<bool>.filled(7, false);
-
-        for (final activeDate in activeDates) {
-          final bool isThisWeek =
-              !activeDate.isBefore(weekStart) && !activeDate.isAfter(weekEnd);
-
-          final bool isNotFuture = !activeDate.isAfter(today);
-
-          if (isThisWeek && isNotFuture) {
-            weekdayCompleted[activeDate.weekday - 1] = true;
-          }
-        }
-
-        final int weeklyCompletedDays =
-            weekdayCompleted.where((completed) => completed).length;
-
-        final int currentStreak = _calculateCurrentStreak(activeDates);
+        final Set<DateTime> activeDates = {...checkInDates};
 
         // debugPrint('首頁目前會員 ID：$currentMemberId');
         // debugPrint('首頁我的最新 5 筆：${jsonEncode(myLogs.take(5).toList())}');
@@ -359,9 +623,7 @@ class _HomeScreenState extends State<HomeScreen> {
             _todaySteps = todaySteps;
             _todayDistance = todayDistance;
             _todayMins = todayMins;
-            _weekdayCompleted = weekdayCompleted;
-            _weeklyCompletedDays = weeklyCompletedDays;
-            _currentStreak = currentStreak;
+            _syncWeeklyCheckInState(activeDates);
             _isLoading = false;
           });
         }
@@ -384,12 +646,66 @@ class _HomeScreenState extends State<HomeScreen> {
   int get _dailyGoalCompletedCount {
     int count = 0;
 
-    if (_todayTrainingCount > 0) count++;
-    if (_todayMins > 0) count++;
-    if (_todayCalories > 0) count++;
-    if (_todaySteps > 0 || _todayDistance > 0) count++;
+    for (final goal in _dailyGoals) {
+      if (goal.isCompleted) {
+        count++;
+      }
+    }
 
     return count;
+  }
+
+  bool get _isDailyGoalRewardUnlocked =>
+      _dailyGoalCompletedCount == _dailyGoals.length;
+
+  List<_DailyGoalItem> get _dailyGoals {
+    final DateTime today = _onlyDate(DateTime.now());
+
+    return [
+      _DailyGoalItem(
+        title: '完成簽到',
+        subtitle: '點一下今天的日期完成每日簽到',
+        isCompleted: _activeDates.contains(today),
+      ),
+      _DailyGoalItem(
+        title: '完成 1 次訓練',
+        subtitle: '今天至少完成一次運動紀錄',
+        isCompleted: _todayTrainingCount >= 1,
+      ),
+      _DailyGoalItem(
+        title: '累積 10 分鐘',
+        subtitle: '今天運動時間達到 10 分鐘',
+        isCompleted: _todayMins >= 10,
+      ),
+      _DailyGoalItem(
+        title: '走滿 1000 步',
+        subtitle: '用日常活動完成今天的步數目標',
+        isCompleted: _todaySteps >= 1000,
+      ),
+    ];
+  }
+
+  Future<void> _openDailyGoalSheet() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(12, 24, 12, 12),
+            padding: const EdgeInsets.fromLTRB(18, 14, 18, 20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(28),
+            ),
+            child: SingleChildScrollView(
+              child: _buildDailyGoalPanel(Theme.of(sheetContext)),
+            ),
+          ),
+        );
+      },
+    );
   }
 
   String _formatDate(DateTime date) {
@@ -471,7 +787,34 @@ class _HomeScreenState extends State<HomeScreen> {
                     _buildStreakBanner(),
                     const SizedBox(height: 14),
                     _buildWeekDaysRow(),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 8),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: _openMonthlyCheckInSheet,
+                        style: TextButton.styleFrom(
+                          foregroundColor: const Color(0xFF6B7280),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 6,
+                          ),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          minimumSize: Size.zero,
+                        ),
+                        icon: const Icon(
+                          Icons.calendar_month_outlined,
+                          size: 16,
+                        ),
+                        label: const Text(
+                          '查看整月打卡',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
                     const Divider(
                       color: Color(0xFFE5E7EB),
                       height: 1,
@@ -547,16 +890,8 @@ class _HomeScreenState extends State<HomeScreen> {
                       color: Color(0xFFE5E7EB),
                       height: 1,
                     ),
-                    const SizedBox(height: 12),
-                    Center(
-                      child: Text(
-                        '今日目標 ($_dailyGoalCompletedCount/4)',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: const Color(0xFF6B7280),
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
+                    const SizedBox(height: 16),
+                    _buildDailyGoalSummaryRow(theme),
                   ],
                 ),
               ),
@@ -627,7 +962,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildStreakBanner() {
     final String message = _currentStreak > 0
-        ? '已連續運動 $_currentStreak 天！繼續保持，獲得 +10 點！'
+        ? '已連續運動 $_currentStreak 天！繼續保持今天的節奏。'
         : '今天也來完成一次運動吧！';
 
     return Container(
@@ -655,6 +990,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildWeekDaysRow() {
+    final DateTime today = _onlyDate(DateTime.now());
+    final DateTime weekStart =
+        today.subtract(Duration(days: today.weekday - 1));
+
     return Row(
       children: List.generate(
         _labels.length,
@@ -662,6 +1001,22 @@ class _HomeScreenState extends State<HomeScreen> {
           child: _DayButton(
             label: _labels[index],
             isCompleted: _weekdayCompleted[index],
+            isToday: index == today.weekday - 1,
+            isFuture: weekStart.add(Duration(days: index)).isAfter(today),
+            onTap: () {
+              if (index == today.weekday - 1) {
+                _handleTodayCheckIn();
+                return;
+              }
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    index < today.weekday - 1 ? '過去日期無法補簽，請直接查看整月打卡' : '只能簽到今天',
+                  ),
+                ),
+              );
+            },
           ),
         ),
       ),
@@ -706,53 +1061,404 @@ class _HomeScreenState extends State<HomeScreen> {
       ],
     );
   }
+
+  Widget _buildDailyGoalPanel(ThemeData theme) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                '今日目標 ($_dailyGoalCompletedCount/4)',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  color: Colors.black,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const Spacer(),
+              Text(
+                _isDailyGoalRewardUnlocked ? '獎勵 +10 點' : '全完成可得 +10 點',
+                style: TextStyle(
+                  color: _isDailyGoalRewardUnlocked
+                      ? const Color(0xFF16A34A)
+                      : const Color(0xFF6B7280),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          ..._dailyGoals.map(
+            (goal) => Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _DailyGoalTile(goal: goal),
+            ),
+          ),
+          if (_isDailyGoalRewardUnlocked) ...[
+            const SizedBox(height: 6),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              decoration: BoxDecoration(
+                color: const Color(0xFFECFDF3),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFBBF7D0)),
+              ),
+              child: const Text(
+                '四個小任務已完成，今日額外獲得 10 點。',
+                style: TextStyle(
+                  color: Color(0xFF166534),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDailyGoalSummaryRow(ThemeData theme) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
+      ),
+      child: Row(
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(8),
+            onTap: _openDailyGoalSheet,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+              child: Text(
+                '今日目標',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  color: Colors.black,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '($_dailyGoalCompletedCount/4)',
+            style: const TextStyle(
+              color: Color(0xFF6B7280),
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const Spacer(),
+          Text(
+            _isDailyGoalRewardUnlocked ? '已獲得 +10 點' : '全完成可得 +10 點',
+            style: TextStyle(
+              color: _isDailyGoalRewardUnlocked
+                  ? const Color(0xFF16A34A)
+                  : const Color(0xFF6B7280),
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _DayButton extends StatelessWidget {
   const _DayButton({
     required this.label,
     required this.isCompleted,
+    required this.isToday,
+    required this.isFuture,
+    required this.onTap,
   });
 
   final String label;
   final bool isCompleted;
+  final bool isToday;
+  final bool isFuture;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        vertical: 8,
+    return InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: isFuture ? null : onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(
+          vertical: 8,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: isToday
+                    ? Colors.black
+                    : isFuture
+                        ? const Color(0xFFD1D5DB)
+                        : const Color(0xFF6B7280),
+              ),
+            ),
+            const SizedBox(height: 10),
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: isCompleted ? const Color(0xFF65C16F) : Colors.white,
+                border: Border.all(
+                  color: isCompleted
+                      ? const Color(0xFF4CAF50)
+                      : isToday
+                          ? Colors.black
+                          : const Color(0xFFD1D5DB),
+                  width: isToday ? 2.2 : 2,
+                ),
+              ),
+              child: Icon(
+                isCompleted ? Icons.check : Icons.add,
+                size: 18,
+                color: isCompleted
+                    ? Colors.white
+                    : isFuture
+                        ? const Color(0xFFD1D5DB)
+                        : const Color(0xFF9CA3AF),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DailyGoalItem {
+  final String title;
+  final String subtitle;
+  final bool isCompleted;
+
+  const _DailyGoalItem({
+    required this.title,
+    required this.subtitle,
+    required this.isCompleted,
+  });
+}
+
+class _DailyGoalTile extends StatelessWidget {
+  final _DailyGoalItem goal;
+
+  const _DailyGoalTile({required this.goal});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: goal.isCompleted ? const Color(0xFFF0FDF4) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: goal.isCompleted
+              ? const Color(0xFF86EFAC)
+              : const Color(0xFFE5E7EB),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: goal.isCompleted
+                  ? const Color(0xFF16A34A)
+                  : const Color(0xFFF8FAFC),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              goal.isCompleted ? Icons.check : Icons.radio_button_unchecked,
+              size: 16,
+              color: goal.isCompleted ? Colors.white : const Color(0xFF94A3B8),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  goal.title,
+                  style: const TextStyle(
+                    color: Colors.black,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  goal.subtitle,
+                  style: const TextStyle(
+                    color: Color(0xFF6B7280),
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CalendarMonthButton extends StatelessWidget {
+  const _CalendarMonthButton({
+    required this.icon,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xFFF8FAFC),
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: onTap,
+        child: SizedBox(
+          width: 40,
+          height: 40,
+          child: Icon(icon, color: Colors.black),
+        ),
+      ),
+    );
+  }
+}
+
+class _CalendarSummaryCard extends StatelessWidget {
+  const _CalendarSummaryCard({
+    required this.label,
+    required this.value,
+  });
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFE5E7EB)),
       ),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             label,
             style: const TextStyle(
+              color: Color(0xFF6B7280),
               fontSize: 12,
               fontWeight: FontWeight.w700,
-              color: Color(0xFF6B7280),
             ),
           ),
-          const SizedBox(height: 10),
-          AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: isCompleted ? const Color(0xFF65C16F) : Colors.white,
-              border: Border.all(
-                color: isCompleted
-                    ? const Color(0xFF4CAF50)
-                    : const Color(0xFFD1D5DB),
-                width: 2,
-              ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.black,
+              fontSize: 20,
+              fontWeight: FontWeight.w900,
             ),
-            child: Icon(
-              isCompleted ? Icons.check : Icons.add,
-              size: 18,
-              color: isCompleted ? Colors.white : const Color(0xFF9CA3AF),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CalendarDayCell extends StatelessWidget {
+  const _CalendarDayCell({
+    required this.day,
+    required this.isCurrentMonth,
+    required this.isCompleted,
+    required this.isToday,
+  });
+
+  final int day;
+  final bool isCurrentMonth;
+  final bool isCompleted;
+  final bool isToday;
+
+  @override
+  Widget build(BuildContext context) {
+    final Color textColor;
+
+    if (!isCurrentMonth) {
+      textColor = const Color(0xFFD1D5DB);
+    } else if (isCompleted) {
+      textColor = Colors.white;
+    } else {
+      textColor = Colors.black;
+    }
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isCompleted
+            ? const Color(0xFF65C16F)
+            : isCurrentMonth
+                ? const Color(0xFFF8FAFC)
+                : const Color(0xFFEFF3F7),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isToday ? Colors.black : const Color(0xFFE5E7EB),
+          width: isToday ? 1.6 : 1,
+        ),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            '$day',
+            style: TextStyle(
+              color: textColor,
+              fontSize: 15,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              color: isCompleted
+                  ? Colors.white
+                  : isCurrentMonth
+                      ? const Color(0xFFD1D5DB)
+                      : Colors.transparent,
+              shape: BoxShape.circle,
             ),
           ),
         ],

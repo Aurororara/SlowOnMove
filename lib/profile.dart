@@ -37,7 +37,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _fetchProfileData() async {
-    final String baseUrl = ApiConfig.baseUrl;
+    const String baseUrl = ApiConfig.baseUrl;
     final int currentMemberId = UserSession.memberId;
 
     try {
@@ -455,14 +455,159 @@ class PurchaseScreen extends StatefulWidget {
 }
 
 class _PurchaseScreenState extends State<PurchaseScreen> {
-  int _selectedAmount = 100;
+  static const int _currentBalance = 1200;
+  int _selectedAmount = 33;
 
-  static const List<int> _amountOptions = [100, 200, 500, 600, 800, 1000];
+  static const List<_TopUpPlan> _topUpPlans = [
+    _TopUpPlan(price: 33, points: 60, bonusPoints: 100),
+    _TopUpPlan(price: 170, points: 300, bonusPoints: 200),
+    _TopUpPlan(price: 490, points: 980, bonusPoints: 300),
+    _TopUpPlan(price: 990, points: 1980, bonusPoints: 400),
+    _TopUpPlan(price: 1690, points: 3280, bonusPoints: 500),
+    _TopUpPlan(price: 3290, points: 6480, bonusPoints: 600),
+  ];
+
+  _TopUpPlan get _selectedPlan => _topUpPlans.firstWhere(
+        (plan) => plan.price == _selectedAmount,
+      );
+
+  Future<void> _showPaymentMethods(int totalPoints) async {
+    final _PaymentMethodOption? method =
+        await showModalBottomSheet<_PaymentMethodOption>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Container(
+            margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+            padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(28),
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Center(
+                  child: Container(
+                    width: 42,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE5E7EB),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  '選擇支付方式',
+                  style: TextStyle(
+                    color: Colors.black,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '充值 $_selectedAmount 元，付款完成後可獲得 $totalPoints 點。',
+                  style: const TextStyle(
+                    color: Color(0xFF6B7280),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                ..._paymentMethodOptions.map(
+                  (method) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(18),
+                      onTap: () => Navigator.of(sheetContext).pop(method),
+                      child: Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF8FAFC),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: const Color(0xFFE5E7EB)),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 44,
+                              height: 44,
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
+                                  color: const Color(0xFFE5E7EB),
+                                ),
+                              ),
+                              child: Icon(
+                                method.icon,
+                                color: Colors.black,
+                              ),
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    method.title,
+                                    style: const TextStyle(
+                                      color: Colors.black,
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    method.subtitle,
+                                    style: const TextStyle(
+                                      color: Color(0xFF6B7280),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Icon(
+                              Icons.chevron_right_rounded,
+                              color: Color(0xFF111827),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    if (!mounted || method == null) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '已選擇 ${method.title}，準備支付 $_selectedAmount 元並獲得 $totalPoints 點',
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    final int bonus = (_selectedAmount * 0.2).round();
-    final int balanceAfterTopUp = 1200 + _selectedAmount + bonus;
+    final int bonus = _selectedPlan.bonusPoints;
+    final int totalPoints = _selectedPlan.points + bonus;
+    final int balanceAfterTopUp = _currentBalance + totalPoints;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7F9FC),
@@ -483,18 +628,22 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
           children: [
-            _buildBalanceCard(balanceAfterTopUp, bonus),
+            _buildBalanceCard(balanceAfterTopUp, bonus, totalPoints),
             const SizedBox(height: 16),
             _buildTopUpPanel(),
             const SizedBox(height: 16),
-            _buildRewardPanel(bonus),
+            _buildRewardPanel(bonus, totalPoints),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildBalanceCard(int balanceAfterTopUp, int bonus) {
+  Widget _buildBalanceCard(
+    int balanceAfterTopUp,
+    int bonus,
+    int totalPoints,
+  ) {
     const List<int> milestones = [1000, 2000, 6000, 10000];
 
     return Container(
@@ -524,7 +673,7 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
           ),
           const SizedBox(height: 8),
           const Text(
-            '1200.00',
+            '1200 點',
             style: TextStyle(
               color: Colors.black,
               fontSize: 34,
@@ -532,11 +681,13 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
             ),
           ),
           const SizedBox(height: 18),
-          Row(
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
             children: [
               _buildSummaryChip('本次儲值', '$_selectedAmount 元'),
-              const SizedBox(width: 10),
-              _buildSummaryChip('加贈', '$bonus 元'),
+              _buildSummaryChip('本次到帳', '$totalPoints 點'),
+              _buildSummaryChip('加贈', '$bonus 點'),
             ],
           ),
           const SizedBox(height: 18),
@@ -616,7 +767,7 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
           ),
           const SizedBox(height: 10),
           Text(
-            '儲值後餘額：$balanceAfterTopUp 元',
+            '儲值後餘額：$balanceAfterTopUp 點',
             style: const TextStyle(
               color: Color(0xFF6B7280),
               fontSize: 13,
@@ -723,7 +874,7 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
           GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            itemCount: _amountOptions.length,
+            itemCount: _topUpPlans.length,
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 3,
               mainAxisSpacing: 12,
@@ -731,12 +882,12 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
               childAspectRatio: 1.8,
             ),
             itemBuilder: (context, index) {
-              final int amount = _amountOptions[index];
-              final bool isSelected = amount == _selectedAmount;
+              final _TopUpPlan plan = _topUpPlans[index];
+              final bool isSelected = plan.price == _selectedAmount;
               return GestureDetector(
                 onTap: () {
                   setState(() {
-                    _selectedAmount = amount;
+                    _selectedAmount = plan.price;
                   });
                 },
                 child: Container(
@@ -748,14 +899,35 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
                           isSelected ? Colors.black : const Color(0xFFE5E7EB),
                     ),
                   ),
-                  child: Center(
-                    child: Text(
-                      '充$amount元',
-                      style: TextStyle(
-                        color: isSelected ? Colors.white : Colors.black87,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                      ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 8,
+                    ),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          '充${plan.price}元',
+                          style: TextStyle(
+                            color: isSelected ? Colors.white : Colors.black87,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '${plan.points}點 + ${plan.bonusPoints}點',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: isSelected
+                                ? Colors.white70
+                                : const Color(0xFF6B7280),
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -763,32 +935,20 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
             },
           ),
           const SizedBox(height: 16),
-          Row(
-            children: [
-              const Icon(
-                Icons.info_outline,
-                size: 16,
-                color: Color(0xFF6B7280),
-              ),
-              const SizedBox(width: 6),
-              const Expanded(
-                child: Text(
-                  '儲值餘額可用於後續付費方案或進階功能。',
-                  style: TextStyle(
-                    color: Color(0xFF6B7280),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ],
+          const Text(
+            '每個方案皆含固定點數與額外贈點，付款後會自動加入帳戶。',
+            style: TextStyle(
+              color: Color(0xFF6B7280),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildRewardPanel(int bonus) {
+  Widget _buildRewardPanel(int bonus, int totalPoints) {
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -835,17 +995,17 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '本次加贈 $bonus 元',
-                        style: TextStyle(
+                        '本次可獲得 $totalPoints 點',
+                        style: const TextStyle(
                           color: Colors.black,
                           fontSize: 22,
                           fontWeight: FontWeight.w900,
                         ),
                       ),
                       const SizedBox(height: 6),
-                      const Text(
-                        '完成付款後，儲值金與加贈金額會自動加入帳戶餘額。',
-                        style: TextStyle(
+                      Text(
+                        '包含 ${_selectedPlan.points} 點儲值點數與額外 $bonus 點贈點。',
+                        style: const TextStyle(
                           color: Color(0xFF6B7280),
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
@@ -858,13 +1018,7 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
                 SizedBox(
                   height: 44,
                   child: ElevatedButton(
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text('已選擇充值 $_selectedAmount 元'),
-                        ),
-                      );
-                    },
+                    onPressed: () => _showPaymentMethods(totalPoints),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.black,
                       foregroundColor: Colors.white,
@@ -889,6 +1043,48 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
       ),
     );
   }
+}
+
+class _TopUpPlan {
+  final int price;
+  final int points;
+  final int bonusPoints;
+
+  const _TopUpPlan({
+    required this.price,
+    required this.points,
+    required this.bonusPoints,
+  });
+}
+
+const List<_PaymentMethodOption> _paymentMethodOptions = [
+  _PaymentMethodOption(
+    title: 'Apple Pay',
+    subtitle: '快速完成付款，適合 iPhone / Mac 使用者',
+    icon: Icons.phone_iphone_rounded,
+  ),
+  _PaymentMethodOption(
+    title: '信用卡 / 簽帳卡',
+    subtitle: '支援 Visa、Mastercard 與 JCB',
+    icon: Icons.credit_card_rounded,
+  ),
+  _PaymentMethodOption(
+    title: '銀行轉帳',
+    subtitle: '取得匯款資訊後手動完成付款',
+    icon: Icons.account_balance_rounded,
+  ),
+];
+
+class _PaymentMethodOption {
+  final String title;
+  final String subtitle;
+  final IconData icon;
+
+  const _PaymentMethodOption({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+  });
 }
 
 class SavedPostsScreen extends StatelessWidget {

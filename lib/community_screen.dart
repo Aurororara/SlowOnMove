@@ -27,6 +27,11 @@ const List<_RunInviteFriend> _sharedFriendsSeed = [
 
 const List<_GroupExerciseOption> _groupExerciseOptions = [
   _GroupExerciseOption(
+    value: 'mixed',
+    label: '超慢跑＋深蹲',
+    icon: Icons.fitness_center,
+  ),
+  _GroupExerciseOption(
     value: 'slow_jogging',
     label: '超慢跑',
     icon: Icons.directions_run,
@@ -50,6 +55,7 @@ class CommunityScreen extends StatefulWidget {
 class _CommunityScreenState extends State<CommunityScreen> {
   final GlobalKey<_GroupsPanelState> _groupsPanelKey =
       GlobalKey<_GroupsPanelState>();
+  final TextEditingController _searchController = TextEditingController();
   final Map<String, List<_ChatEntry>> _friendChats = {
     'Sarah Chen': const [
       _ChatEntry(
@@ -79,11 +85,55 @@ class _CommunityScreenState extends State<CommunityScreen> {
   _RunInviteFriend? _chatFriend;
 
   List<CommunityPost> get _posts => widget.store.posts;
+  String get _searchQuery => _searchController.text.trim().toLowerCase();
+
+  List<({int index, CommunityPost post})> get _filteredPosts {
+    if (_searchQuery.isEmpty) {
+      return List.generate(
+        _posts.length,
+        (index) => (index: index, post: _posts[index]),
+      );
+    }
+
+    return _posts
+        .asMap()
+        .entries
+        .where((entry) {
+          final post = entry.value;
+          final tagsText = post.tags.join(' ').toLowerCase();
+          final planText = post.plan == null
+              ? ''
+              : [
+                  post.plan!.title,
+                  post.plan!.summary,
+                  post.plan!.difficulty,
+                  ...post.plan!.steps.map((step) => step.name),
+                ].join(' ').toLowerCase();
+          final recipeText = post.recipe == null
+              ? ''
+              : [
+                  post.recipe!.title,
+                  post.recipe!.description,
+                  ...post.recipe!.ingredients.map((item) => item.name),
+                ].join(' ').toLowerCase();
+          final searchableText = [
+            post.name,
+            post.content,
+            tagsText,
+            planText,
+            recipeText,
+          ].join(' ').toLowerCase();
+          return searchableText.contains(_searchQuery);
+        })
+        .map((entry) => (index: entry.key, post: entry.value))
+        .toList();
+  }
 
   @override
   void initState() {
     super.initState();
     widget.store.addListener(_handleStoreChanged);
+    _searchController.addListener(_handleStoreChanged);
   }
 
   void _handleStoreChanged() {
@@ -95,6 +145,9 @@ class _CommunityScreenState extends State<CommunityScreen> {
   @override
   void dispose() {
     widget.store.removeListener(_handleStoreChanged);
+    _searchController
+      ..removeListener(_handleStoreChanged)
+      ..dispose();
     super.dispose();
   }
 
@@ -204,6 +257,22 @@ class _CommunityScreenState extends State<CommunityScreen> {
     );
   }
 
+  void _openAuthorCommunityProfile({
+    required String initial,
+    required String name,
+  }) {
+    FocusScope.of(context).unfocus();
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CommunityProfileScreen(
+          store: widget.store,
+          profileInitial: initial,
+          profileName: name,
+        ),
+      ),
+    );
+  }
+
   void _closeSecondaryPage() {
     setState(() {
       if (_chatFriend != null || _inviteFriend != null) {
@@ -279,8 +348,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
           else
             messages[i],
         _ChatEntry(
-          text:
-              '接受！${invitation.date} ${invitation.time} 見。',
+          text: '接受！${invitation.date} ${invitation.time} 見。',
           isMine: false,
           timestamp: '剛剛',
         ),
@@ -692,9 +760,9 @@ class _CommunityScreenState extends State<CommunityScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
-      appBar: _buildAppBar(context),
+      appBar: _isGroupsOpen ? null : _buildAppBar(context),
       body: SafeArea(
-        top: false,
+        top: !_isGroupsOpen,
         child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 200),
             child: _chatFriend != null
@@ -750,6 +818,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                         : _isGroupsOpen
                             ? _GroupsPanel(
                                 key: _groupsPanelKey,
+                                onBack: _closeSecondaryPage,
                                 onMessageTap: _openChat,
                                 onSystemMessage: _appendSystemChatMessage,
                               )
@@ -758,7 +827,12 @@ class _CommunityScreenState extends State<CommunityScreen> {
                                 padding:
                                     const EdgeInsets.fromLTRB(18, 14, 18, 24),
                                 children: [
-                                  const _SearchField(),
+                                  _SearchField(
+                                    controller: _searchController,
+                                    onClear: _searchQuery.isEmpty
+                                        ? null
+                                        : () => _searchController.clear(),
+                                  ),
                                   const SizedBox(height: 14),
                                   AnimatedSwitcher(
                                     duration: const Duration(milliseconds: 220),
@@ -782,36 +856,52 @@ class _CommunityScreenState extends State<CommunityScreen> {
                                   const SizedBox(height: 18),
                                   const _SectionLabel('社群動態'),
                                   const SizedBox(height: 12),
-                                  ...List.generate(_posts.length, (index) {
-                                    final post = _posts[index];
-                                    return Padding(
-                                      padding: EdgeInsets.only(
-                                        bottom:
-                                            index == _posts.length - 1 ? 0 : 14,
-                                      ),
-                                      child: _PostCard(
-                                        onMoreTap: () => _showPostMenu(index),
-                                        onLikeTap: () => _toggleLike(index),
-                                        onCommentTap: () =>
-                                            _openComments(index),
-                                        onSaveTap: () => _toggleSave(index),
-                                        onShareTap: () =>
-                                            _showShareSheet(index),
-                                        initial: post.initial,
-                                        name: post.name,
-                                        timeAgo: post.timeAgo,
-                                        content: post.content,
-                                        tags: post.tags,
-                                        type: post.type,
-                                        plan: post.plan,
-                                        recipe: post.recipe,
-                                        likes: post.likes,
-                                        comments: post.commentCount,
-                                        isLiked: post.isLiked,
-                                        isSaved: post.isSaved,
-                                      ),
-                                    );
-                                  }),
+                                  if (_filteredPosts.isEmpty)
+                                    const _EmptyState(
+                                      text: '找不到符合關鍵字的貼文。',
+                                    )
+                                  else
+                                    ...List.generate(_filteredPosts.length,
+                                        (visibleIndex) {
+                                      final matched =
+                                          _filteredPosts[visibleIndex];
+                                      final index = matched.index;
+                                      final post = matched.post;
+                                      return Padding(
+                                        padding: EdgeInsets.only(
+                                          bottom: visibleIndex ==
+                                                  _filteredPosts.length - 1
+                                              ? 0
+                                              : 14,
+                                        ),
+                                        child: _PostCard(
+                                          onMoreTap: () => _showPostMenu(index),
+                                          onLikeTap: () => _toggleLike(index),
+                                          onCommentTap: () =>
+                                              _openComments(index),
+                                          onSaveTap: () => _toggleSave(index),
+                                          onShareTap: () =>
+                                              _showShareSheet(index),
+                                          onProfileTap: () =>
+                                              _openAuthorCommunityProfile(
+                                            initial: post.initial,
+                                            name: post.name,
+                                          ),
+                                          initial: post.initial,
+                                          name: post.name,
+                                          timeAgo: post.timeAgo,
+                                          content: post.content,
+                                          tags: post.tags,
+                                          type: post.type,
+                                          plan: post.plan,
+                                          recipe: post.recipe,
+                                          likes: post.likes,
+                                          comments: post.commentCount,
+                                          isLiked: post.isLiked,
+                                          isSaved: post.isSaved,
+                                        ),
+                                      );
+                                    }),
                                 ],
                               )),
       ),
@@ -854,32 +944,14 @@ class _CommunityScreenState extends State<CommunityScreen> {
             ),
           ),
           const Spacer(),
-          Row(
+          const Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const CircleAvatar(
+              CircleAvatar(
                 radius: 12,
                 backgroundColor: Color(0xFFE2E8F0),
                 child: Icon(Icons.directions_run,
                     size: 14, color: Color(0xFF4A5568)),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                _chatFriend != null
-                    ? '訊息'
-                    : _inviteFriend != null
-                        ? '邀請跑步'
-                        : _isFriendsOpen
-                            ? '好友'
-                            : _isGroupsOpen
-                                ? '群組'
-                                : '社群',
-                style: const TextStyle(
-                  color: Color(0xFF1A202C),
-                  fontSize: 15,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 1,
-                ),
               ),
             ],
           ),
@@ -904,7 +976,13 @@ class _CommunityScreenState extends State<CommunityScreen> {
 }
 
 class _SearchField extends StatelessWidget {
-  const _SearchField();
+  final TextEditingController controller;
+  final VoidCallback? onClear;
+
+  const _SearchField({
+    required this.controller,
+    this.onClear,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -916,22 +994,34 @@ class _SearchField extends StatelessWidget {
         border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 14),
-      child: const Row(
+      child: Row(
         children: [
-          Icon(Icons.search, color: Color(0xFFA0AEC0), size: 23),
-          SizedBox(width: 12),
+          const Icon(Icons.search, color: Color(0xFFA0AEC0), size: 23),
+          const SizedBox(width: 12),
           Expanded(
-            child: Text(
-              '搜尋貼文、人物或標籤...',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: Color(0xFF718096),
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
+            child: TextField(
+              controller: controller,
+              decoration: const InputDecoration(
+                hintText: '搜尋貼文、人物或標籤...',
+                hintStyle: TextStyle(
+                  color: Color(0xFF718096),
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+                border: InputBorder.none,
+                isCollapsed: true,
               ),
             ),
           ),
+          if (onClear != null)
+            InkWell(
+              onTap: onClear,
+              borderRadius: BorderRadius.circular(999),
+              child: const Padding(
+                padding: EdgeInsets.all(4),
+                child: Icon(Icons.close, color: Color(0xFFA0AEC0), size: 18),
+              ),
+            ),
         ],
       ),
     );
@@ -1036,20 +1126,22 @@ class _PostComposer extends StatefulWidget {
 
 class _PostComposerState extends State<_PostComposer> {
   static const List<String> _tags = [
-    '#MorningRun',
-    '#PainFree',
-    '#SlowJoggingChallenge',
-    '#HealthyHabits',
-    '#FitnessGoals',
-    '#ProgressNotPerfection',
-    '#JoggingLife',
-    '#MindfulMovement',
+    '#晨跑',
+    '#零疼痛',
+    '#超慢跑挑戰',
+    '#健康習慣',
+    '#運動目標',
+    '#進步比完美更重要',
+    '#慢跑日常',
+    '#覺察式運動',
   ];
 
   final TextEditingController _contentController = TextEditingController();
   final TextEditingController _planTitleController = TextEditingController();
   final TextEditingController _planSummaryController = TextEditingController();
   final TextEditingController _recipeTitleController = TextEditingController();
+  final TextEditingController _recipeDescriptionController =
+      TextEditingController();
   final TextEditingController _recipeCookMinutesController =
       TextEditingController();
   final Set<String> _selectedTags = <String>{};
@@ -1064,7 +1156,7 @@ class _PostComposerState extends State<_PostComposer> {
   ];
 
   _ComposerMode _mode = _ComposerMode.journey;
-  String _planDifficulty = 'Medium';
+  String _planDifficulty = '中等';
 
   @override
   void initState() {
@@ -1110,6 +1202,7 @@ class _PostComposerState extends State<_PostComposer> {
         final recipe = submission.recipe;
         if (recipe != null) {
           _recipeTitleController.text = recipe.title;
+          _recipeDescriptionController.text = recipe.description;
           _recipeCookMinutesController.text = recipe.cookMinutes.toString();
           for (final ingredient in _recipeIngredients) {
             ingredient.dispose();
@@ -1135,6 +1228,7 @@ class _PostComposerState extends State<_PostComposer> {
     _planTitleController.dispose();
     _planSummaryController.dispose();
     _recipeTitleController.dispose();
+    _recipeDescriptionController.dispose();
     _recipeCookMinutesController.dispose();
     for (final step in _planSteps) {
       step.dispose();
@@ -1272,7 +1366,7 @@ class _PostComposerState extends State<_PostComposer> {
           tags: tags,
           recipe: RecipeData(
             title: _recipeTitleController.text.trim(),
-            description: _contentController.text.trim(),
+            description: _recipeDescriptionController.text.trim(),
             cookMinutes:
                 int.tryParse(_recipeCookMinutesController.text.trim()) ?? 0,
             ingredients: ingredients,
@@ -1314,6 +1408,7 @@ class _PostComposerState extends State<_PostComposer> {
           _planTitleController,
           _planSummaryController,
           _recipeTitleController,
+          _recipeDescriptionController,
           _recipeCookMinutesController,
           ..._planSteps.expand((step) => [step.name, step.minutes]),
           ..._recipeIngredients.expand((item) => [item.name, item.grams]),
@@ -1375,8 +1470,7 @@ class _PostComposerState extends State<_PostComposer> {
                 const SizedBox(height: 8),
                 TextField(
                   controller: _planTitleController,
-                  decoration: _composerInputDecoration(
-                      '計畫標題，例如：4週友善膝蓋計畫'),
+                  decoration: _composerInputDecoration('計畫標題，例如：4週友善膝蓋計畫'),
                 ),
                 const SizedBox(height: 10),
                 TextField(
@@ -1425,8 +1519,17 @@ class _PostComposerState extends State<_PostComposer> {
                 const SizedBox(height: 8),
                 TextField(
                   controller: _recipeTitleController,
+                  decoration: _composerInputDecoration('食譜標題，例如：跑後高蛋白餐'),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _recipeDescriptionController,
+                  minLines: 2,
+                  maxLines: 3,
+                  textInputAction: TextInputAction.newline,
                   decoration: _composerInputDecoration(
-                      '食譜標題，例如：跑後高蛋白餐'),
+                    '食譜描述（顯示在食譜卡片內）',
+                  ),
                 ),
                 const SizedBox(height: 10),
                 TextField(
@@ -1514,9 +1617,7 @@ class _PostComposerState extends State<_PostComposer> {
                       size: 18,
                     ),
                     label: Text(
-                      _mode == _ComposerMode.recipe
-                          ? '自動計算營養'
-                          : '結構化貼文',
+                      _mode == _ComposerMode.recipe ? '自動計算營養' : '結構化貼文',
                       style: const TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w800,
@@ -1640,7 +1741,7 @@ class _ModeChip extends StatelessWidget {
           borderRadius: BorderRadius.circular(999),
         ),
         child: Text(
-          'Share Your $label',
+          '分享你的$label',
           style: TextStyle(
             color: isSelected ? Colors.white : const Color(0xFF4A5568),
             fontSize: 12,
@@ -1720,7 +1821,7 @@ class _DifficultyPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const options = ['Low', 'Medium', 'High'];
+    const options = ['簡單', '中等', '進階'];
     return Row(
       children: options
           .map(
@@ -1804,7 +1905,7 @@ class _PlanStepEditor extends StatelessWidget {
               Expanded(
                 child: TextField(
                   controller: step.name,
-                  decoration: _composerInputDecoration('Action name'),
+                  decoration: _composerInputDecoration('動作名稱'),
                 ),
               ),
               IconButton(
@@ -1817,7 +1918,7 @@ class _PlanStepEditor extends StatelessWidget {
           TextField(
             controller: step.minutes,
             keyboardType: TextInputType.number,
-            decoration: _composerInputDecoration('Minutes'),
+            decoration: _composerInputDecoration('分鐘數'),
           ),
         ],
       ),
@@ -1866,7 +1967,7 @@ class _RecipeIngredientEditor extends StatelessWidget {
             flex: 3,
             child: TextField(
               controller: ingredient.name,
-              decoration: _composerInputDecoration('Ingredient'),
+              decoration: _composerInputDecoration('食材名稱'),
             ),
           ),
           const SizedBox(width: 10),
@@ -1875,7 +1976,7 @@ class _RecipeIngredientEditor extends StatelessWidget {
             child: TextField(
               controller: ingredient.grams,
               keyboardType: TextInputType.number,
-              decoration: _composerInputDecoration('Grams'),
+              decoration: _composerInputDecoration('克數'),
             ),
           ),
           IconButton(
@@ -1909,8 +2010,7 @@ class _RecipeNutritionPreview extends StatelessWidget {
         children: [
           _NutritionPill(label: '${nutrition.calories} 大卡'),
           _NutritionPill(label: '${nutrition.carbs.toStringAsFixed(1)}g 碳水'),
-          _NutritionPill(
-              label: '${nutrition.protein.toStringAsFixed(1)}g 蛋白質'),
+          _NutritionPill(label: '${nutrition.protein.toStringAsFixed(1)}g 蛋白質'),
           _NutritionPill(label: '${nutrition.fat.toStringAsFixed(1)}g 脂肪'),
         ],
       ),
@@ -2018,6 +2118,7 @@ class _PostCard extends StatelessWidget {
   final VoidCallback onCommentTap;
   final VoidCallback onSaveTap;
   final VoidCallback onShareTap;
+  final VoidCallback onProfileTap;
   final String initial;
   final String name;
   final String timeAgo;
@@ -2037,6 +2138,7 @@ class _PostCard extends StatelessWidget {
     required this.onCommentTap,
     required this.onSaveTap,
     required this.onShareTap,
+    required this.onProfileTap,
     required this.initial,
     required this.name,
     required this.timeAgo,
@@ -2067,29 +2169,40 @@ class _PostCard extends StatelessWidget {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _Avatar(initial: initial),
+                InkWell(
+                  onTap: onProfileTap,
+                  borderRadius: BorderRadius.circular(999),
+                  child: _Avatar(initial: initial),
+                ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        name,
-                        style: const TextStyle(
-                          color: Color(0xFF111827),
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                        ),
+                  child: InkWell(
+                    onTap: onProfileTap,
+                    borderRadius: BorderRadius.circular(12),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 2),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name,
+                            style: const TextStyle(
+                              color: Color(0xFF111827),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          Text(
+                            timeAgo,
+                            style: const TextStyle(
+                              color: Color(0xFF718096),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
-                      Text(
-                        timeAgo,
-                        style: const TextStyle(
-                          color: Color(0xFF718096),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
                 IconButton(
@@ -2172,7 +2285,7 @@ class _PostCard extends StatelessWidget {
                             color: Color(0xFF4A5568), size: 22),
                         SizedBox(width: 7),
                         Text(
-                          'Share',
+                          '分享',
                           style: TextStyle(
                             color: Color(0xFF4A5568),
                             fontSize: 13,
@@ -2280,7 +2393,7 @@ class _WorkoutPlanCard extends StatelessWidget {
                           ),
                           const SizedBox(height: 3),
                           Text(
-                            '${step.minutes} minutes',
+                            '${step.minutes} 分鐘',
                             style: const TextStyle(
                               color: Color(0xFF6B7280),
                               fontSize: 12,
@@ -2386,16 +2499,18 @@ class _RecipeCard extends StatelessWidget {
               ),
             ],
           ),
-          const SizedBox(height: 10),
-          Text(
-            recipe.description,
-            style: const TextStyle(
-              color: Color(0xFF92400E),
-              fontSize: 14,
-              height: 1.45,
-              fontWeight: FontWeight.w600,
+          if (recipe.description.trim().isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              recipe.description,
+              style: const TextStyle(
+                color: Color(0xFF92400E),
+                fontSize: 14,
+                height: 1.45,
+                fontWeight: FontWeight.w600,
+              ),
             ),
-          ),
+          ],
           const SizedBox(height: 14),
           Container(
             width: double.infinity,
@@ -2408,7 +2523,7 @@ class _RecipeCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Ingredients',
+                  '食材',
                   style: TextStyle(
                     color: Color(0xFF1F2937),
                     fontSize: 13,
@@ -2434,7 +2549,7 @@ class _RecipeCard extends StatelessWidget {
                           ),
                         ),
                         Text(
-                          '${ingredient.grams.toStringAsFixed(0)} g',
+                          '${ingredient.grams.toStringAsFixed(0)} 克',
                           style: const TextStyle(
                             color: Color(0xFF6B7280),
                             fontWeight: FontWeight.w600,
@@ -2455,8 +2570,7 @@ class _RecipeCard extends StatelessWidget {
               _RecipeMetricPill(label: '${recipe.cookMinutes} 分鐘'),
               _RecipeMetricPill(label: '${recipe.nutrition.calories} 大卡'),
               _RecipeMetricPill(
-                  label:
-                      '${recipe.nutrition.protein.toStringAsFixed(1)}g 蛋白質'),
+                  label: '${recipe.nutrition.protein.toStringAsFixed(1)}g 蛋白質'),
               _RecipeMetricPill(
                   label: '${recipe.nutrition.carbs.toStringAsFixed(1)}g 碳水'),
             ],
@@ -2661,25 +2775,25 @@ class _FriendsPanelState extends State<_FriendsPanel> {
           name: request.name,
           runsTogether: 0,
           streak: 0,
-          lastRun: 'Not yet',
+          lastRun: '尚未一起運動',
         ),
       );
     });
-    _showMessage('${request.name} added to friends');
+    _showMessage('已將 ${request.name} 加為好友');
   }
 
   void _declineRequest(_FriendRequest request) {
     setState(() {
       _requests.removeWhere((item) => item.name == request.name);
     });
-    _showMessage('${request.name} request declined');
+    _showMessage('已拒絕 ${request.name} 的好友請求');
   }
 
   void _cancelPending(_FriendRequest request) {
     setState(() {
       _pendingRequests.removeWhere((item) => item.name == request.name);
     });
-    _showMessage('Canceled request to ${request.name}');
+    _showMessage('已取消對 ${request.name} 的好友邀請');
   }
 
   void _addSuggestion(_FriendSuggestion suggestion) {
@@ -2689,14 +2803,14 @@ class _FriendsPanelState extends State<_FriendsPanel> {
         _FriendRequest(initial: suggestion.initial, name: suggestion.name),
       );
     });
-    _showMessage('Friend request sent to ${suggestion.name}');
+    _showMessage('已送出好友邀請給 ${suggestion.name}');
   }
 
   void _removeFriend(_RunInviteFriend friend) {
     setState(() {
       _friends.removeWhere((item) => item.name == friend.name);
     });
-    _showMessage('${friend.name} removed from friends');
+    _showMessage('已將 ${friend.name} 從好友移除');
   }
 
   @override
@@ -2718,10 +2832,10 @@ class _FriendsPanelState extends State<_FriendsPanel> {
         if (_selectedTab == 0) ...[
           const _FriendSearchField(),
           const SizedBox(height: 14),
-          _SectionLabel('YOUR RUNNING BUDDIES (${_friends.length})'),
+          _SectionLabel('你的運動好友 (${_friends.length})'),
           const SizedBox(height: 12),
           if (_friends.isEmpty)
-            const _EmptyState(text: 'No running buddies yet.')
+            const _EmptyState(text: '目前還沒有運動好友。')
           else
             ...List.generate(_friends.length, (index) {
               final friend = _friends[index];
@@ -2741,10 +2855,10 @@ class _FriendsPanelState extends State<_FriendsPanel> {
               );
             }),
         ] else if (_selectedTab == 1) ...[
-          _SectionLabel('FRIEND REQUESTS (${_requests.length})'),
+          _SectionLabel('好友請求 (${_requests.length})'),
           const SizedBox(height: 12),
           if (_requests.isEmpty)
-            const _EmptyState(text: 'No new friend requests.')
+            const _EmptyState(text: '目前沒有新的好友請求。')
           else
             ...List.generate(_requests.length, (index) {
               final request = _requests[index];
@@ -2759,10 +2873,10 @@ class _FriendsPanelState extends State<_FriendsPanel> {
               );
             }),
           const SizedBox(height: 18),
-          _SectionLabel('PENDING (${_pendingRequests.length})'),
+          _SectionLabel('待處理 (${_pendingRequests.length})'),
           const SizedBox(height: 12),
           if (_pendingRequests.isEmpty)
-            const _EmptyState(text: 'No pending requests.')
+            const _EmptyState(text: '目前沒有待處理請求。')
           else
             ...List.generate(_pendingRequests.length, (index) {
               final request = _pendingRequests[index];
@@ -2777,10 +2891,10 @@ class _FriendsPanelState extends State<_FriendsPanel> {
               );
             }),
         ] else ...[
-          const _SectionLabel('PEOPLE YOU MAY KNOW'),
+          const _SectionLabel('你可能認識的人'),
           const SizedBox(height: 12),
           if (_suggestions.isEmpty)
-            const _EmptyState(text: 'No suggestions right now.')
+            const _EmptyState(text: '目前沒有推薦對象。')
           else
             ...List.generate(_suggestions.length, (index) {
               final suggestion = _suggestions[index];
@@ -2937,7 +3051,7 @@ class _FriendSearchField extends StatelessWidget {
           SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Search friends...',
+              '搜尋好友...',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -3003,14 +3117,14 @@ class _RunningBuddyCard extends StatelessWidget {
                         color: Color(0xFF718096), size: 14),
                     const SizedBox(width: 4),
                     Text(
-                      '$runsTogether runs together',
+                      '一起運動 $runsTogether 次',
                       style: _friendMetaStyle,
                     ),
                     const SizedBox(width: 18),
                     const Icon(Icons.emoji_events_outlined,
                         color: Color(0xFFD69E2E), size: 14),
                     const SizedBox(width: 4),
-                    Text('$streak day streak', style: _friendMetaStyle),
+                    Text('連續 $streak 天', style: _friendMetaStyle),
                   ],
                 ),
                 const SizedBox(height: 8),
@@ -3220,8 +3334,8 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
       ),
     );
     final summary = note.isEmpty
-        ? 'Invitation sent to ${widget.friend.name}'
-        : 'Invitation sent to ${widget.friend.name}: $note';
+        ? '已送出邀請給 ${widget.friend.name}'
+        : '已送出邀請給 ${widget.friend.name}：$note';
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(summary)),
@@ -3259,7 +3373,7 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          '${widget.friend.runsTogether} runs together',
+                          '一起運動 ${widget.friend.runsTogether} 次',
                           style: _friendMetaStyle,
                         ),
                       ],
@@ -3278,7 +3392,7 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
                   border: Border.all(color: const Color(0xFFE2E8F0)),
                 ),
                 child: Text(
-                  'Last run together: ${widget.friend.lastRun}',
+                  '最近一次一起運動：${widget.friend.lastRun}',
                   textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: Color(0xFF4A5568),
@@ -3298,7 +3412,7 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                'Plan Your Run',
+                '安排這次活動',
                 style: TextStyle(
                   color: Colors.black,
                   fontSize: 16,
@@ -3403,8 +3517,7 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
                 controller: _notesController,
                 maxLines: 4,
                 decoration: InputDecoration(
-                  hintText:
-                      'Add any details about pace,\ndistance, or meeting instructions...',
+                  hintText: '補充配速、距離\n或集合說明...',
                   contentPadding:
                       const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
                   border: OutlineInputBorder(
@@ -3434,7 +3547,7 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
                   ),
                   icon: const Icon(Icons.send_outlined, size: 18),
                   label: const Text(
-                    'Send Invitation',
+                    '送出邀請',
                     style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w800,
@@ -3513,7 +3626,7 @@ class _FriendChatPanelState extends State<_FriendChatPanel> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            '${widget.friend.runsTogether} runs together',
+                            '一起運動 ${widget.friend.runsTogether} 次',
                             style: _friendMetaStyle,
                           ),
                         ],
@@ -3690,7 +3803,7 @@ class _InvitationMessageBubble extends StatelessWidget {
               Icon(Icons.calendar_today_outlined, size: 16),
               SizedBox(width: 8),
               Text(
-                'Run Invitation',
+                '跑步邀請',
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w900,
@@ -3701,7 +3814,7 @@ class _InvitationMessageBubble extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            'Date: ${invitation.date}',
+            '日期：${invitation.date}',
             style: const TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w700,
@@ -3710,7 +3823,7 @@ class _InvitationMessageBubble extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'Time: ${invitation.time}',
+            '時間：${invitation.time}',
             style: const TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w700,
@@ -3764,7 +3877,7 @@ class _InvitationMessageBubble extends StatelessWidget {
                 borderRadius: BorderRadius.circular(999),
               ),
               child: const Text(
-                'Waiting for reply',
+                '等待對方回覆',
                 style: TextStyle(
                   color: Color(0xFF4B5563),
                   fontSize: 12,
@@ -3780,7 +3893,7 @@ class _InvitationMessageBubble extends StatelessWidget {
                 borderRadius: BorderRadius.circular(999),
               ),
               child: const Text(
-                'Accepted',
+                '已接受',
                 style: TextStyle(
                   color: Color(0xFF166534),
                   fontSize: 12,
@@ -3855,7 +3968,7 @@ class _FriendRequestCard extends StatelessWidget {
                   ),
                 ),
                 const Text(
-                  'Wants to connect',
+                  '想與你成為好友',
                   style: _friendMetaStyle,
                 ),
                 const SizedBox(height: 12),
@@ -4176,11 +4289,13 @@ const TextStyle _friendMetaStyle = TextStyle(
 
 String _groupMetricUnit(String exerciseType) {
   switch (exerciseType) {
+    case 'mixed':
+      return '次活動';
     case 'squat':
-      return 'squats';
+      return '次深蹲';
     case 'slow_jogging':
     default:
-      return 'runs';
+      return '次慢跑';
   }
 }
 
@@ -4197,11 +4312,13 @@ String _groupWeeklyGoalLabel(
 }
 
 class _GroupsPanel extends StatefulWidget {
+  final VoidCallback onBack;
   final ValueChanged<_RunInviteFriend> onMessageTap;
   final void Function(_RunInviteFriend friend, String message) onSystemMessage;
 
   const _GroupsPanel({
     super.key,
+    required this.onBack,
     required this.onMessageTap,
     required this.onSystemMessage,
   });
@@ -4212,13 +4329,13 @@ class _GroupsPanel extends StatefulWidget {
 
 class _GroupsPanelState extends State<_GroupsPanel> {
   static const String _currentUserName = 'Catherine';
+  static const int _maxGroupMembers = 30;
   int _selectedTab = 0;
   bool _isCreateGroupOpen = false;
   final TextEditingController _groupNameController = TextEditingController();
   final TextEditingController _groupDescriptionController =
       TextEditingController();
   bool _createPrivateGroup = false;
-  String _selectedExerciseType = 'slow_jogging';
   final List<_RunInviteFriend> _availableInviteFriends =
       List<_RunInviteFriend>.from(_sharedFriendsSeed);
   final List<_MyGroup> _myGroups = [
@@ -4226,12 +4343,12 @@ class _GroupsPanelState extends State<_GroupsPanel> {
       ownerName: 'Lamei',
       ownerInitial: 'L',
       name: 'Morning Runners Club',
-      description: 'Early birds who love sunrise jogs',
-      members: 142,
+      description: '喜歡日出慢跑的晨跑夥伴',
+      members: 24,
       runs: 856,
       weeklyGoalCurrent: 32,
       weeklyGoalTarget: 50,
-      progressText: '32/50 runs',
+      progressText: '32/50 次慢跑',
       progress: 0.64,
       isPrivate: false,
       exerciseType: 'slow_jogging',
@@ -4273,7 +4390,7 @@ class _GroupsPanelState extends State<_GroupsPanel> {
         _GroupActivityEntry(
           title: '日出跑步',
           subtitle: '6名成員參加了今天的早晨活動',
-          timestamp: 'Today',
+          timestamp: '今天',
         ),
         _GroupActivityEntry(
           title: '每週目標更新',
@@ -4286,12 +4403,12 @@ class _GroupsPanelState extends State<_GroupsPanel> {
       ownerName: 'Catherine',
       ownerInitial: 'C',
       name: 'City Park Joggers',
-      description: 'Weekly meetups at Central Park',
-      members: 87,
+      description: '每週固定相約一起運動',
+      members: 18,
       runs: 432,
       weeklyGoalCurrent: 32,
       weeklyGoalTarget: 30,
-      progressText: '32/30 runs',
+      progressText: '32/30 次慢跑',
       progress: 1,
       isPrivate: false,
       exerciseType: 'slow_jogging',
@@ -4323,14 +4440,14 @@ class _GroupsPanelState extends State<_GroupsPanel> {
   final List<_DiscoverGroup> _discoverGroups = [
     const _DiscoverGroup(
       name: 'Weekend Warriors',
-      description: 'Saturday and Sunday jogging enthusiasts',
-      members: 56,
+      description: '週末一起運動的活力夥伴',
+      members: 20,
       isPrivate: false,
     ),
     const _DiscoverGroup(
       name: 'Post-Work Runners',
-      description: 'Evening jogs after work hours',
-      members: 93,
+      description: '下班後一起動一動的夜跑群',
+      members: 22,
       isPrivate: true,
     ),
   ];
@@ -4359,7 +4476,6 @@ class _GroupsPanelState extends State<_GroupsPanel> {
       _groupNameController.clear();
       _groupDescriptionController.clear();
       _createPrivateGroup = false;
-      _selectedExerciseType = 'slow_jogging';
     });
   }
 
@@ -4382,24 +4498,24 @@ class _GroupsPanelState extends State<_GroupsPanel> {
           runs: 0,
           weeklyGoalCurrent: 0,
           weeklyGoalTarget: 20,
-          progressText: '0/20 runs',
+          progressText: '0/20 次活動',
           progress: 0,
           isPrivate: _createPrivateGroup,
-          exerciseType: _selectedExerciseType,
+          exerciseType: 'mixed',
           memberPreview: const [
             _GroupMember(
               initial: 'C',
               name: 'Catherine',
               totalRuns: 0,
               runsThisWeek: 0,
-              joinedDate: 'Today',
+              joinedDate: '今天',
               canMessage: false,
             ),
           ],
           activities: const [
             _GroupActivityEntry(
               title: '群組已建立',
-              subtitle: '歡迎來到你的新跑步群組',
+              subtitle: '歡迎來到你的新運動群組',
               timestamp: '剛剛',
             ),
           ],
@@ -4414,7 +4530,7 @@ class _GroupsPanelState extends State<_GroupsPanel> {
             members: 1,
             isPrivate: false,
             joined: true,
-            exerciseType: _selectedExerciseType,
+            exerciseType: 'mixed',
           ),
         );
       }
@@ -4422,7 +4538,7 @@ class _GroupsPanelState extends State<_GroupsPanel> {
     });
 
     _closeCreateGroup();
-    _showMessage('Group "$name" created');
+    _showMessage('已建立群組「$name」');
   }
 
   void _viewGroup(_MyGroup group) {
@@ -4434,14 +4550,39 @@ class _GroupsPanelState extends State<_GroupsPanel> {
           inviteableFriends: _availableInviteFriends,
           onInviteFriend: _inviteFriendToGroup,
           onRequestInvite: _requestFriendForGroup,
+          onLeaveGroup: () => _leaveGroup(group),
         ),
       ),
     );
   }
 
+  void _leaveGroup(_MyGroup group) {
+    setState(() {
+      _myGroups.removeWhere((item) => item.name == group.name);
+
+      final discoverIndex =
+          _discoverGroups.indexWhere((item) => item.name == group.name);
+      if (discoverIndex != -1) {
+        final discoverGroup = _discoverGroups[discoverIndex];
+        _discoverGroups[discoverIndex] = discoverGroup.copyWith(
+          joined: false,
+          requestSent: false,
+          members: (discoverGroup.members - 1).clamp(0, _maxGroupMembers),
+        );
+      }
+    });
+
+    _showMessage('你已退出 ${group.name}');
+  }
+
   _MyGroup _inviteFriendToGroup(_MyGroup group, _RunInviteFriend friend) {
+    if (group.members >= _maxGroupMembers) {
+      _showMessage('${group.name} 已達 30 人上限');
+      return group;
+    }
+
     final updatedGroup = group.copyWith(
-      members: group.members + 1,
+      members: (group.members + 1).clamp(0, _maxGroupMembers),
       memberPreview: [
         ...group.memberPreview,
         _GroupMember(
@@ -4449,7 +4590,7 @@ class _GroupsPanelState extends State<_GroupsPanel> {
           name: friend.name,
           totalRuns: friend.runsTogether,
           runsThisWeek: friend.streak,
-          joinedDate: 'Today',
+          joinedDate: '今天',
         ),
       ],
       activities: [
@@ -4472,7 +4613,8 @@ class _GroupsPanelState extends State<_GroupsPanel> {
       if (discoverIndex != -1) {
         _discoverGroups[discoverIndex] =
             _discoverGroups[discoverIndex].copyWith(
-          members: _discoverGroups[discoverIndex].members + 1,
+          members: (_discoverGroups[discoverIndex].members + 1)
+              .clamp(0, _maxGroupMembers),
         );
       }
     });
@@ -4481,7 +4623,7 @@ class _GroupsPanelState extends State<_GroupsPanel> {
       friend,
       '$_currentUserName invited you to join "${group.name}".',
     );
-    _showMessage('${friend.name} added to ${group.name}');
+    _showMessage('${friend.name} 已加入 ${group.name}');
     return updatedGroup;
   }
 
@@ -4491,25 +4633,30 @@ class _GroupsPanelState extends State<_GroupsPanel> {
       name: group.ownerName,
       runsTogether: 0,
       streak: 0,
-      lastRun: 'Group chat',
+      lastRun: '群組聊天',
     );
 
     widget.onSystemMessage(
       ownerThread,
       '$_currentUserName requested to add ${friend.name} to "${group.name}". Please review this member invite request.',
     );
-    _showMessage('Request sent to ${group.ownerName}');
+    _showMessage('已送出邀請請求給 ${group.ownerName}');
   }
 
   void _openGroupSettings(String name) {
-    _showMessage('Opened settings for $name');
+    _showMessage('已開啟 $name 的設定');
   }
 
   void _joinGroup(_DiscoverGroup group) {
+    if (group.members >= _maxGroupMembers) {
+      _showMessage('${group.name} 已達 30 人上限');
+      return;
+    }
+
     setState(() {
       _myGroups.add(
         _MyGroup(
-          ownerName: 'Group Admin',
+          ownerName: '群組管理員',
           ownerInitial: 'G',
           name: group.name,
           description: group.description,
@@ -4517,17 +4664,17 @@ class _GroupsPanelState extends State<_GroupsPanel> {
           runs: 0,
           weeklyGoalCurrent: 0,
           weeklyGoalTarget: 20,
-          progressText: '0/20 runs',
+          progressText: '0/20 activities',
           progress: 0,
           isPrivate: group.isPrivate,
           exerciseType: group.exerciseType,
           memberPreview: const [
             _GroupMember(
               initial: 'Y',
-              name: 'You',
+              name: '你',
               totalRuns: 0,
               runsThisWeek: 0,
-              joinedDate: 'Today',
+              joinedDate: '今天',
               canMessage: false,
             ),
           ],
@@ -4546,12 +4693,12 @@ class _GroupsPanelState extends State<_GroupsPanel> {
         _discoverGroups[discoverIndex] =
             _discoverGroups[discoverIndex].copyWith(
           joined: true,
-          members: group.members + 1,
+          members: (group.members + 1).clamp(0, _maxGroupMembers),
         );
       }
       _selectedTab = 0;
     });
-    _showMessage('Joined ${group.name}');
+    _showMessage('已加入 ${group.name}');
   }
 
   void _requestGroup(_DiscoverGroup group) {
@@ -4564,7 +4711,7 @@ class _GroupsPanelState extends State<_GroupsPanel> {
         );
       }
     });
-    _showMessage('Request sent to ${group.name}');
+    _showMessage('已送出加入 ${group.name} 的請求');
   }
 
   @override
@@ -4572,6 +4719,45 @@ class _GroupsPanelState extends State<_GroupsPanel> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 14, 18, 24),
       children: [
+        Row(
+          children: [
+            InkWell(
+              borderRadius: BorderRadius.circular(18),
+              onTap: widget.onBack,
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.chevron_left,
+                        size: 24, color: Color(0xFF4A5568)),
+                    SizedBox(width: 2),
+                    Text(
+                      '返回',
+                      style: TextStyle(
+                        color: Color(0xFF4A5568),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const Spacer(),
+            const CircleAvatar(
+              radius: 12,
+              backgroundColor: Color(0xFFE2E8F0),
+              child: Icon(Icons.directions_run,
+                  size: 14, color: Color(0xFF4A5568)),
+            ),
+            const Spacer(),
+            _CreateGroupButton(
+              onTap: openCreateGroup,
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
         Row(
           children: [
             Expanded(
@@ -4599,23 +4785,18 @@ class _GroupsPanelState extends State<_GroupsPanel> {
             ),
           ],
         ),
-        const SizedBox(height: 22),
+        const SizedBox(height: 14),
         const _GroupSearchField(),
+        const SizedBox(height: 22),
         if (_isCreateGroupOpen) ...[
           const SizedBox(height: 14),
           _CreateGroupForm(
             nameController: _groupNameController,
             descriptionController: _groupDescriptionController,
             isPrivate: _createPrivateGroup,
-            selectedExerciseType: _selectedExerciseType,
             onPrivacyChanged: (value) {
               setState(() {
                 _createPrivateGroup = value;
-              });
-            },
-            onExerciseChanged: (value) {
-              setState(() {
-                _selectedExerciseType = value;
               });
             },
             onClose: _closeCreateGroup,
@@ -4623,13 +4804,12 @@ class _GroupsPanelState extends State<_GroupsPanel> {
           ),
         ],
         const SizedBox(height: 14),
-        _SectionLabel(_selectedTab == 0
-            ? 'YOUR GROUPS (${_myGroups.length})'
-            : 'SUGGESTED GROUPS'),
+        _SectionLabel(
+            _selectedTab == 0 ? '我的群組 (${_myGroups.length})' : '推薦群組'),
         const SizedBox(height: 12),
         if (_selectedTab == 0) ...[
           if (_myGroups.isEmpty)
-            const _EmptyState(text: 'No groups yet.')
+            const _EmptyState(text: '目前還沒有群組。')
           else
             ...List.generate(_myGroups.length, (index) {
               final group = _myGroups[index];
@@ -4644,7 +4824,7 @@ class _GroupsPanelState extends State<_GroupsPanel> {
                   weeklyGoalCurrent: group.weeklyGoalCurrent,
                   weeklyGoalTarget: group.weeklyGoalTarget,
                   progress: group.progress,
-                  actionLabel: 'View Group',
+                  actionLabel: '查看群組',
                   isPrivate: group.isPrivate,
                   exerciseType: group.exerciseType,
                   showCrown: group.showCrown,
@@ -4658,7 +4838,7 @@ class _GroupsPanelState extends State<_GroupsPanel> {
             }),
         ] else ...[
           if (_discoverGroups.isEmpty)
-            const _EmptyState(text: 'No suggested groups right now.')
+            const _EmptyState(text: '目前沒有推薦群組。')
           else
             ...List.generate(_discoverGroups.length, (index) {
               final group = _discoverGroups[index];
@@ -4670,12 +4850,10 @@ class _GroupsPanelState extends State<_GroupsPanel> {
                   description: group.description,
                   members: group.members,
                   actionLabel: group.joined
-                      ? 'Joined'
+                      ? '已加入'
                       : group.requestSent
-                          ? 'Requested'
-                          : (group.isPrivate
-                              ? 'Request to Join'
-                              : 'Join Group'),
+                          ? '已申請'
+                          : (group.isPrivate ? '申請加入' : '加入群組'),
                   isPrivate: group.isPrivate,
                   isDisabled: group.joined || group.requestSent,
                   onTap: group.joined || group.requestSent
@@ -4742,7 +4920,7 @@ class _GroupSearchField extends StatelessWidget {
           SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Search groups...',
+              '搜尋群組...',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -4762,9 +4940,7 @@ class _CreateGroupForm extends StatelessWidget {
   final TextEditingController nameController;
   final TextEditingController descriptionController;
   final bool isPrivate;
-  final String selectedExerciseType;
   final ValueChanged<bool> onPrivacyChanged;
-  final ValueChanged<String> onExerciseChanged;
   final VoidCallback onClose;
   final VoidCallback onCreate;
 
@@ -4772,9 +4948,7 @@ class _CreateGroupForm extends StatelessWidget {
     required this.nameController,
     required this.descriptionController,
     required this.isPrivate,
-    required this.selectedExerciseType,
     required this.onPrivacyChanged,
-    required this.onExerciseChanged,
     required this.onClose,
     required this.onCreate,
   });
@@ -4798,7 +4972,7 @@ class _CreateGroupForm extends StatelessWidget {
             children: [
               const Expanded(
                 child: Text(
-                  'Create New Group',
+                  '建立新群組',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w900,
@@ -4817,7 +4991,7 @@ class _CreateGroupForm extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           const Text(
-            'GROUP NAME',
+            '群組名稱',
             style: TextStyle(
               color: Color(0xFF4A5568),
               fontSize: 12,
@@ -4844,7 +5018,7 @@ class _CreateGroupForm extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           const Text(
-            'DESCRIPTION',
+            '群組描述',
             style: TextStyle(
               color: Color(0xFF4A5568),
               fontSize: 12,
@@ -4872,35 +5046,7 @@ class _CreateGroupForm extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           const Text(
-            '運動類型',
-            style: TextStyle(
-              color: Color(0xFF4A5568),
-              fontSize: 12,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: _groupExerciseOptions.map((option) {
-              final isSelected = selectedExerciseType == option.value;
-              return Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(
-                    right: option == _groupExerciseOptions.first ? 10 : 0,
-                  ),
-                  child: _GroupExerciseCard(
-                    title: option.label,
-                    icon: option.icon,
-                    isSelected: isSelected,
-                    onTap: () => onExerciseChanged(option.value),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 14),
-          const Text(
-            'PRIVACY',
+            '群組權限',
             style: TextStyle(
               color: Color(0xFF4A5568),
               fontSize: 12,
@@ -4930,6 +5076,32 @@ class _CreateGroupForm extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 14),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF8FAFC),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFE2E8F0)),
+            ),
+            child: const Row(
+              children: [
+                Icon(Icons.groups_2_outlined, color: Colors.black, size: 18),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '群組建立後可自由進行超慢跑或深蹲活動，最多 30 人。',
+                    style: TextStyle(
+                      color: Color(0xFF4A5568),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 14),
           SizedBox(
@@ -5006,53 +5178,6 @@ class _GroupPrivacyCard extends StatelessWidget {
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
                 color: Color(0xFF718096),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _GroupExerciseCard extends StatelessWidget {
-  final String title;
-  final IconData icon;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _GroupExerciseCard({
-    required this.title,
-    required this.icon,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isSelected ? Colors.black : const Color(0xFFE2E8F0),
-            width: isSelected ? 2 : 1.5,
-          ),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: Colors.black, size: 22),
-            const SizedBox(height: 8),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w900,
-                color: Colors.black,
               ),
             ),
           ],
@@ -5140,7 +5265,7 @@ class _SuggestedGroupCard extends StatelessWidget {
                         const Icon(Icons.people_outline,
                             color: Color(0xFF718096), size: 14),
                         const SizedBox(width: 4),
-                        Text('$members members', style: _friendMetaStyle),
+                        Text('$members/30 人', style: _friendMetaStyle),
                       ],
                     ),
                   ],
@@ -5268,14 +5393,12 @@ class _GroupCard extends StatelessWidget {
                       style: _friendMetaStyle,
                     ),
                     const SizedBox(height: 7),
-                    _GroupExerciseChip(exerciseType: exerciseType),
-                    const SizedBox(height: 7),
                     Row(
                       children: [
                         const Icon(Icons.people_outline,
                             color: Color(0xFF718096), size: 14),
                         const SizedBox(width: 4),
-                        Text('$members members', style: _friendMetaStyle),
+                        Text('$members/30 人', style: _friendMetaStyle),
                         const SizedBox(width: 12),
                         const Icon(Icons.trending_up,
                             color: Color(0xFF718096), size: 14),
@@ -5404,6 +5527,7 @@ class _GroupDetailScreen extends StatefulWidget {
   final _MyGroup Function(_MyGroup group, _RunInviteFriend friend)
       onInviteFriend;
   final void Function(_MyGroup group, _RunInviteFriend friend) onRequestInvite;
+  final VoidCallback onLeaveGroup;
 
   const _GroupDetailScreen({
     required this.group,
@@ -5411,6 +5535,7 @@ class _GroupDetailScreen extends StatefulWidget {
     required this.inviteableFriends,
     required this.onInviteFriend,
     required this.onRequestInvite,
+    required this.onLeaveGroup,
   });
 
   @override
@@ -5418,14 +5543,14 @@ class _GroupDetailScreen extends StatefulWidget {
 }
 
 class _GroupDetailScreenState extends State<_GroupDetailScreen> {
+  static const int _maxGroupMembers = 30;
   int _selectedTab = 0;
   late _MyGroup _group;
   bool _isCreateEventOpen = false;
   final TextEditingController _eventTitleController = TextEditingController();
   final TextEditingController _eventDateController = TextEditingController();
-  final TextEditingController _eventLocationController =
-      TextEditingController();
   final TextEditingController _eventNotesController = TextEditingController();
+  String _selectedEventActivityType = 'slow_jogging';
   String? _selectedEventTime;
 
   static const List<String> _eventTimeOptions = [
@@ -5446,14 +5571,41 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
   void dispose() {
     _eventTitleController.dispose();
     _eventDateController.dispose();
-    _eventLocationController.dispose();
     _eventNotesController.dispose();
     super.dispose();
   }
 
   bool get _isOwner => _group.ownerName == _GroupsPanelState._currentUserName;
   bool get _canDirectInvite => _isOwner || !_group.isPrivate;
-  bool get _isRunningGroup => _group.exerciseType == 'slow_jogging';
+
+  Future<void> _handleLeaveGroup() async {
+    final bool? shouldLeave = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('退出群組'),
+          content: Text('確定要退出「${_group.name}」嗎？'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('退出'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldLeave != true || !mounted) {
+      return;
+    }
+
+    widget.onLeaveGroup();
+    Navigator.of(context).pop();
+  }
 
   Future<void> _pickEventDate() async {
     final pickedDate = await showDatePicker(
@@ -5483,10 +5635,12 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
   void _submitGroupRunEvent() {
     final title = _eventTitleController.text.trim();
     final date = _eventDateController.text.trim();
-    final location = _eventLocationController.text.trim();
     final time = _selectedEventTime;
+    final activityLabel = _groupExerciseOptions
+        .firstWhere((option) => option.value == _selectedEventActivityType)
+        .label;
 
-    if (title.isEmpty || date.isEmpty || location.isEmpty || time == null) {
+    if (title.isEmpty || date.isEmpty || time == null) {
       return;
     }
 
@@ -5495,7 +5649,7 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
         activities: [
           _GroupActivityEntry(
             title: title,
-            subtitle: '$date • $time • $location',
+            subtitle: '$activityLabel • $date • $time',
             timestamp: '剛剛',
           ),
           ..._group.activities,
@@ -5504,18 +5658,25 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
       _isCreateEventOpen = false;
       _eventTitleController.clear();
       _eventDateController.clear();
-      _eventLocationController.clear();
       _eventNotesController.clear();
+      _selectedEventActivityType = 'slow_jogging';
       _selectedEventTime = null;
       _selectedTab = 1;
     });
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('已建立團跑活動：$title')),
+      SnackBar(content: Text('已建立群組活動：$title')),
     );
   }
 
   Future<void> _openInviteSheet() async {
+    if (_group.members >= _maxGroupMembers) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('此群組已達 30 人上限')),
+      );
+      return;
+    }
+
     if (widget.inviteableFriends.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('目前沒有可邀請的好友')),
@@ -5534,9 +5695,7 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _canDirectInvite
-                      ? '邀請你的好友'
-                      : '請求新成員加入',
+                  _canDirectInvite ? '邀請你的好友' : '請求新成員加入',
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w900,
@@ -5577,7 +5736,7 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
                       subtitle: Text(
                         alreadyInGroup
                             ? '已在群組中'
-                            : '${friend.runsTogether} runs together',
+                            : '一起運動 ${friend.runsTogether} 次',
                         style: TextStyle(
                           color: alreadyInGroup
                               ? const Color(0xFF94A3B8)
@@ -5638,7 +5797,7 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: const Text(
-          'GROUP',
+          '群組',
           style: TextStyle(
             color: Color(0xFF111827),
             fontSize: 17,
@@ -5647,6 +5806,29 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
           ),
         ),
         centerTitle: true,
+        actions: [
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.menu_rounded, color: Color(0xFF4A5568)),
+            onSelected: (value) {
+              if (value == 'invite') {
+                _openInviteSheet();
+              } else if (value == 'leave') {
+                _handleLeaveGroup();
+              }
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem<String>(
+                value: 'invite',
+                child: Text(_canDirectInvite ? '邀請好友進群組' : '請求邀請成員'),
+              ),
+              const PopupMenuItem<String>(
+                value: 'leave',
+                child: Text('退出群組'),
+              ),
+            ],
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: SafeArea(
         top: false,
@@ -5735,9 +5917,8 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: _GroupStatTile(
-                          label: group.exerciseType == 'squat'
-                              ? '總深蹲次數'
-                              : '總跑步次數',
+                          label:
+                              group.exerciseType == 'squat' ? '總深蹲次數' : '總跑步次數',
                           value:
                               _groupMetricLabel(group.exerciseType, group.runs),
                           icon: Icons.trending_up,
@@ -5842,15 +6023,11 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
             SizedBox(
               height: 46,
               child: TextButton.icon(
-                onPressed: _isRunningGroup ? _toggleCreateEvent : null,
+                onPressed: _toggleCreateEvent,
                 style: _friendButtonStyle(true),
                 icon: const Icon(Icons.play_arrow_rounded, size: 18),
                 label: Text(
-                  _isRunningGroup
-                      ? (_isCreateEventOpen
-                          ? '隱藏團跑活動表單'
-                          : '建立團跑活動')
-                      : '僅限超慢跑的群組活動',
+                  _isCreateEventOpen ? '隱藏群組活動表單' : '建立群組活動',
                   style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w900,
@@ -5858,16 +6035,21 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
                 ),
               ),
             ),
-            if (_isRunningGroup && _isCreateEventOpen) ...[
+            if (_isCreateEventOpen) ...[
               const SizedBox(height: 12),
               _CreateGroupRunEventForm(
                 titleController: _eventTitleController,
                 dateController: _eventDateController,
-                locationController: _eventLocationController,
                 notesController: _eventNotesController,
+                selectedActivityType: _selectedEventActivityType,
                 selectedTime: _selectedEventTime,
                 timeOptions: _eventTimeOptions,
                 onPickDate: _pickEventDate,
+                onActivityTypeSelected: (value) {
+                  setState(() {
+                    _selectedEventActivityType = value;
+                  });
+                },
                 onTimeSelected: (time) {
                   setState(() {
                     _selectedEventTime = time;
@@ -5876,29 +6058,6 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
                 onCreate: _submitGroupRunEvent,
               ),
             ],
-            const SizedBox(height: 10),
-            SizedBox(
-              height: 44,
-              child: TextButton.icon(
-                onPressed: _openInviteSheet,
-                style: _friendButtonStyle(false),
-                icon: Icon(
-                  _canDirectInvite
-                      ? Icons.person_add_alt_1_outlined
-                      : Icons.mark_chat_unread_outlined,
-                  size: 17,
-                ),
-                label: Text(
-                  _canDirectInvite
-                      ? '邀請好友加入群組'
-                      : '請求邀請成員',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-            ),
             const SizedBox(height: 14),
             if (_selectedTab == 0) ...[
               if (group.memberPreview.isEmpty)
@@ -5917,7 +6076,7 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
                                   name: member.name,
                                   runsTogether: member.totalRuns,
                                   streak: member.runsThisWeek,
-                                  lastRun: 'This week',
+                                  lastRun: '本週',
                                 ),
                               )
                           : null,
@@ -6058,14 +6217,14 @@ class _GroupMemberCard extends StatelessWidget {
                         size: 14, color: Color(0xFF718096)),
                     const SizedBox(width: 4),
                     Text(
-                      '${member.totalRuns} total ${_groupMetricUnit(exerciseType)}',
+                      '累積 ${member.totalRuns} ${_groupMetricUnit(exerciseType)}',
                       style: _friendMetaStyle,
                     ),
                     const SizedBox(width: 12),
                     const Icon(Icons.calendar_today_outlined,
                         size: 14, color: Color(0xFF718096)),
                     const SizedBox(width: 4),
-                    Text('${member.runsThisWeek} this week',
+                    Text('本週 ${member.runsThisWeek} 次',
                         style: _friendMetaStyle),
                   ],
                 ),
@@ -6202,22 +6361,24 @@ class _GroupExerciseChip extends StatelessWidget {
 class _CreateGroupRunEventForm extends StatelessWidget {
   final TextEditingController titleController;
   final TextEditingController dateController;
-  final TextEditingController locationController;
   final TextEditingController notesController;
+  final String selectedActivityType;
   final String? selectedTime;
   final List<String> timeOptions;
   final VoidCallback onPickDate;
+  final ValueChanged<String> onActivityTypeSelected;
   final ValueChanged<String> onTimeSelected;
   final VoidCallback onCreate;
 
   const _CreateGroupRunEventForm({
     required this.titleController,
     required this.dateController,
-    required this.locationController,
     required this.notesController,
+    required this.selectedActivityType,
     required this.selectedTime,
     required this.timeOptions,
     required this.onPickDate,
+    required this.onActivityTypeSelected,
     required this.onTimeSelected,
     required this.onCreate,
   });
@@ -6226,7 +6387,6 @@ class _CreateGroupRunEventForm extends StatelessWidget {
   Widget build(BuildContext context) {
     final canCreate = titleController.text.trim().isNotEmpty &&
         dateController.text.trim().isNotEmpty &&
-        locationController.text.trim().isNotEmpty &&
         selectedTime != null;
 
     return Container(
@@ -6252,7 +6412,7 @@ class _CreateGroupRunEventForm extends StatelessWidget {
           TextField(
             controller: titleController,
             decoration: InputDecoration(
-              hintText: '例如：日出團跑',
+              hintText: '例如：早晨訓練',
               contentPadding:
                   const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
               border: OutlineInputBorder(
@@ -6265,6 +6425,61 @@ class _CreateGroupRunEventForm extends StatelessWidget {
               ),
             ),
             onChanged: (_) => (context as Element).markNeedsBuild(),
+          ),
+          const SizedBox(height: 18),
+          const _InviteFieldLabel(
+            icon: Icons.sports_gymnastics_outlined,
+            text: '活動類型',
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: _groupExerciseOptions
+                .where((option) => option.value != 'mixed')
+                .map((option) {
+              final isSelected = selectedActivityType == option.value;
+              return Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(
+                    right: option.value == 'slow_jogging' ? 10 : 0,
+                  ),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(14),
+                    onTap: () => onActivityTypeSelected(option.value),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 14,
+                      ),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: isSelected
+                              ? Colors.black
+                              : const Color(0xFFE2E8F0),
+                          width: isSelected ? 2 : 1.2,
+                        ),
+                        color:
+                            isSelected ? const Color(0xFFF8FAFC) : Colors.white,
+                      ),
+                      child: Column(
+                        children: [
+                          Icon(option.icon, color: Colors.black, size: 20),
+                          const SizedBox(height: 6),
+                          Text(
+                            option.label,
+                            style: const TextStyle(
+                              color: Colors.black,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
           ),
           const SizedBox(height: 18),
           const _InviteFieldLabel(
@@ -6323,29 +6538,6 @@ class _CreateGroupRunEventForm extends StatelessWidget {
                 ),
               );
             }).toList(),
-          ),
-          const SizedBox(height: 18),
-          const _InviteFieldLabel(
-            icon: Icons.location_on_outlined,
-            text: '地點',
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: locationController,
-            decoration: InputDecoration(
-              hintText: '群組將在哪裡集合？',
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-              ),
-            ),
-            onChanged: (_) => (context as Element).markNeedsBuild(),
           ),
           const SizedBox(height: 18),
           const _InviteFieldLabel(
@@ -6765,33 +6957,30 @@ class CommunityStore extends ChangeNotifier {
     const CommunityPost(
       initial: 'S',
       name: 'Sarah Chen',
-      timeAgo: '2 hours ago',
-      content:
-          '剛完成了我的第一個5公里超慢跑！感覺超棒，完全沒有疼痛。關鍵在於耐心和持之以恆！',
-      tags: ['#MorningRun', '#PainFree', '#ProgressNotPerfection'],
+      timeAgo: '2 小時前',
+      content: '剛完成了我的第一個5公里超慢跑！感覺超棒，完全沒有疼痛。關鍵在於耐心和持之以恆！',
+      tags: ['#晨跑', '#零疼痛', '#進步比完美更重要'],
       likes: 24,
-      commentThreads: ['Love this progress!', 'So inspiring'],
+      commentThreads: ['很喜歡你的進步！', '真的很激勵人心'],
     ),
     const CommunityPost(
       initial: 'M',
       name: 'Mike Johnson',
-      timeAgo: '5 hours ago',
-      content:
-          '超慢跑第三週，我的膝蓋痛完全消失了。這個方法真的有效！💪',
-      tags: ['#SlowJoggingChallenge', '#HealthyHabits'],
+      timeAgo: '5 小時前',
+      content: '超慢跑第三週，我的膝蓋痛完全消失了。這個方法真的有效！💪',
+      tags: ['#超慢跑挑戰', '#健康習慣'],
       likes: 18,
-      commentThreads: ['Needed to hear this today'],
+      commentThreads: ['今天正需要看到這段話'],
       type: CommunityPostType.plan,
       plan: WorkoutPlanData(
         title: '超慢跑計畫',
-        summary:
-            '一個幫助你改善超慢跑技巧並減少膝蓋疼痛的4週計畫。',
-        difficulty: 'Medium',
+        summary: '一個幫助你改善超慢跑技巧並減少膝蓋疼痛的4週計畫。',
+        difficulty: '中等',
         totalMinutes: 40,
         steps: [
-          WorkoutPlanStep(name: 'Warm-up', minutes: 5),
-          WorkoutPlanStep(name: 'Slow Jog', minutes: 30),
-          WorkoutPlanStep(name: 'Cool-down', minutes: 5),
+          WorkoutPlanStep(name: '暖身', minutes: 5),
+          WorkoutPlanStep(name: '超慢跑', minutes: 30),
+          WorkoutPlanStep(name: '緩和', minutes: 5),
         ],
       ),
     ),
@@ -6799,20 +6988,19 @@ class CommunityStore extends ChangeNotifier {
       initial: 'A',
       name: 'Anna Lee',
       timeAgo: '昨天',
-      content:
-          '小步幅、穩定的呼吸，沒有壓力。今天的跑步感覺像是我第一次真的想再跑一次。',
-      tags: ['#EasyMiles', '#KeepMoving'],
+      content: '小步幅、穩定的呼吸，沒有壓力。今天的跑步感覺像是我第一次真的想再跑一次。',
+      tags: ['#輕鬆跑', '#持續前進'],
       likes: 31,
-      commentThreads: ['Steady really wins', 'Saving this mindset'],
+      commentThreads: ['穩穩來真的最有用', '這個心態我要收藏起來'],
     ),
     const CommunityPost(
       initial: 'J',
       name: 'Jamie Wu',
       timeAgo: '昨天',
       content: '跑後快速的一餐，讓我吃飽又充滿能量。',
-      tags: ['#RecoveryMeal', '#ProteinPacked'],
+      tags: ['#恢復餐', '#高蛋白'],
       likes: 15,
-      commentThreads: ['Trying this tonight'],
+      commentThreads: ['今晚就來試試看'],
       type: CommunityPostType.recipe,
       recipe: RecipeData(
         title: '雞肉飯恢復餐',
@@ -6914,14 +7102,24 @@ class CommunityStore extends ChangeNotifier {
 
 class CommunityProfileScreen extends StatelessWidget {
   final CommunityStore store;
+  final String profileInitial;
+  final String profileName;
 
-  const CommunityProfileScreen({super.key, required this.store});
+  CommunityProfileScreen({
+    super.key,
+    required this.store,
+    String? profileInitial,
+    String? profileName,
+  })  : profileInitial = profileInitial ?? UserSession.displayInitial,
+        profileName = profileName ?? UserSession.displayName;
 
-  List<CommunityPost> get _myPosts => store.posts
-      .where((post) => post.name == UserSession.displayName)
+  List<CommunityPost> get _profilePosts => store.posts
+      .where((post) => post.name == profileName)
       .toList(growable: false);
 
-  List<_ReplyEntry> get _replies => _myPosts
+  bool get _isCurrentUserProfile => profileName == UserSession.displayName;
+
+  List<_ReplyEntry> get _replies => _profilePosts
       .expand(
         (post) => post.commentThreads.map(
           (reply) => _ReplyEntry(
@@ -6967,7 +7165,7 @@ class CommunityProfileScreen extends StatelessWidget {
                         radius: 38,
                         backgroundColor: Colors.black,
                         child: Text(
-                          UserSession.displayInitial,
+                          profileInitial,
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 28,
@@ -6977,7 +7175,7 @@ class CommunityProfileScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 14),
                       Text(
-                        UserSession.displayName,
+                        profileName,
                         style: const TextStyle(
                           color: Colors.black,
                           fontSize: 28,
@@ -6995,9 +7193,9 @@ class CommunityProfileScreen extends StatelessWidget {
                           borderRadius: BorderRadius.circular(999),
                           border: Border.all(color: const Color(0xFFE2E8F0)),
                         ),
-                        child: const Text(
-                          '僅對你可見',
-                          style: TextStyle(
+                        child: Text(
+                          _isCurrentUserProfile ? '僅對你可見' : '社群主頁',
+                          style: const TextStyle(
                             color: Color(0xFF718096),
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
@@ -7017,7 +7215,7 @@ class CommunityProfileScreen extends StatelessWidget {
                           children: [
                             _ProfileStat(
                               label: '文章',
-                              value: _myPosts.length.toString(),
+                              value: _profilePosts.length.toString(),
                             ),
                             Container(
                               width: 1,
@@ -7027,7 +7225,7 @@ class CommunityProfileScreen extends StatelessWidget {
                                   const EdgeInsets.symmetric(horizontal: 20),
                             ),
                             _ProfileStat(
-                              label: 'Replies',
+                              label: '回覆',
                               value: _replies.length.toString(),
                             ),
                           ],
@@ -7054,14 +7252,14 @@ class CommunityProfileScreen extends StatelessWidget {
                     ),
                     tabs: [
                       Tab(text: '文章'),
-                      Tab(text: 'Replies'),
+                      Tab(text: '回覆'),
                     ],
                   ),
                 ),
                 Expanded(
                   child: TabBarView(
                     children: [
-                      _ArticleTab(posts: _myPosts),
+                      _ArticleTab(posts: _profilePosts),
                       _RepliesTab(replies: _replies),
                     ],
                   ),
@@ -7110,7 +7308,7 @@ class _RepliesTab extends StatelessWidget {
   Widget build(BuildContext context) {
     if (replies.isEmpty) {
       return const _EmptyProfileState(
-        title: 'No replies yet',
+        title: '目前還沒有回覆',
         subtitle: '其他人對你的貼文的回覆將顯示在這裡。',
       );
     }
@@ -7140,7 +7338,7 @@ class _RepliesTab extends StatelessWidget {
                   ),
                   SizedBox(width: 10),
                   Text(
-                    'Reply on your post',
+                    '有人回覆了你的貼文',
                     style: TextStyle(
                       color: Colors.black,
                       fontSize: 14,
@@ -7303,12 +7501,12 @@ class _ProfilePostCard extends StatelessWidget {
             children: [
               _MetaChip(
                 icon: Icons.favorite_border,
-                label: '${post.likes} likes',
+                label: '${post.likes} 個讚',
               ),
               const SizedBox(width: 10),
               _MetaChip(
                 icon: Icons.chat_bubble_outline,
-                label: '${post.commentCount} replies',
+                label: '${post.commentCount} 則回覆',
               ),
             ],
           ),
