@@ -9,8 +9,6 @@ import 'main.dart';
 import 'pose_painter.dart';
 import 'pose_analyzer.dart';
 import 'results_screen.dart';
-import 'models/training_log_model.dart';
-import 'repositories/data_repository.dart';
 
 class PoseDetectorView extends StatefulWidget {
   final String exerciseTitle;
@@ -21,12 +19,16 @@ class PoseDetectorView extends StatefulWidget {
 }
 
 class _PoseDetectorViewState extends State<PoseDetectorView> {
+  bool get _supportsPoseDetectionPlatform =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
+
   // ⭐ 網頁版不支援 PoseDetector，所以我們只在非網頁環境初始化它
   late final PoseDetector _poseDetector;
   bool _canProcess = true;
   bool _isBusy = false;
   CustomPaint? _customPaint;
-  String? _text;
   CameraController? _cameraController;
   int _cameraIndex = -1;
 
@@ -45,8 +47,13 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
     super.initState();
 
     // ⭐ 初始化 PoseDetector 前先檢查是否為網頁
-    if (!kIsWeb) {
+    if (_supportsPoseDetectionPlatform) {
       _poseDetector = PoseDetector(options: PoseDetectorOptions());
+    }
+
+    if (!_supportsPoseDetectionPlatform) {
+      _startTimer();
+      return;
     }
 
     if (cameras
@@ -76,7 +83,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
   void dispose() {
     _timer?.cancel();
     _canProcess = false;
-    if (!kIsWeb) {
+    if (_supportsPoseDetectionPlatform) {
       _poseDetector.close();
     }
     _cameraController?.dispose();
@@ -84,6 +91,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
   }
 
   Future _startLiveFeed() async {
+    if (!_supportsPoseDetectionPlatform) return;
     if (_cameraIndex == -1 || cameras.isEmpty) return;
     final camera = cameras[_cameraIndex];
 
@@ -110,10 +118,10 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
   DateTime? _lastImageProcessTime;
 
   void _processCameraImage(CameraImage image) {
-    if (kIsWeb) return; // 網頁版不執行
-    
+    if (!_supportsPoseDetectionPlatform) return;
+
     final currentTime = DateTime.now();
-    if (_lastImageProcessTime != null && 
+    if (_lastImageProcessTime != null &&
         currentTime.difference(_lastImageProcessTime!).inMilliseconds < 60) {
       return; // 節流：限制在約 15 FPS，減少 CPU 負載與發熱
     }
@@ -132,16 +140,18 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
   };
 
   InputImage? _inputImageFromCameraImage(CameraImage image) {
-    if (kIsWeb || _cameraController == null) return null; // ⭐ 網頁版直接跳過
+    if (!_supportsPoseDetectionPlatform || _cameraController == null) {
+      return null;
+    }
 
     final camera = cameras[_cameraIndex];
     final sensorOrientation = camera.sensorOrientation;
     InputImageRotation? rotation;
 
     // ⭐ 所有的 Platform 檢查都要包在 !kIsWeb 裡面
-    if (!kIsWeb && Platform.isIOS) {
+    if (_supportsPoseDetectionPlatform && Platform.isIOS) {
       rotation = InputImageRotationValue.fromRawValue(sensorOrientation);
-    } else if (!kIsWeb && Platform.isAndroid) {
+    } else if (_supportsPoseDetectionPlatform && Platform.isAndroid) {
       var rotationCompensation =
           _orientations[_cameraController!.value.deviceOrientation];
       if (rotationCompensation == null) return null;
@@ -160,8 +170,12 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
 
     // ⭐ 這裡也是：檢查 Platform 前先確定不是 Web
     if (format == null ||
-        (!kIsWeb && Platform.isAndroid && format != InputImageFormat.nv21) ||
-        (!kIsWeb && Platform.isIOS && format != InputImageFormat.bgra8888)) {
+        (_supportsPoseDetectionPlatform &&
+            Platform.isAndroid &&
+            format != InputImageFormat.nv21) ||
+        (_supportsPoseDetectionPlatform &&
+            Platform.isIOS &&
+            format != InputImageFormat.bgra8888)) {
       return null;
     }
 
@@ -179,13 +193,14 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
   }
 
   Future<void> _processImage(InputImage inputImage) async {
-    if (kIsWeb || !_canProcess || _isBusy) return; // ⭐ 網頁版不執行
+    if (!_supportsPoseDetectionPlatform || !_canProcess || _isBusy) return;
     _isBusy = true;
-    setState(() => _text = '');
+    setState(() {});
 
     final poses = await _poseDetector.processImage(inputImage);
 
-    final analysisResult = _poseAnalyzer.analyze(poses, exerciseType: widget.exerciseTitle);
+    final analysisResult =
+        _poseAnalyzer.analyze(poses, exerciseType: widget.exerciseTitle);
     _accuracyRate = analysisResult.accuracy;
 
     for (var f in analysisResult.feedback) {
@@ -210,7 +225,6 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
       );
       _customPaint = CustomPaint(painter: painter);
     } else {
-      _text = 'Poses found: ${poses.length}\n\n';
       _customPaint = null;
     }
     _isBusy = false;
@@ -219,8 +233,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
 
   @override
   Widget build(BuildContext context) {
-    // ⭐ 如果是網頁版，顯示一個友善提示
-    if (kIsWeb) {
+    if (!_supportsPoseDetectionPlatform) {
       return Scaffold(
         backgroundColor: Colors.black,
         body: Center(
@@ -230,12 +243,12 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
               const Icon(Icons.computer, color: Colors.white54, size: 64),
               const SizedBox(height: 16),
               const Text(
-                '網頁版目前不支援 AI 動作偵測',
+                kIsWeb ? '網頁版目前不支援 AI 動作偵測' : '桌面版目前不支援 AI 動作偵測',
                 style: TextStyle(color: Colors.white, fontSize: 18),
               ),
               const SizedBox(height: 8),
               const Text(
-                '請使用安卓模擬器或實體手機測試',
+                kIsWeb ? '請使用安卓模擬器或實體手機測試' : '請改用 iPhone、Android 或模擬器測試',
                 style: TextStyle(color: Colors.white54),
               ),
               const SizedBox(height: 24),
@@ -325,11 +338,11 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         decoration: BoxDecoration(
-          color: Colors.black.withOpacity(0.7),
+          color: Colors.black.withValues(alpha: 0.7),
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.2),
+              color: Colors.black.withValues(alpha: 0.2),
               blurRadius: 10,
               offset: const Offset(0, 5),
             ),
@@ -377,14 +390,12 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
             GestureDetector(
               onTap: () async {
                 _timer?.cancel();
-                if (!kIsWeb) _poseDetector.close();
+                if (_supportsPoseDetectionPlatform) _poseDetector.close();
                 _cameraController?.dispose();
 
                 double avgAcc = _accuracySamples > 0
                     ? (_totalAccuracySum / _accuracySamples)
                     : 0.0;
-                int caloriesBurned = ((_elapsedSeconds / 60.0) * 8.0).round();
-
                 // 導向結果頁
                 if (mounted) {
                   Navigator.pushReplacement(

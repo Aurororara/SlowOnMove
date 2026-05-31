@@ -7,6 +7,11 @@ import 'login_screen.dart';
 
 List<CameraDescription> cameras = [];
 
+bool get _supportsCameraInitialization =>
+    kIsWeb ||
+    defaultTargetPlatform == TargetPlatform.android ||
+    defaultTargetPlatform == TargetPlatform.iOS;
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -22,12 +27,16 @@ Future<void> main() async {
     );
   }
 
-  availableCameras().then((cams) {
-    cameras = cams;
-    debugPrint('--- Cameras initialized: ${cameras.length} ---');
-  }).catchError((e) {
-    debugPrint('Camera error: $e');
-  });
+  if (_supportsCameraInitialization) {
+    availableCameras().then((cams) {
+      cameras = cams;
+      debugPrint('--- Cameras initialized: ${cameras.length} ---');
+    }).catchError((e) {
+      debugPrint('Camera error: $e');
+    });
+  } else {
+    debugPrint('--- Camera initialization skipped on desktop platform ---');
+  }
 
   runApp(const MyApp());
 }

@@ -693,34 +693,42 @@ class _HomeScreenState extends State<HomeScreen> {
                     _buildStreakBanner(),
                     const SizedBox(height: 14),
                     _buildWeekDaysRow(),
-                    const SizedBox(height: 8),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: TextButton.icon(
-                        onPressed: _openMonthlyActivitySheet,
-                        style: TextButton.styleFrom(
-                          foregroundColor: const Color(0xFF6B7280),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        const Spacer(),
+                        InkWell(
+                          borderRadius: BorderRadius.circular(999),
+                          onTap: _openMonthlyActivitySheet,
+                          child: const Padding(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 4,
+                              vertical: 6,
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.calendar_month_outlined,
+                                  size: 15,
+                                  color: Color(0xFF6B7280),
+                                ),
+                                SizedBox(width: 6),
+                                Text(
+                                  '查看整月紀錄',
+                                  style: TextStyle(
+                                    color: Color(0xFF6B7280),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
-                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                          minimumSize: Size.zero,
                         ),
-                        icon: const Icon(
-                          Icons.calendar_month_outlined,
-                          size: 16,
-                        ),
-                        label: const Text(
-                          '查看整月紀錄',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
+                      ],
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 12),
                     const Divider(
                       color: Color(0xFFE5E7EB),
                       height: 1,

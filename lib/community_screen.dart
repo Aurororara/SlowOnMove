@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'services/user_session.dart';
@@ -57,6 +58,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
   final GlobalKey<_GroupsPanelState> _groupsPanelKey =
       GlobalKey<_GroupsPanelState>();
   final TextEditingController _searchController = TextEditingController();
+  final Map<String, Timer> _groupEventReminderTimers = {};
   final Map<String, List<_ChatEntry>> _friendChats = {
     'Sarah Chen': const [
       _ChatEntry(
@@ -145,6 +147,9 @@ class _CommunityScreenState extends State<CommunityScreen> {
 
   @override
   void dispose() {
+    for (final timer in _groupEventReminderTimers.values) {
+      timer.cancel();
+    }
     widget.store.removeListener(_handleStoreChanged);
     _searchController
       ..removeListener(_handleStoreChanged)
@@ -324,6 +329,83 @@ class _CommunityScreenState extends State<CommunityScreen> {
         ),
       ];
     });
+  }
+
+  DateTime? _parseGroupEventDateTime(String date, String time) {
+    final RegExp datePattern = RegExp(r'^(\d{4})\s*/\s*(\d{2})\s*/\s*(\d{2})$');
+    final RegExp timePattern = RegExp(r'^(\d{2}):(\d{2})\s*(AM|PM)$');
+
+    final dateMatch = datePattern.firstMatch(date.trim());
+    final timeMatch = timePattern.firstMatch(time.trim());
+
+    if (dateMatch == null || timeMatch == null) {
+      return null;
+    }
+
+    final year = int.parse(dateMatch.group(1)!);
+    final month = int.parse(dateMatch.group(2)!);
+    final day = int.parse(dateMatch.group(3)!);
+    int hour = int.parse(timeMatch.group(1)!);
+    final minute = int.parse(timeMatch.group(2)!);
+    final period = timeMatch.group(3)!;
+
+    if (period == 'PM' && hour != 12) {
+      hour += 12;
+    } else if (period == 'AM' && hour == 12) {
+      hour = 0;
+    }
+
+    return DateTime(year, month, day, hour, minute);
+  }
+
+  void _scheduleGroupEventReminder(
+    _MyGroup group,
+    String title,
+    String date,
+    String time,
+    String activityLabel,
+  ) {
+    final eventDateTime = _parseGroupEventDateTime(date, time);
+    if (eventDateTime == null) return;
+
+    final reminderTime = eventDateTime.subtract(const Duration(minutes: 30));
+    final now = DateTime.now();
+    final timerKey = '${group.name}|$title|$date|$time';
+
+    void sendReminder() {
+      final membersToNotify =
+          group.memberPreview.where((member) => member.canMessage).toList();
+
+      for (final member in membersToNotify) {
+        _appendSystemChatMessage(
+          _RunInviteFriend(
+            initial: member.initial,
+            name: member.name,
+            runsTogether: member.totalRuns,
+            streak: member.runsThisWeek,
+            lastRun: '群組聊天',
+          ),
+          '${_GroupsPanelState._currentUserName} 提醒你：'
+          '群組活動「$title」將於 30 分鐘後開始'
+          '（$activityLabel・$time）。',
+        );
+      }
+
+      _groupEventReminderTimers.remove(timerKey)?.cancel();
+    }
+
+    if (!eventDateTime.isAfter(now)) {
+      return;
+    }
+
+    if (!reminderTime.isAfter(now)) {
+      sendReminder();
+      return;
+    }
+
+    _groupEventReminderTimers[timerKey]?.cancel();
+    _groupEventReminderTimers[timerKey] =
+        Timer(reminderTime.difference(now), sendReminder);
   }
 
   void _acceptInvitation(String friendName, int messageIndex) {
@@ -822,6 +904,8 @@ class _CommunityScreenState extends State<CommunityScreen> {
                                 onBack: _closeSecondaryPage,
                                 onMessageTap: _openChat,
                                 onSystemMessage: _appendSystemChatMessage,
+                                onScheduleEventReminder:
+                                    _scheduleGroupEventReminder,
                               )
                             : ListView(
                                 key: const ValueKey('community-feed'),
@@ -1199,26 +1283,7 @@ class _PostComposerState extends State<_PostComposer> {
         }
         break;
       case CommunityPostType.recipe:
-        _mode = _ComposerMode.recipe;
-        final recipe = submission.recipe;
-        if (recipe != null) {
-          _recipeTitleController.text = recipe.title;
-          _recipeDescriptionController.text = recipe.description;
-          _recipeCookMinutesController.text = recipe.cookMinutes.toString();
-          for (final ingredient in _recipeIngredients) {
-            ingredient.dispose();
-          }
-          _recipeIngredients
-            ..clear()
-            ..addAll(
-              recipe.ingredients.map((ingredient) {
-                final editable = _EditableRecipeIngredient();
-                editable.name.text = ingredient.name;
-                editable.grams.text = ingredient.grams.toStringAsFixed(0);
-                return editable;
-              }),
-            );
-        }
+        _mode = _ComposerMode.journey;
         break;
     }
   }
@@ -1708,11 +1773,6 @@ class _ComposerModeSwitcher extends StatelessWidget {
           label: '計畫',
           isSelected: selectedMode == _ComposerMode.plan,
           onTap: () => onChanged(_ComposerMode.plan),
-        ),
-        _ModeChip(
-          label: '食譜',
-          isSelected: selectedMode == _ComposerMode.recipe,
-          onTap: () => onChanged(_ComposerMode.recipe),
         ),
       ],
     );
@@ -4308,6 +4368,36 @@ class _IconSquareButton extends StatelessWidget {
   }
 }
 
+class _GoalAdjustButton extends StatelessWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _GoalAdjustButton({
+    required this.icon,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 44,
+      height: 44,
+      child: TextButton(
+        onPressed: onTap,
+        style: TextButton.styleFrom(
+          backgroundColor: const Color(0xFFF1F5F9),
+          foregroundColor: Colors.black,
+          padding: EdgeInsets.zero,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+        child: Icon(icon, size: 20),
+      ),
+    );
+  }
+}
+
 class _FriendRequest {
   final String initial;
   final String name;
@@ -4396,12 +4486,20 @@ class _GroupsPanel extends StatefulWidget {
   final VoidCallback onBack;
   final ValueChanged<_RunInviteFriend> onMessageTap;
   final void Function(_RunInviteFriend friend, String message) onSystemMessage;
+  final void Function(
+    _MyGroup group,
+    String title,
+    String date,
+    String time,
+    String activityLabel,
+  ) onScheduleEventReminder;
 
   const _GroupsPanel({
     super.key,
     required this.onBack,
     required this.onMessageTap,
     required this.onSystemMessage,
+    required this.onScheduleEventReminder,
   });
 
   @override
@@ -4442,6 +4540,8 @@ class _GroupsPanelState extends State<_GroupsPanel> {
           badge: '👑',
           totalRuns: 145,
           runsThisWeek: 5,
+          totalSquats: 82,
+          squatsThisWeek: 3,
           joinedDate: '2024/1/15',
           canMessage: false,
         ),
@@ -4450,6 +4550,8 @@ class _GroupsPanelState extends State<_GroupsPanel> {
           name: 'Sarah Chen',
           totalRuns: 98,
           runsThisWeek: 4,
+          totalSquats: 54,
+          squatsThisWeek: 2,
           joinedDate: '2024/1/20',
         ),
         _GroupMember(
@@ -4457,6 +4559,8 @@ class _GroupsPanelState extends State<_GroupsPanel> {
           name: 'Mike Johnson',
           totalRuns: 87,
           runsThisWeek: 3,
+          totalSquats: 41,
+          squatsThisWeek: 1,
           joinedDate: '2024/2/1',
         ),
         _GroupMember(
@@ -4464,6 +4568,8 @@ class _GroupsPanelState extends State<_GroupsPanel> {
           name: 'Emma Wilson',
           totalRuns: 112,
           runsThisWeek: 6,
+          totalSquats: 67,
+          squatsThisWeek: 4,
           joinedDate: '2024/1/25',
         ),
       ],
@@ -4499,6 +4605,8 @@ class _GroupsPanelState extends State<_GroupsPanel> {
           name: 'Catherine',
           totalRuns: 67,
           runsThisWeek: 4,
+          totalSquats: 36,
+          squatsThisWeek: 2,
           joinedDate: '2024/2/12',
         ),
         _GroupMember(
@@ -4506,6 +4614,8 @@ class _GroupsPanelState extends State<_GroupsPanel> {
           name: 'Ryan',
           totalRuns: 80,
           runsThisWeek: 5,
+          totalSquats: 45,
+          squatsThisWeek: 3,
           joinedDate: '2024/1/20',
         ),
       ],
@@ -4589,6 +4699,8 @@ class _GroupsPanelState extends State<_GroupsPanel> {
               name: 'Catherine',
               totalRuns: 0,
               runsThisWeek: 0,
+              totalSquats: 0,
+              squatsThisWeek: 0,
               joinedDate: '今天',
               canMessage: false,
             ),
@@ -4633,6 +4745,7 @@ class _GroupsPanelState extends State<_GroupsPanel> {
           onInviteFriend: _inviteFriendToGroup,
           onRequestInvite: _requestFriendForGroup,
           onLeaveGroup: () => _leaveGroup(group),
+          onScheduleEventReminder: widget.onScheduleEventReminder,
         ),
       ),
     );
@@ -4691,6 +4804,8 @@ class _GroupsPanelState extends State<_GroupsPanel> {
           name: friend.name,
           totalRuns: friend.runsTogether,
           runsThisWeek: friend.streak,
+          totalSquats: 0,
+          squatsThisWeek: 0,
           joinedDate: '今天',
         ),
       ],
@@ -4775,6 +4890,8 @@ class _GroupsPanelState extends State<_GroupsPanel> {
               name: '你',
               totalRuns: 0,
               runsThisWeek: 0,
+              totalSquats: 0,
+              squatsThisWeek: 0,
               joinedDate: '今天',
               canMessage: false,
             ),
@@ -4859,6 +4976,14 @@ class _GroupsPanelState extends State<_GroupsPanel> {
           ],
         ),
         const SizedBox(height: 14),
+        const Row(
+          children: [
+            Expanded(
+              child: _GroupSearchField(),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
         Row(
           children: [
             Expanded(
@@ -4886,8 +5011,6 @@ class _GroupsPanelState extends State<_GroupsPanel> {
             ),
           ],
         ),
-        const SizedBox(height: 14),
-        const _GroupSearchField(),
         const SizedBox(height: 22),
         if (_isCreateGroupOpen) ...[
           const SizedBox(height: 14),
@@ -5624,6 +5747,13 @@ class _CreateGroupButton extends StatelessWidget {
 class _GroupDetailScreen extends StatefulWidget {
   final _MyGroup group;
   final ValueChanged<_MyGroup> onGroupUpdated;
+  final void Function(
+    _MyGroup group,
+    String title,
+    String date,
+    String time,
+    String activityLabel,
+  ) onScheduleEventReminder;
   final ValueChanged<_RunInviteFriend> onMessageTap;
   final List<_RunInviteFriend> inviteableFriends;
   final _MyGroup Function(_MyGroup group, _RunInviteFriend friend)
@@ -5634,6 +5764,7 @@ class _GroupDetailScreen extends StatefulWidget {
   const _GroupDetailScreen({
     required this.group,
     required this.onGroupUpdated,
+    required this.onScheduleEventReminder,
     required this.onMessageTap,
     required this.inviteableFriends,
     required this.onInviteFriend,
@@ -5735,6 +5866,151 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
     });
   }
 
+  Future<void> _openWeeklyGoalSheet() async {
+    int selectedTarget = _group.weeklyGoalTarget.clamp(1, 999);
+
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: StatefulBuilder(
+            builder: (context, setSheetState) {
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 22),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      '設定每週目標',
+                      style: TextStyle(
+                        color: Colors.black,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '設定這個群組每週想完成的${_groupMetricUnit(_group.exerciseType)}。',
+                      style: const TextStyle(
+                        color: Color(0xFF64748B),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        height: 1.45,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      children: [
+                        _GoalAdjustButton(
+                          icon: Icons.remove,
+                          onTap: () {
+                            setSheetState(() {
+                              selectedTarget =
+                                  (selectedTarget - 1).clamp(1, 999);
+                            });
+                          },
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 16),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF8FAFC),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: const Color(0xFFE2E8F0),
+                              ),
+                            ),
+                            child: Column(
+                              children: [
+                                Text(
+                                  '$selectedTarget',
+                                  style: const TextStyle(
+                                    color: Colors.black,
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _groupMetricUnit(_group.exerciseType),
+                                  style: const TextStyle(
+                                    color: Color(0xFF64748B),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        _GoalAdjustButton(
+                          icon: Icons.add,
+                          onTap: () {
+                            setSheetState(() {
+                              selectedTarget =
+                                  (selectedTarget + 1).clamp(1, 999);
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: () {
+                          final current = _group.weeklyGoalCurrent;
+                          final progress =
+                              (current / selectedTarget).clamp(0.0, 1.0);
+                          final updatedGroup = _group.copyWith(
+                            weeklyGoalTarget: selectedTarget,
+                            progressText: _groupWeeklyGoalLabel(
+                              _group.exerciseType,
+                              current,
+                              selectedTarget,
+                            ),
+                            progress: progress,
+                          );
+
+                          setState(() {
+                            _group = updatedGroup;
+                          });
+                          widget.onGroupUpdated(updatedGroup);
+                          Navigator.of(sheetContext).pop();
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('已更新每週目標')),
+                          );
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.black,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 15),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        child: const Text(
+                          '儲存目標',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
   void _submitGroupRunEvent() {
     final title = _eventTitleController.text.trim();
     final date = _eventDateController.text.trim();
@@ -5769,6 +6045,7 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
     });
 
     widget.onGroupUpdated(_group);
+    widget.onScheduleEventReminder(_group, title, date, time, activityLabel);
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text('已建立群組活動：$title')),
@@ -6002,9 +6279,6 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
-                            const SizedBox(height: 8),
-                            _GroupExerciseChip(
-                                exerciseType: group.exerciseType),
                           ],
                         ),
                       ),
@@ -6055,6 +6329,27 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
                               ),
                             ),
                             const Spacer(),
+                            TextButton.icon(
+                              onPressed: _openWeeklyGoalSheet,
+                              style: TextButton.styleFrom(
+                                foregroundColor: const Color(0xFF64748B),
+                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                minimumSize: Size.zero,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 6,
+                                ),
+                              ),
+                              icon: const Icon(Icons.edit_outlined, size: 15),
+                              label: const Text(
+                                '設定',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
                             Text(
                               _groupWeeklyGoalLabel(
                                 group.exerciseType,
@@ -6174,7 +6469,6 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
                     padding: const EdgeInsets.only(bottom: 12),
                     child: _GroupMemberCard(
                       member: member,
-                      exerciseType: group.exerciseType,
                       onMessageTap: member.canMessage
                           ? () => widget.onMessageTap(
                                 _RunInviteFriend(
@@ -6262,12 +6556,10 @@ class _GroupStatTile extends StatelessWidget {
 
 class _GroupMemberCard extends StatelessWidget {
   final _GroupMember member;
-  final String exerciseType;
   final VoidCallback? onMessageTap;
 
   const _GroupMemberCard({
     required this.member,
-    required this.exerciseType,
     this.onMessageTap,
   });
 
@@ -6323,7 +6615,7 @@ class _GroupMemberCard extends StatelessWidget {
                         size: 14, color: Color(0xFF718096)),
                     const SizedBox(width: 4),
                     Text(
-                      '累積 ${member.totalRuns} ${_groupMetricUnit(exerciseType)}',
+                      '累積慢跑 ${member.totalRuns} 次',
                       style: _friendMetaStyle,
                     ),
                     const SizedBox(width: 12),
@@ -6331,6 +6623,24 @@ class _GroupMemberCard extends StatelessWidget {
                         size: 14, color: Color(0xFF718096)),
                     const SizedBox(width: 4),
                     Text('本週 ${member.runsThisWeek} 次',
+                        style: _friendMetaStyle),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    const Icon(Icons.fitness_center_outlined,
+                        size: 14, color: Color(0xFF718096)),
+                    const SizedBox(width: 4),
+                    Text(
+                      '累積深蹲 ${member.totalSquats} 次',
+                      style: _friendMetaStyle,
+                    ),
+                    const SizedBox(width: 12),
+                    const Icon(Icons.calendar_today_outlined,
+                        size: 14, color: Color(0xFF718096)),
+                    const SizedBox(width: 4),
+                    Text('本週 ${member.squatsThisWeek} 次',
                         style: _friendMetaStyle),
                   ],
                 ),
@@ -6414,48 +6724,6 @@ class _GroupActivityCard extends StatelessWidget {
               color: Color(0xFF94A3B8),
               fontSize: 11,
               fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _GroupExerciseChip extends StatelessWidget {
-  final String exerciseType;
-
-  const _GroupExerciseChip({required this.exerciseType});
-
-  _GroupExerciseOption get _option {
-    return _groupExerciseOptions.firstWhere(
-      (item) => item.value == exerciseType,
-      orElse: () => _groupExerciseOptions.first,
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final option = _option;
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(option.icon, size: 14, color: Colors.black),
-          const SizedBox(width: 6),
-          Text(
-            option.label,
-            style: const TextStyle(
-              color: Color(0xFF111827),
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
             ),
           ),
         ],
@@ -6781,6 +7049,8 @@ class _GroupMember {
   final String badge;
   final int totalRuns;
   final int runsThisWeek;
+  final int totalSquats;
+  final int squatsThisWeek;
   final String joinedDate;
   final bool canMessage;
 
@@ -6790,6 +7060,8 @@ class _GroupMember {
     this.badge = '',
     required this.totalRuns,
     required this.runsThisWeek,
+    this.totalSquats = 0,
+    this.squatsThisWeek = 0,
     required this.joinedDate,
     this.canMessage = true,
   });
