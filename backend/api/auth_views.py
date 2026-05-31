@@ -6,7 +6,8 @@ from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from rest_framework import status
 
-from django.contrib.auth import get_user_model
+from django.contrib.auth import get_user_model, authenticate
+from django.contrib.auth.hashers import make_password
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from google.oauth2 import id_token
@@ -393,3 +394,81 @@ class FacebookLoginView(APIView):
                 },
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+
+class RegisterView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        username = request.data.get("username")
+        email = request.data.get("email")
+        password = request.data.get("password")
+        name = request.data.get("name", "")
+
+        if not username or not password or not email:
+            return Response(
+                {"error": "請填寫所有必要欄位 (用戶帳號、信箱、密碼)"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if Member.objects.filter(username=username).exists():
+            return Response(
+                {"error": "該用戶帳號已存在"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if Member.objects.filter(email=email).exists():
+            return Response(
+                {"error": "該電子信箱已被註冊"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            user = Member.objects.create(
+                username=username,
+                email=email,
+                password=make_password(password),
+                first_name=name,
+            )
+            
+            if hasattr(user, "login_provider"):
+                user.login_provider = "local"
+                user.save()
+                
+            return create_jwt_response(user, True, "註冊成功")
+        except Exception as e:
+            return Response(
+                {"error": f"註冊失敗: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+
+class LoginView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        username_or_email = request.data.get("username")
+        password = request.data.get("password")
+
+        if not username_or_email or not password:
+            return Response(
+                {"error": "請輸入用戶帳號與密碼"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # 支援同時使用 username 或 email 登入
+        user = authenticate(username=username_or_email, password=password)
+        if not user:
+            try:
+                member = Member.objects.get(email=username_or_email)
+                user = authenticate(username=member.username, password=password)
+            except Member.DoesNotExist:
+                user = None
+
+        if not user:
+            return Response(
+                {"error": "帳號或密碼錯誤"},
+                status=status.HTTP_401_UNAUTHORIZED,
+            )
+
+        return create_jwt_response(user, False, "登入成功")

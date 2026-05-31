@@ -8,6 +8,8 @@ import 'community_screen.dart';
 import 'exercise_history_screen.dart';
 import 'edit_profile_screen.dart';
 import 'services/user_session.dart';
+import 'services/api_service.dart';
+import 'login_screen.dart';
 import 'config/api_config.dart';
 import 'monthly_recap_screen.dart';
 import 'purchase_screen.dart';
@@ -438,13 +440,66 @@ class _ProfileScreenState extends State<ProfileScreen> {
       width: double.infinity,
       height: 54,
       child: OutlinedButton.icon(
-        onPressed: () {},
+        onPressed: () => _showLogoutConfirmDialog(context),
         icon: const Icon(Icons.logout, color: Color(0xFFE53935)),
         label: const Text('登出'),
         style: OutlinedButton.styleFrom(
           side: const BorderSide(color: Color(0xFFE53935)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
         ),
       ),
+    );
+  }
+
+  void _showLogoutConfirmDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          title: const Text(
+            '確定登出？',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          content: const Text('登出後將返回登入畫面，您需要重新登入才能使用完整功能。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('取消', style: TextStyle(color: Colors.grey)),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.pop(dialogContext); // 關閉 dialog
+                
+                // 清除 session 和 token
+                UserSession.clearSession();
+                await ApiService().clearToken();
+
+                if (!context.mounted) return;
+
+                // 導向登入畫面，並清空路由堆疊以防返回
+                Navigator.pushAndRemoveUntil(
+                  context,
+                  MaterialPageRoute(builder: (context) => const LoginScreen()),
+                  (route) => false,
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFFE53935),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+              child: const Text('確定登出'),
+            ),
+          ],
+        );
+      },
     );
   }
 }

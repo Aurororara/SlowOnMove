@@ -4,6 +4,7 @@ import 'onboarding_setup_screen.dart';
 import 'main_screen.dart';
 import 'services/auth/google_auth_service.dart';
 import 'services/auth/facebook_auth_service.dart';
+import 'services/auth/local_auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -14,12 +15,170 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
+  bool _isSignUp = false;
+  bool _obscurePassword = true;
+  bool _agreeToTerms = false;
 
-  Future<void> _showTermsDialog(BuildContext context, String loginType) async {
+  final TextEditingController _usernameController = TextEditingController();
+  final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _passwordController = TextEditingController();
+
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    _emailController.dispose();
+    _nameController.dispose();
+    _passwordController.dispose();
+    super.dispose();
+  }
+
+  void _clearLocalForm() {
+    _usernameController.clear();
+    _emailController.clear();
+    _nameController.clear();
+    _passwordController.clear();
+    _isSignUp = false;
+    _obscurePassword = true;
+  }
+
+  void _showAlert(String message) {
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      useRootNavigator: true,
+      builder: (dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          title: const Text(
+            '提醒',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('確定'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showSuccessMessage(String message) {
+    ScaffoldMessenger.of(context).clearSnackBars();
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        duration: const Duration(seconds: 1),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
+  Future<void> _handleLocalAuth({BuildContext? sheetContext}) async {
+    final username = _usernameController.text.trim();
+    final password = _passwordController.text.trim();
+
+    if (username.isEmpty || password.isEmpty) {
+      _showAlert('請填寫所有必要欄位');
+      return;
+    }
+
+    if (_isSignUp) {
+      final email = _emailController.text.trim();
+      final name = _nameController.text.trim();
+
+      if (email.isEmpty || name.isEmpty) {
+        _showAlert('請填寫所有必要欄位');
+        return;
+      }
+
+      final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
+      if (!emailRegex.hasMatch(email)) {
+        _showAlert('請輸入有效的電子信箱格式');
+        return;
+      }
+
+      if (password.length < 6) {
+        _showAlert('密碼長度必須至少為 6 個字元');
+        return;
+      }
+    }
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      bool? isNewUser;
+
+      if (_isSignUp) {
+        isNewUser = await LocalAuthService().signUp(
+          username: username,
+          email: _emailController.text.trim(),
+          password: password,
+          name: _nameController.text.trim(),
+        );
+      } else {
+        isNewUser = await LocalAuthService().signIn(username, password);
+      }
+
+      if (!context.mounted) return;
+
+      if (isNewUser != null) {
+        if (sheetContext != null && sheetContext.mounted) {
+          Navigator.pop(sheetContext);
+        }
+
+        _showSuccessMessage(_isSignUp ? '註冊成功！' : '登入成功！');
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => isNewUser == true
+                ? const OnboardingSetupScreen()
+                : const MainScreen(),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!context.mounted) return;
+
+      String errorMessage = _isSignUp ? '註冊失敗' : '登入失敗，請檢查帳號與密碼';
+
+      if (e.toString().contains('該用戶帳號已存在')) {
+        errorMessage = '註冊失敗：該用戶帳號已存在';
+      } else if (e.toString().contains('該電子信箱已被註冊')) {
+        errorMessage = '註冊失敗：該電子信箱已被註冊';
+      } else if (e.toString().contains('帳號或密碼錯誤') ||
+          e.toString().contains('401')) {
+        errorMessage = '帳號或密碼錯誤';
+      } else {
+        errorMessage = e.toString().replaceAll('Exception: ', '');
+      }
+
+      _showAlert(errorMessage);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<bool> _ensureTermsAgreed() async {
+    if (_agreeToTerms) return true;
+
     final agreed = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
-      builder: (context) {
+      builder: (dialogContext) {
         return AlertDialog(
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
@@ -39,11 +198,11 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context, false),
+              onPressed: () => Navigator.pop(dialogContext, false),
               child: const Text('不同意'),
             ),
             ElevatedButton(
-              onPressed: () => Navigator.pop(context, true),
+              onPressed: () => Navigator.pop(dialogContext, true),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.black,
                 foregroundColor: Colors.white,
@@ -55,7 +214,176 @@ class _LoginScreenState extends State<LoginScreen> {
       },
     );
 
-    if (agreed != true || !context.mounted) return;
+    if (agreed == true) {
+      setState(() {
+        _agreeToTerms = true;
+      });
+      return true;
+    }
+
+    return false;
+  }
+
+  Future<void> _showEmailLoginSheet() async {
+    final agreed = await _ensureTermsAgreed();
+    if (!agreed || !context.mounted) return;
+
+    _clearLocalForm();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Padding(
+              padding: EdgeInsets.only(
+                left: 20,
+                right: 20,
+                bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+              ),
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(28),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.12),
+                      blurRadius: 24,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 42,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: Colors.grey[300],
+                            borderRadius: BorderRadius.circular(99),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            _isSignUp ? '建立帳號' : 'Email 登入',
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.black,
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () {
+                              setSheetState(() {
+                                _isSignUp = !_isSignUp;
+                              });
+                            },
+                            child: Text(
+                              _isSignUp ? '切換至登入' : '切換至註冊',
+                              style: TextStyle(
+                                color: Colors.blue[700],
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
+                      _buildTextField(
+                        controller: _usernameController,
+                        label: _isSignUp ? '用戶帳號' : '帳號或 Email',
+                        hint: _isSignUp ? '請輸入用戶名稱' : '請輸入用戶名稱或信箱',
+                        icon: Icons.person_outline,
+                      ),
+                      if (_isSignUp) ...[
+                        const SizedBox(height: 12),
+                        _buildTextField(
+                          controller: _nameController,
+                          label: '暱稱 / 姓名',
+                          hint: '請輸入顯示的暱稱',
+                          icon: Icons.face_outlined,
+                        ),
+                        const SizedBox(height: 12),
+                        _buildTextField(
+                          controller: _emailController,
+                          label: '電子信箱',
+                          hint: 'example@email.com',
+                          icon: Icons.mail_outline,
+                          keyboardType: TextInputType.emailAddress,
+                        ),
+                      ],
+                      const SizedBox(height: 12),
+                      _buildTextField(
+                        controller: _passwordController,
+                        label: '密碼',
+                        hint: '請輸入密碼（至少 6 位數）',
+                        icon: Icons.lock_outline,
+                        obscureText: _obscurePassword,
+                        keyboardType: TextInputType.visiblePassword,
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _obscurePassword
+                                ? Icons.visibility_off_outlined
+                                : Icons.visibility_outlined,
+                            color: Colors.grey[600],
+                          ),
+                          onPressed: () {
+                            setSheetState(() {
+                              _obscurePassword = !_obscurePassword;
+                            });
+                          },
+                        ),
+                      ),
+                      const SizedBox(height: 22),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 52,
+                        child: ElevatedButton(
+                          onPressed: () =>
+                              _handleLocalAuth(sheetContext: sheetContext),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.black,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            elevation: 0,
+                          ),
+                          child: Text(
+                            _isSignUp ? '註冊帳號' : '立即登入',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 1.5,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _handleSocialLogin(String loginType) async {
+    final agreed = await _ensureTermsAgreed();
+    if (!agreed || !context.mounted) return;
 
     setState(() {
       _isLoading = true;
@@ -71,24 +399,14 @@ class _LoginScreenState extends State<LoginScreen> {
       } else if (loginType == 'Apple') {
         isNewUser = false;
       } else {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('$loginType 登入尚未實作'),
-            duration: const Duration(seconds: 1),
-          ),
-        );
+        _showAlert('$loginType 登入尚未實作');
         return;
       }
 
       if (!context.mounted) return;
 
       if (isNewUser != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('$loginType 登入成功'),
-            duration: const Duration(seconds: 1),
-          ),
-        );
+        _showSuccessMessage('$loginType 登入成功');
 
         Navigator.pushReplacement(
           context,
@@ -101,13 +419,7 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } catch (e) {
       if (!context.mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('$loginType 登入失敗: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      _showAlert('$loginType 登入失敗：$e');
     } finally {
       if (mounted) {
         setState(() {
@@ -152,103 +464,133 @@ class _LoginScreenState extends State<LoginScreen> {
                     Color(0xFFFFFFFF),
                     Color(0xFFFFFFFF),
                   ],
-                  stops: [0.0, 0.32, 0.42, 0.52, 0.62, 1.0],
+                  stops: [0.0, 0.22, 0.32, 0.42, 0.52, 1.0],
                 ),
               ),
             ),
           ),
           SafeArea(
-            child: SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 20),
-                child: Column(
-                  children: [
-                    SizedBox(height: MediaQuery.of(context).size.height * 0.4),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 28),
-                      child: Column(
-                        children: [
-                          const Text(
-                            '慢動作運動',
-                            style: TextStyle(
-                              fontSize: 30,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black,
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          const Text(
-                            '每一步都算數',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Color(0xFF6B7280),
-                              letterSpacing: 2,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          const SizedBox(height: 28),
-                          const Text(
-                            '養成健康習慣，\n從每一步開始',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 22,
-                              height: 1.35,
-                              fontWeight: FontWeight.w700,
-                              color: Colors.black,
-                            ),
-                          ),
-                          const SizedBox(height: 18),
-                          const Text(
-                            '透過超慢跑與日常運動，幫助你追蹤進度、維持動力，逐步達成健康目標。',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 14,
-                              height: 1.8,
-                              color: Color(0xFF5B6B7A),
-                            ),
-                          ),
-                          const SizedBox(height: 30),
-                          const Text(
-                            '選擇登入方式',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Color(0xFF9CA3AF),
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 20),
-                          _buildSocialButton(
-                            icon: Icons.g_mobiledata,
-                            label: '使用 Google 登入',
-                            onTap: () => _showTermsDialog(context, 'Google'),
-                          ),
-                          const SizedBox(height: 12),
-                          _buildSocialButton(
-                            icon: Icons.apple,
-                            label: '使用 Apple 登入',
-                            onTap: () => _showTermsDialog(context, 'Apple'),
-                          ),
-                          const SizedBox(height: 12),
-                          _buildSocialButton(
-                            icon: Icons.facebook,
-                            label: '使用 Facebook 登入',
-                            onTap: () => _showTermsDialog(context, 'Facebook'),
-                          ),
-                          const SizedBox(height: 20),
-                          const Text(
-                            '點選登入即會先顯示服務條款與隱私權政策',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: Colors.black54,
-                              fontSize: 12,
-                            ),
-                          ),
-                          const SizedBox(height: 24),
-                        ],
-                      ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 28),
+              child: Column(
+                children: [
+                  const Spacer(flex: 5),
+                  const Text(
+                    '慢動作運動',
+                    style: TextStyle(
+                      fontSize: 30,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black,
                     ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    '每一步都算數',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Color(0xFF6B7280),
+                      letterSpacing: 2,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const Spacer(flex: 4),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Divider(color: Colors.grey[300], thickness: 1),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Text(
+                          '選擇登入方式',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey[400],
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: Divider(color: Colors.grey[300], thickness: 1),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  Column(
+                    children: [
+                      _buildLoginOptionButton(
+                        icon: Icons.mail_outline,
+                        text: '使用 Email 登入',
+                        onTap: _showEmailLoginSheet,
+                      ),
+                      const SizedBox(height: 12),
+                      _buildLoginOptionButton(
+                        icon: Icons.g_mobiledata,
+                        text: '使用 Google 登入',
+                        onTap: () => _handleSocialLogin('Google'),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildLoginOptionButton(
+                        icon: Icons.apple,
+                        text: '使用 Apple 登入',
+                        onTap: () => _handleSocialLogin('Apple'),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildLoginOptionButton(
+                        icon: Icons.facebook,
+                        text: '使用 Facebook 登入',
+                        onTap: () => _handleSocialLogin('Facebook'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 22),
+                  Row(
+                    children: [
+                      SizedBox(
+                        height: 24,
+                        width: 24,
+                        child: Checkbox(
+                          value: _agreeToTerms,
+                          activeColor: Colors.black,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          onChanged: (val) {
+                            setState(() {
+                              _agreeToTerms = val ?? false;
+                            });
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: _ensureTermsAgreed,
+                          child: Text.rich(
+                            TextSpan(
+                              text: '我已閱讀並同意 ',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey[600],
+                              ),
+                              children: const [
+                                TextSpan(
+                                  text: '服務條款與隱私權政策',
+                                  style: TextStyle(
+                                    decoration: TextDecoration.underline,
+                                    fontWeight: FontWeight.bold,
+                                    color: Colors.black87,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 36),
+                ],
               ),
             ),
           ),
@@ -266,56 +608,102 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  static Widget _buildStatItem(String value, String label) {
-    return Container(
-      width: 90,
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey[200]!),
-        borderRadius: BorderRadius.circular(15),
-      ),
-      child: Column(
-        children: [
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Colors.black,
+  static Widget _buildLoginOptionButton({
+    required IconData icon,
+    required String text,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        width: double.infinity,
+        height: 52,
+        padding: const EdgeInsets.symmetric(horizontal: 18),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.grey[200]!, width: 1.5),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.02),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
             ),
-          ),
-          Text(label, style: const TextStyle(fontSize: 12, color: Colors.grey)),
-        ],
+          ],
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              size: icon == Icons.g_mobiledata ? 34 : 22,
+              color: Colors.black87,
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Text(
+                text,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.black87,
+                ),
+              ),
+            ),
+            const SizedBox(width: 36),
+          ],
+        ),
       ),
     );
   }
 
-  static Widget _buildSocialButton({
-    required IconData icon,
+  Widget _buildTextField({
+    required TextEditingController controller,
     required String label,
-    required VoidCallback onTap,
+    required String hint,
+    required IconData icon,
+    bool obscureText = false,
+    TextInputType keyboardType = TextInputType.text,
+    Widget? suffixIcon,
   }) {
-    return SizedBox(
-      width: double.infinity,
-      height: 50,
-      child: OutlinedButton.icon(
-        onPressed: onTap,
-        icon: Icon(icon, color: Colors.black87),
-        label: Text(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
           label,
           style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.bold,
             color: Colors.black87,
-            fontWeight: FontWeight.w500,
           ),
         ),
-        style: OutlinedButton.styleFrom(
-          side: BorderSide(color: Colors.grey[300]!),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+        const SizedBox(height: 6),
+        TextField(
+          controller: controller,
+          obscureText: obscureText,
+          keyboardType: keyboardType,
+          style: const TextStyle(fontSize: 14, color: Colors.black87),
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: TextStyle(fontSize: 13, color: Colors.grey[400]),
+            prefixIcon: Icon(icon, size: 20, color: Colors.black54),
+            suffixIcon: suffixIcon,
+            filled: true,
+            fillColor: Colors.grey[50]!.withOpacity(0.8),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide(color: Colors.grey[200]!, width: 1.5),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: Colors.black87, width: 1.5),
+            ),
           ),
-          backgroundColor: Colors.white,
         ),
-      ),
+      ],
     );
   }
 }
