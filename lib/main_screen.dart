@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -19,10 +20,35 @@ class MainScreen extends StatefulWidget {
   State<MainScreen> createState() => _MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> {
+class _MainScreenState extends State<MainScreen>
+    with SingleTickerProviderStateMixin {
   int _selectedIndex = 0;
   final CommunityStore _communityStore = CommunityStore();
   final GlobalKey<_HomeScreenState> _homeKey = GlobalKey<_HomeScreenState>();
+  late final AnimationController _rewardAnimationController;
+  bool _showRewardAnimation = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _rewardAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1350),
+    )..addStatusListener((status) {
+        if (status == AnimationStatus.completed && mounted) {
+          setState(() {
+            _showRewardAnimation = false;
+          });
+          _rewardAnimationController.reset();
+        }
+      });
+  }
+
+  @override
+  void dispose() {
+    _rewardAnimationController.dispose();
+    super.dispose();
+  }
 
   void _onNavTap(int index) {
     setState(() {
@@ -34,31 +60,58 @@ class _MainScreenState extends State<MainScreen> {
     }
   }
 
+  void _playDailyRewardAnimation() {
+    setState(() {
+      _showRewardAnimation = true;
+    });
+    _rewardAnimationController.forward(from: 0);
+  }
+
   @override
   Widget build(BuildContext context) {
     final pages = [
-      HomeScreen(key: _homeKey),
+      HomeScreen(
+        key: _homeKey,
+        onDailyRewardGranted: _playDailyRewardAnimation,
+      ),
       CommunityScreen(store: _communityStore),
       const ExerciseSelectionScreen(),
       const LeaderboardPage(),
       ProfileScreen(store: _communityStore),
     ];
 
-    return Scaffold(
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: pages,
-      ),
-      bottomNavigationBar: NavBar(
-        currentIndex: _selectedIndex,
-        onTap: _onNavTap,
-      ),
+    return Stack(
+      children: [
+        Scaffold(
+          body: IndexedStack(
+            index: _selectedIndex,
+            children: pages,
+          ),
+          bottomNavigationBar: NavBar(
+            currentIndex: _selectedIndex,
+            onTap: _onNavTap,
+          ),
+        ),
+        if (_showRewardAnimation)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: _DailyRewardCoinsOverlay(
+                animation: _rewardAnimationController,
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({
+    super.key,
+    this.onDailyRewardGranted,
+  });
+
+  final VoidCallback? onDailyRewardGranted;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -175,6 +228,20 @@ class _HomeScreenState extends State<HomeScreen> {
     return 0;
   }
 
+  bool _isQualifiedExerciseLog(Map log) {
+    final String exerciseType =
+        (log['exercise_type'] ?? log['type'] ?? log['activity'] ?? '')
+            .toString()
+            .trim()
+            .toLowerCase();
+
+    return exerciseType == 'squat' ||
+        exerciseType == 'slow_jogging' ||
+        exerciseType == 'slow jogging' ||
+        exerciseType == '深蹲' ||
+        exerciseType == '超慢跑';
+  }
+
   int _calculateCurrentStreak(Set<DateTime> activeDates) {
     int streak = 0;
     DateTime checkingDate = _onlyDate(DateTime.now());
@@ -236,7 +303,9 @@ class _HomeScreenState extends State<HomeScreen> {
         final List todayLogs = myLogs.where((rawLog) {
           final Map log = rawLog as Map;
           final DateTime? eventDate = _readLogEventDate(log);
-          return eventDate != null && _isSameDay(eventDate, now);
+          return eventDate != null &&
+              _isSameDay(eventDate, now) &&
+              _isQualifiedExerciseLog(log);
         }).toList();
 
         todayLogs.sort((a, b) {
@@ -290,7 +359,7 @@ class _HomeScreenState extends State<HomeScreen> {
           final Map log = rawLog as Map;
           final DateTime? eventDate = _readLogEventDate(log);
 
-          if (eventDate == null) {
+          if (eventDate == null || !_isQualifiedExerciseLog(log)) {
             continue;
           }
 
@@ -306,6 +375,8 @@ class _HomeScreenState extends State<HomeScreen> {
             _syncWeeklyState(activeDates);
             _isLoading = false;
           });
+
+          _tryAwardDailyReward(now);
         }
       } else {
         debugPrint('首頁 API 錯誤，狀態碼：${response.statusCode}');
@@ -320,6 +391,21 @@ class _HomeScreenState extends State<HomeScreen> {
       if (mounted) {
         setState(() => _isLoading = false);
       }
+    }
+  }
+
+  void _tryAwardDailyReward(DateTime now) {
+    if (!_isDailyGoalRewardUnlocked) {
+      return;
+    }
+
+    final bool granted = UserSession.claimDailyRewardForDate(
+      _onlyDate(now),
+      amount: 0.1,
+    );
+
+    if (granted) {
+      widget.onDailyRewardGranted?.call();
     }
   }
 
@@ -971,7 +1057,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
               const Spacer(),
               Text(
-                _isDailyGoalRewardUnlocked ? '獎勵 +10 點' : '全完成可得 +10 點',
+                _isDailyGoalRewardUnlocked ? '獎勵已兌換 +0.1' : '全完成可得 +10 點',
                 style: TextStyle(
                   color: _isDailyGoalRewardUnlocked
                       ? const Color(0xFF16A34A)
@@ -1005,7 +1091,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
               child: Text(
-                '${_dailyGoals.length} 個小任務已完成，今日額外獲得 10 點。',
+                '${_dailyGoals.length} 個小任務已完成，10 點已自動兌換成錢包 0.1 點。',
                 style: const TextStyle(
                   color: Color(0xFF166534),
                   fontSize: 13,
@@ -1062,7 +1148,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           const Spacer(),
           Text(
-            _isDailyGoalRewardUnlocked ? '已獲得 +10 點' : '全完成可得 +10 點',
+            _isDailyGoalRewardUnlocked ? '已兌換 +0.1' : '全完成可得 +10 點',
             style: TextStyle(
               color: _isDailyGoalRewardUnlocked
                   ? const Color(0xFF16A34A)
@@ -1072,6 +1158,132 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _DailyRewardCoinsOverlay extends StatelessWidget {
+  const _DailyRewardCoinsOverlay({required this.animation});
+
+  final Animation<double> animation;
+
+  static const List<Offset> _coinStarts = [
+    Offset(0.38, 0.74),
+    Offset(0.44, 0.78),
+    Offset(0.50, 0.76),
+    Offset(0.56, 0.79),
+    Offset(0.60, 0.73),
+    Offset(0.47, 0.82),
+    Offset(0.54, 0.84),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final Size size = MediaQuery.of(context).size;
+    final Offset target = Offset(size.width - 44, size.height - 62);
+
+    return AnimatedBuilder(
+      animation: animation,
+      builder: (context, child) {
+        final double t = Curves.easeInOutCubic.transform(animation.value);
+
+        return Stack(
+          children: [
+            for (int i = 0; i < _coinStarts.length; i++)
+              _AnimatedCoin(
+                progress: t,
+                delay: i * 0.05,
+                start: Offset(
+                  size.width * _coinStarts[i].dx,
+                  size.height * _coinStarts[i].dy,
+                ),
+                end: target,
+              ),
+            Positioned(
+              right: 28,
+              bottom: 74,
+              child: Opacity(
+                opacity: animation.value < 0.25 ? 0 : 1 - t,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFFF7D6),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: const Color(0xFFFACC15)),
+                  ),
+                  child: const Text(
+                    '+0.1 點',
+                    style: TextStyle(
+                      color: Color(0xFF92400E),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _AnimatedCoin extends StatelessWidget {
+  const _AnimatedCoin({
+    required this.progress,
+    required this.delay,
+    required this.start,
+    required this.end,
+  });
+
+  final double progress;
+  final double delay;
+  final Offset start;
+  final Offset end;
+
+  @override
+  Widget build(BuildContext context) {
+    final double localProgress = ((progress - delay) / (1 - delay)).clamp(0, 1);
+    final double curved = Curves.easeOutCubic.transform(localProgress);
+    final double arcLift = math.sin(curved * math.pi) * 90;
+    final Offset position =
+        Offset.lerp(start, end, curved)! - Offset(0, arcLift);
+
+    return Positioned(
+      left: position.dx,
+      top: position.dy,
+      child: Opacity(
+        opacity: (1 - localProgress).clamp(0.15, 1),
+        child: Transform.scale(
+          scale: 0.85 + (0.35 * (1 - localProgress)),
+          child: Container(
+            width: 22,
+            height: 22,
+            decoration: BoxDecoration(
+              color: const Color(0xFFFACC15),
+              shape: BoxShape.circle,
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFFFACC15).withValues(alpha: 0.32),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            alignment: Alignment.center,
+            child: const Text(
+              '¢',
+              style: TextStyle(
+                color: Color(0xFF92400E),
+                fontWeight: FontWeight.w900,
+                fontSize: 12,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

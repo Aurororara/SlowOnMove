@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'services/user_session.dart';
+
 class PurchaseScreen extends StatefulWidget {
   const PurchaseScreen({super.key});
 
@@ -8,7 +10,6 @@ class PurchaseScreen extends StatefulWidget {
 }
 
 class _PurchaseScreenState extends State<PurchaseScreen> {
-  static const int _currentBalance = 1200;
   int _selectedAmount = 33;
 
   static const List<_TopUpPlan> _topUpPlans = [
@@ -156,7 +157,6 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
   Widget build(BuildContext context) {
     final int bonus = _selectedPlan.bonusPoints;
     final int totalPoints = _selectedPlan.points + bonus;
-    final int balanceAfterTopUp = _currentBalance + totalPoints;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF7F9FC),
@@ -174,7 +174,18 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
           children: [
-            _buildBalanceCard(balanceAfterTopUp, bonus, totalPoints),
+            ValueListenableBuilder<double>(
+              valueListenable: UserSession.walletBalanceNotifier,
+              builder: (context, walletBalance, _) {
+                final double balanceAfterTopUp = walletBalance + totalPoints;
+                return _buildBalanceCard(
+                  walletBalance,
+                  balanceAfterTopUp,
+                  bonus,
+                  totalPoints,
+                );
+              },
+            ),
             const SizedBox(height: 16),
             _buildTopUpPanel(),
             const SizedBox(height: 16),
@@ -185,7 +196,12 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
     );
   }
 
-  Widget _buildBalanceCard(int balanceAfterTopUp, int bonus, int totalPoints) {
+  Widget _buildBalanceCard(
+    double currentBalance,
+    double balanceAfterTopUp,
+    int bonus,
+    int totalPoints,
+  ) {
     const List<int> milestones = [1000, 2000, 6000, 10000];
 
     return Container(
@@ -214,8 +230,8 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
             ),
           ),
           const SizedBox(height: 8),
-          const Text(
-            '1200 點',
+          Text(
+            '${_formatPoints(currentBalance)} 點',
             style: TextStyle(
               color: Colors.black,
               fontSize: 34,
@@ -309,7 +325,7 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
           ),
           const SizedBox(height: 10),
           Text(
-            '儲值後餘額：$balanceAfterTopUp 點',
+            '儲值後餘額：${_formatPoints(balanceAfterTopUp)} 點',
             style: const TextStyle(
               color: Color(0xFF6B7280),
               fontSize: 13,
@@ -319,6 +335,14 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
         ],
       ),
     );
+  }
+
+  String _formatPoints(double value) {
+    if (value == value.roundToDouble()) {
+      return value.toStringAsFixed(0);
+    }
+
+    return value.toStringAsFixed(1);
   }
 
   Widget _buildMilestoneNode({required int milestone, required bool reached}) {
