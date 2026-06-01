@@ -7493,6 +7493,12 @@ class CommunityStore extends ChangeNotifier {
     notifyListeners();
   }
 
+  void deletePost(int index) {
+    if (index < 0 || index >= _posts.length) return;
+    _posts.removeAt(index);
+    notifyListeners();
+  }
+
   void toggleLike(int index) {
     final post = _posts[index];
     final isLiked = !post.isLiked;
@@ -7531,19 +7537,22 @@ class CommunityProfileScreen extends StatelessWidget {
   })  : profileInitial = profileInitial ?? UserSession.displayInitial,
         profileName = profileName ?? UserSession.displayName;
 
-  List<CommunityPost> get _profilePosts => store.posts
-      .where((post) => post.name == profileName)
+  List<({int index, CommunityPost post})> get _profilePosts => store.posts
+      .asMap()
+      .entries
+      .where((entry) => entry.value.name == profileName)
+      .map((entry) => (index: entry.key, post: entry.value))
       .toList(growable: false);
 
   bool get _isCurrentUserProfile => profileName == UserSession.displayName;
 
   List<_ReplyEntry> get _replies => _profilePosts
       .expand(
-        (post) => post.commentThreads.map(
+        (entry) => entry.post.commentThreads.map(
           (reply) => _ReplyEntry(
             reply: reply,
-            postPreview: post.content,
-            timeAgo: post.timeAgo,
+            postPreview: entry.post.content,
+            timeAgo: entry.post.timeAgo,
           ),
         ),
       )
@@ -7677,8 +7686,16 @@ class CommunityProfileScreen extends StatelessWidget {
                 Expanded(
                   child: TabBarView(
                     children: [
-                      _ArticleTab(posts: _profilePosts),
-                      _RepliesTab(replies: _replies),
+                      _ArticleTab(
+                        posts: _profilePosts,
+                        isCurrentUserProfile: _isCurrentUserProfile,
+                        onDeletePost: (index) => store.deletePost(index),
+                      ),
+                      _RepliesTab(
+                        replies: _replies,
+                        profileName: profileName,
+                        isCurrentUserProfile: _isCurrentUserProfile,
+                      ),
                     ],
                   ),
                 ),
@@ -7692,9 +7709,49 @@ class CommunityProfileScreen extends StatelessWidget {
 }
 
 class _ArticleTab extends StatelessWidget {
-  final List<CommunityPost> posts;
+  final List<({int index, CommunityPost post})> posts;
+  final bool isCurrentUserProfile;
+  final ValueChanged<int> onDeletePost;
 
-  const _ArticleTab({required this.posts});
+  const _ArticleTab({
+    required this.posts,
+    required this.isCurrentUserProfile,
+    required this.onDeletePost,
+  });
+
+  Future<void> _confirmDelete(BuildContext context, int index) async {
+    final shouldDelete = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('刪除貼文'),
+          content: const Text('確定要刪除這則貼文嗎？'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text(
+                '刪除',
+                style: TextStyle(color: Color(0xFFDC2626)),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (shouldDelete == true) {
+      onDeletePost(index);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('貼文已刪除')),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -7710,8 +7767,20 @@ class _ArticleTab extends StatelessWidget {
       itemCount: posts.length,
       separatorBuilder: (_, __) => const SizedBox(height: 12),
       itemBuilder: (context, index) {
-        final post = posts[index];
-        return _ProfilePostCard(post: post);
+        final entry = posts[index];
+        return _ProfilePostCard(
+          post: entry.post,
+          trailing: isCurrentUserProfile
+              ? IconButton(
+                  onPressed: () => _confirmDelete(context, entry.index),
+                  icon: const Icon(
+                    Icons.delete_outline,
+                    color: Color(0xFFDC2626),
+                  ),
+                  tooltip: '刪除貼文',
+                )
+              : null,
+        );
       },
     );
   }
@@ -7719,15 +7788,23 @@ class _ArticleTab extends StatelessWidget {
 
 class _RepliesTab extends StatelessWidget {
   final List<_ReplyEntry> replies;
+  final String profileName;
+  final bool isCurrentUserProfile;
 
-  const _RepliesTab({required this.replies});
+  const _RepliesTab({
+    required this.replies,
+    required this.profileName,
+    required this.isCurrentUserProfile,
+  });
 
   @override
   Widget build(BuildContext context) {
     if (replies.isEmpty) {
-      return const _EmptyProfileState(
+      return _EmptyProfileState(
         title: '目前還沒有回覆',
-        subtitle: '其他人對你的貼文的回覆將顯示在這裡。',
+        subtitle: isCurrentUserProfile
+            ? '其他人對你的貼文的回覆將顯示在這裡。'
+            : '其他人對 $profileName 的貼文的回覆將顯示在這裡。',
       );
     }
 
@@ -7747,17 +7824,19 @@ class _RepliesTab extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Row(
+              Row(
                 children: [
-                  CircleAvatar(
+                  const CircleAvatar(
                     radius: 14,
                     backgroundColor: Colors.black,
                     child: Icon(Icons.reply, size: 14, color: Colors.white),
                   ),
-                  SizedBox(width: 10),
+                  const SizedBox(width: 10),
                   Text(
-                    '有人回覆了你的貼文',
-                    style: TextStyle(
+                    isCurrentUserProfile
+                        ? '有人回覆了你的貼文'
+                        : '有人回覆了 $profileName 的貼文',
+                    style: const TextStyle(
                       color: Colors.black,
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
@@ -7813,8 +7892,12 @@ class _RepliesTab extends StatelessWidget {
 
 class _ProfilePostCard extends StatelessWidget {
   final CommunityPost post;
+  final Widget? trailing;
 
-  const _ProfilePostCard({required this.post});
+  const _ProfilePostCard({
+    required this.post,
+    this.trailing,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -7866,6 +7949,7 @@ class _ProfilePostCard extends StatelessWidget {
                   ],
                 ),
               ),
+              if (trailing != null) trailing!,
             ],
           ),
           const SizedBox(height: 14),
@@ -8226,8 +8310,11 @@ class _CommentsSheetState extends State<_CommentsSheet> {
                           onPressed:
                               value.text.trim().isEmpty ? null : _submitComment,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.black,
-                            disabledBackgroundColor: const Color(0xFFD1D5DB),
+                            backgroundColor: const Color(0xFF65C16F),
+                            foregroundColor: Colors.white,
+                            disabledBackgroundColor: const Color(0xFFDDEDDD),
+                            disabledForegroundColor: const Color(0xFF8DAA90),
+                            elevation: 0,
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(14),
                             ),

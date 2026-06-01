@@ -107,6 +107,21 @@ class _HomeScreenState extends State<HomeScreen> {
     return a.year == b.year && a.month == b.month && a.day == b.day;
   }
 
+  DateTime? _readLogEventDate(Map log) {
+    final String? startTimeText = log['start_time']?.toString();
+    final String? createdAtText = log['created_at']?.toString();
+
+    final String? dateText = startTimeText != null && startTimeText.isNotEmpty
+        ? startTimeText
+        : createdAtText;
+
+    if (dateText == null || dateText.isEmpty) {
+      return null;
+    }
+
+    return DateTime.parse(dateText).toLocal();
+  }
+
   num _readNum(Map log, List<String> keys) {
     for (final key in keys) {
       final value = log[key];
@@ -220,24 +235,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
         final List todayLogs = myLogs.where((rawLog) {
           final Map log = rawLog as Map;
-
-          final String? startTimeText = log['start_time']?.toString();
-          final String? createdAtText = log['created_at']?.toString();
-
-          bool isStartTimeToday = false;
-          bool isCreatedAtToday = false;
-
-          if (startTimeText != null && startTimeText.isNotEmpty) {
-            final DateTime startTime = DateTime.parse(startTimeText).toLocal();
-            isStartTimeToday = _isSameDay(startTime, now);
-          }
-
-          if (createdAtText != null && createdAtText.isNotEmpty) {
-            final DateTime createdAt = DateTime.parse(createdAtText).toLocal();
-            isCreatedAtToday = _isSameDay(createdAt, now);
-          }
-
-          return isStartTimeToday || isCreatedAtToday;
+          final DateTime? eventDate = _readLogEventDate(log);
+          return eventDate != null && _isSameDay(eventDate, now);
         }).toList();
 
         todayLogs.sort((a, b) {
@@ -289,21 +288,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
         for (final rawLog in myLogs) {
           final Map log = rawLog as Map;
+          final DateTime? eventDate = _readLogEventDate(log);
 
-          final String? createdAtText = log['created_at']?.toString();
-          final String? startTimeText = log['start_time']?.toString();
-
-          final String? dateText =
-              createdAtText != null && createdAtText.isNotEmpty
-                  ? createdAtText
-                  : startTimeText;
-
-          if (dateText == null || dateText.isEmpty) {
+          if (eventDate == null) {
             continue;
           }
 
-          final DateTime date = DateTime.parse(dateText).toLocal();
-          activeDates.add(_onlyDate(date));
+          activeDates.add(_onlyDate(eventDate));
         }
 
         if (mounted) {
@@ -474,152 +465,161 @@ class _HomeScreenState extends State<HomeScreen> {
             final DateTime today = _onlyDate(DateTime.now());
 
             return SafeArea(
-              child: Container(
-                margin: const EdgeInsets.fromLTRB(12, 24, 12, 12),
-                padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(28),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 42,
-                        height: 5,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFE5E7EB),
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                      ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final maxSheetHeight = constraints.maxHeight * 0.88;
+
+                  return Container(
+                    constraints: BoxConstraints(maxHeight: maxSheetHeight),
+                    margin: const EdgeInsets.fromLTRB(12, 24, 12, 12),
+                    padding: const EdgeInsets.fromLTRB(20, 14, 20, 24),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(28),
                     ),
-                    const SizedBox(height: 18),
-                    Row(
-                      children: [
-                        const Expanded(
-                          child: Text(
-                            '月運動紀錄',
-                            style: TextStyle(
-                              color: Colors.black,
-                              fontSize: 20,
-                              fontWeight: FontWeight.w900,
+                    child: SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Center(
+                            child: Container(
+                              width: 42,
+                              height: 5,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE5E7EB),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
                             ),
                           ),
-                        ),
-                        _CalendarMonthButton(
-                          icon: Icons.chevron_left_rounded,
-                          onTap: () {
-                            setSheetState(() {
-                              visibleMonth = DateTime(
-                                visibleMonth.year,
-                                visibleMonth.month - 1,
-                              );
-                            });
-                          },
-                        ),
-                        const SizedBox(width: 8),
-                        _CalendarMonthButton(
-                          icon: Icons.chevron_right_rounded,
-                          onTap: () {
-                            setSheetState(() {
-                              visibleMonth = DateTime(
-                                visibleMonth.year,
-                                visibleMonth.month + 1,
-                              );
-                            });
-                          },
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      _formatMonthTitle(visibleMonth),
-                      style: const TextStyle(
-                        color: Color(0xFF6B7280),
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 18),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _CalendarSummaryCard(
-                            label: '本月運動',
-                            value: '$completedCount 天',
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _CalendarSummaryCard(
-                            label: '最長連續',
-                            value: '$longestStreak 天',
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 18),
-                    Row(
-                      children: _labels
-                          .map(
-                            (label) => Expanded(
-                              child: Center(
+                          const SizedBox(height: 18),
+                          Row(
+                            children: [
+                              const Expanded(
                                 child: Text(
-                                  label,
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                    color: Color(0xFF6B7280),
+                                  '月運動紀錄',
+                                  style: TextStyle(
+                                    color: Colors.black,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w900,
                                   ),
                                 ),
                               ),
+                              _CalendarMonthButton(
+                                icon: Icons.chevron_left_rounded,
+                                onTap: () {
+                                  setSheetState(() {
+                                    visibleMonth = DateTime(
+                                      visibleMonth.year,
+                                      visibleMonth.month - 1,
+                                    );
+                                  });
+                                },
+                              ),
+                              const SizedBox(width: 8),
+                              _CalendarMonthButton(
+                                icon: Icons.chevron_right_rounded,
+                                onTap: () {
+                                  setSheetState(() {
+                                    visibleMonth = DateTime(
+                                      visibleMonth.year,
+                                      visibleMonth.month + 1,
+                                    );
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            _formatMonthTitle(visibleMonth),
+                            style: const TextStyle(
+                              color: Color(0xFF6B7280),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
                             ),
-                          )
-                          .toList(),
-                    ),
-                    const SizedBox(height: 10),
-                    GridView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: days.length,
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 7,
-                        mainAxisSpacing: 10,
-                        crossAxisSpacing: 10,
-                        childAspectRatio: 1,
-                      ),
-                      itemBuilder: (context, index) {
-                        final DateTime date = days[index];
-                        final bool isCurrentMonth =
-                            date.month == visibleMonth.month &&
-                                date.year == visibleMonth.year;
-                        final bool isCompleted = _activeDates.contains(
-                          _onlyDate(date),
-                        );
-                        final bool isToday = _isSameDay(date, today);
+                          ),
+                          const SizedBox(height: 18),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: _CalendarSummaryCard(
+                                  label: '本月運動',
+                                  value: '$completedCount 天',
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: _CalendarSummaryCard(
+                                  label: '最長連續',
+                                  value: '$longestStreak 天',
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 18),
+                          Row(
+                            children: _labels
+                                .map(
+                                  (label) => Expanded(
+                                    child: Center(
+                                      child: Text(
+                                        label,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                          color: Color(0xFF6B7280),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                )
+                                .toList(),
+                          ),
+                          const SizedBox(height: 10),
+                          GridView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: days.length,
+                            gridDelegate:
+                                const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 7,
+                              mainAxisSpacing: 10,
+                              crossAxisSpacing: 10,
+                              childAspectRatio: 0.9,
+                            ),
+                            itemBuilder: (context, index) {
+                              final DateTime date = days[index];
+                              final bool isCurrentMonth =
+                                  date.month == visibleMonth.month &&
+                                      date.year == visibleMonth.year;
+                              final bool isCompleted = _activeDates.contains(
+                                _onlyDate(date),
+                              );
+                              final bool isToday = _isSameDay(date, today);
 
-                        return _CalendarDayCell(
-                          day: date.day,
-                          isCurrentMonth: isCurrentMonth,
-                          isCompleted: isCompleted,
-                          isToday: isToday,
-                        );
-                      },
-                    ),
-                    const SizedBox(height: 14),
-                    const Text(
-                      '有運動紀錄的日期會以綠色標示，資料來源為後端運動紀錄。',
-                      style: TextStyle(
-                        color: Color(0xFF6B7280),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
+                              return _CalendarDayCell(
+                                day: date.day,
+                                isCurrentMonth: isCurrentMonth,
+                                isCompleted: isCompleted,
+                                isToday: isToday,
+                              );
+                            },
+                          ),
+                          const SizedBox(height: 14),
+                          const Text(
+                            '有運動紀錄的日期會以綠色標示，資料來源為後端運動紀錄。',
+                            style: TextStyle(
+                              color: Color(0xFF6B7280),
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
-                ),
+                  );
+                },
               ),
             );
           },
