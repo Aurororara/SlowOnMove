@@ -8175,6 +8175,7 @@ class _CommentsSheetState extends State<_CommentsSheet> {
 
     widget.store.addComment(widget.postIndex, text);
     _controller.clear();
+    FocusScope.of(context).unfocus();
   }
 
   @override

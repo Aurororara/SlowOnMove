@@ -1356,19 +1356,6 @@ class _CalendarDayCell extends StatelessWidget {
               fontWeight: FontWeight.w800,
             ),
           ),
-          const SizedBox(height: 4),
-          Container(
-            width: 6,
-            height: 6,
-            decoration: BoxDecoration(
-              color: isCompleted
-                  ? Colors.white
-                  : isCurrentMonth
-                      ? const Color(0xFFD1D5DB)
-                      : Colors.transparent,
-              shape: BoxShape.circle,
-            ),
-          ),
         ],
       ),
     );
