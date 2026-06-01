@@ -3225,12 +3225,16 @@ enum _RunInvitationStatus { pending, accepted }
 class _RunInvitation {
   final String date;
   final String time;
+  final String? targetDistance;
+  final String? targetDuration;
   final String notes;
   final _RunInvitationStatus status;
 
   const _RunInvitation({
     required this.date,
     required this.time,
+    this.targetDistance,
+    this.targetDuration,
     required this.notes,
     this.status = _RunInvitationStatus.pending,
   });
@@ -3238,12 +3242,16 @@ class _RunInvitation {
   _RunInvitation copyWith({
     String? date,
     String? time,
+    String? targetDistance,
+    String? targetDuration,
     String? notes,
     _RunInvitationStatus? status,
   }) {
     return _RunInvitation(
       date: date ?? this.date,
       time: time ?? this.time,
+      targetDistance: targetDistance ?? this.targetDistance,
+      targetDuration: targetDuration ?? this.targetDuration,
       notes: notes ?? this.notes,
       status: status ?? this.status,
     );
@@ -3272,10 +3280,24 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
     '06:00 PM',
     '07:00 PM',
   ];
+  static const List<String> _distanceOptions = [
+    '1 km',
+    '3 km',
+    '5 km',
+    '10 km',
+  ];
+  static const List<String> _durationOptions = [
+    '15 分鐘',
+    '30 分鐘',
+    '45 分鐘',
+    '60 分鐘',
+  ];
 
   final TextEditingController _dateController = TextEditingController();
   final TextEditingController _notesController = TextEditingController();
   String? _selectedTime;
+  String? _selectedDistance;
+  String? _selectedDuration;
 
   @override
   void dispose() {
@@ -3309,6 +3331,8 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
       _RunInvitation(
         date: _dateController.text.trim(),
         time: _selectedTime!,
+        targetDistance: _selectedDistance,
+        targetDuration: _selectedDuration,
         notes: note,
       ),
     );
@@ -3485,6 +3509,74 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
                     const Icon(Icons.access_time_outlined, size: 18),
                   ],
                 ),
+              ),
+              const SizedBox(height: 18),
+              const _InviteFieldLabel(
+                icon: Icons.straighten_outlined,
+                text: '跑多遠（選填）',
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _distanceOptions.map((distance) {
+                  final isSelected = _selectedDistance == distance;
+                  return ChoiceChip(
+                    label: Text(distance),
+                    selected: isSelected,
+                    onSelected: (_) {
+                      setState(() {
+                        _selectedDistance = isSelected ? null : distance;
+                      });
+                    },
+                    labelStyle: TextStyle(
+                      color:
+                          isSelected ? Colors.white : const Color(0xFF4A5568),
+                      fontWeight: FontWeight.w800,
+                      fontSize: 12,
+                    ),
+                    selectedColor: Colors.black,
+                    backgroundColor: const Color(0xFFF1F5F9),
+                    side: BorderSide.none,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  );
+                }).toList(),
+              ),
+              const SizedBox(height: 18),
+              const _InviteFieldLabel(
+                icon: Icons.hourglass_bottom_outlined,
+                text: '跑多久（選填）',
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: _durationOptions.map((duration) {
+                  final isSelected = _selectedDuration == duration;
+                  return ChoiceChip(
+                    label: Text(duration),
+                    selected: isSelected,
+                    onSelected: (_) {
+                      setState(() {
+                        _selectedDuration = isSelected ? null : duration;
+                      });
+                    },
+                    labelStyle: TextStyle(
+                      color:
+                          isSelected ? Colors.white : const Color(0xFF4A5568),
+                      fontWeight: FontWeight.w800,
+                      fontSize: 12,
+                    ),
+                    selectedColor: Colors.black,
+                    backgroundColor: const Color(0xFFF1F5F9),
+                    side: BorderSide.none,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  );
+                }).toList(),
               ),
               const SizedBox(height: 18),
               const _InviteFieldLabel(
@@ -3809,6 +3901,28 @@ class _InvitationMessageBubble extends StatelessWidget {
               color: Color(0xFF374151),
             ),
           ),
+          if (invitation.targetDistance != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              '距離：${invitation.targetDistance}',
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF374151),
+              ),
+            ),
+          ],
+          if (invitation.targetDuration != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              '時長：${invitation.targetDuration}',
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF374151),
+              ),
+            ),
+          ],
           if (invitation.notes.isNotEmpty) ...[
             const SizedBox(height: 8),
             Text(
