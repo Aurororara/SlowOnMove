@@ -173,21 +173,9 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     try {
-      // 重點：如果是 created_at，就不要 toLocal，避免 UTC 被轉到隔天
-      if (startTimeText == null || startTimeText.isEmpty) {
-        final String dateOnly = dateText.split('T').first;
-        return DateTime.parse(dateOnly);
-      }
-
-      final DateTime parsed = DateTime.parse(startTimeText);
-
-      if (startTimeText.endsWith('Z') ||
-          startTimeText.contains('+') ||
-          startTimeText.contains(RegExp(r'-\d{2}:\d{2}$'))) {
-        return parsed.toLocal();
-      }
-
-      return parsed;
+      // 只取日期，不做 toLocal，避免 UTC 時間跨日
+      final String dateOnly = dateText.split('T').first;
+      return DateTime.parse(dateOnly);
     } catch (e) {
       debugPrint('日期解析失敗: $dateText, error: $e');
       return null;
