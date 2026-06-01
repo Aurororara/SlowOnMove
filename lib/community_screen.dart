@@ -733,13 +733,17 @@ class _CommunityScreenState extends State<CommunityScreen> {
                             onMessageTap: _openChat,
                           )
                         : _isGroupsOpen
-                            ? _GroupsPanel(
-                                key: _groupsPanelKey,
-                                onBack: _closeSecondaryPage,
-                                onMessageTap: _openChat,
-                                onSystemMessage: _appendSystemChatMessage,
-                                onScheduleEventReminder:
-                                    _scheduleGroupEventReminder,
+                            ? SafeArea(
+                                top: true,
+                                bottom: false,
+                                child: _GroupsPanel(
+                                  key: _groupsPanelKey,
+                                  onBack: _closeSecondaryPage,
+                                  onMessageTap: _openChat,
+                                  onSystemMessage: _appendSystemChatMessage,
+                                  onScheduleEventReminder:
+                                      _scheduleGroupEventReminder,
+                                ),
                               )
                             : ListView(
                                 key: const ValueKey('community-feed'),
@@ -4304,10 +4308,6 @@ String _groupMetricUnit(String exerciseType) {
   }
 }
 
-String _groupMetricLabel(String exerciseType, int value) {
-  return '$value ${_groupMetricUnit(exerciseType)}';
-}
-
 String _groupWeeklyGoalLabel(
   String exerciseType,
   int current,
@@ -4878,7 +4878,6 @@ class _GroupsPanelState extends State<_GroupsPanel> {
                   name: group.name,
                   description: group.description,
                   members: group.members,
-                  runs: group.runs,
                   weeklyGoalCurrent: group.weeklyGoalCurrent,
                   weeklyGoalTarget: group.weeklyGoalTarget,
                   progress: group.progress,
@@ -5364,7 +5363,6 @@ class _GroupCard extends StatelessWidget {
   final String name;
   final String description;
   final int members;
-  final int runs;
   final int weeklyGoalCurrent;
   final int weeklyGoalTarget;
   final double progress;
@@ -5380,7 +5378,6 @@ class _GroupCard extends StatelessWidget {
     required this.name,
     required this.description,
     required this.members,
-    required this.runs,
     required this.weeklyGoalCurrent,
     required this.weeklyGoalTarget,
     required this.progress,
@@ -5457,14 +5454,6 @@ class _GroupCard extends StatelessWidget {
                             color: Color(0xFF718096), size: 14),
                         const SizedBox(width: 4),
                         Text('$members/30 人', style: _friendMetaStyle),
-                        const SizedBox(width: 12),
-                        const Icon(Icons.trending_up,
-                            color: Color(0xFF718096), size: 14),
-                        const SizedBox(width: 4),
-                        Text(
-                          _groupMetricLabel(exerciseType, runs),
-                          style: _friendMetaStyle,
-                        ),
                       ],
                     ),
                   ],
@@ -6002,6 +5991,10 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
     final group = _group;
     final percentRemaining =
         ((1 - group.progress.clamp(0.0, 1.0)) * 100).round().clamp(0, 100);
+    final totalSquats = group.memberPreview.fold<int>(
+      0,
+      (sum, member) => sum + member.totalSquats,
+    );
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
@@ -6130,12 +6123,9 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
                       ),
                       const SizedBox(width: 10),
                       Expanded(
-                        child: _GroupStatTile(
-                          label:
-                              group.exerciseType == 'squat' ? '總深蹲次數' : '總跑步次數',
-                          value:
-                              _groupMetricLabel(group.exerciseType, group.runs),
-                          icon: Icons.trending_up,
+                        child: _GroupTotalsTile(
+                          totalRuns: group.runs,
+                          totalSquats: totalSquats,
                         ),
                       ),
                     ],
@@ -6380,6 +6370,108 @@ class _GroupStatTile extends StatelessWidget {
               fontSize: 31,
               fontWeight: FontWeight.w900,
               height: 1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GroupTotalsTile extends StatelessWidget {
+  final int totalRuns;
+  final int totalSquats;
+
+  const _GroupTotalsTile({
+    required this.totalRuns,
+    required this.totalSquats,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(Icons.trending_up, size: 14, color: Color(0xFF94A3B8)),
+              SizedBox(width: 5),
+              Text(
+                '總累積次數',
+                style: TextStyle(
+                  color: Color(0xFF64748B),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          _GroupMetricLine(
+            label: '慢跑',
+            value: '$totalRuns 次',
+          ),
+          const SizedBox(height: 4),
+          _GroupMetricLine(
+            label: '深蹲',
+            value: '$totalSquats 次',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GroupMetricLine extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _GroupMetricLine({
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: Color(0xFF475569),
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+          const Spacer(),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.black,
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
             ),
           ),
         ],
