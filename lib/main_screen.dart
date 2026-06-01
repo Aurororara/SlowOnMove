@@ -172,7 +172,26 @@ class _HomeScreenState extends State<HomeScreen> {
       return null;
     }
 
-    return DateTime.parse(dateText).toLocal();
+    try {
+      // 重點：如果是 created_at，就不要 toLocal，避免 UTC 被轉到隔天
+      if (startTimeText == null || startTimeText.isEmpty) {
+        final String dateOnly = dateText.split('T').first;
+        return DateTime.parse(dateOnly);
+      }
+
+      final DateTime parsed = DateTime.parse(startTimeText);
+
+      if (startTimeText.endsWith('Z') ||
+          startTimeText.contains('+') ||
+          startTimeText.contains(RegExp(r'-\d{2}:\d{2}$'))) {
+        return parsed.toLocal();
+      }
+
+      return parsed;
+    } catch (e) {
+      debugPrint('日期解析失敗: $dateText, error: $e');
+      return null;
+    }
   }
 
   num _readNum(Map log, List<String> keys) {
@@ -282,14 +301,22 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _fetchHomeData() async {
     final int currentMemberId = UserSession.memberId;
 
+    debugPrint('========== 首頁資料 Debug 開始 ==========');
+    debugPrint('目前登入 memberId: $currentMemberId');
+
     try {
       final response = await http.get(
         Uri.parse(_buildUrl('training-logs/')),
       );
 
+      debugPrint('training-logs API 狀態碼: ${response.statusCode}');
+
       if (response.statusCode == 200) {
         final List allLogs = json.decode(response.body);
         final DateTime now = DateTime.now();
+
+        debugPrint('現在手機本地時間: $now');
+        debugPrint('全部紀錄數: ${allLogs.length}');
 
         final List myLogs = allLogs.where((rawLog) {
           final Map log = rawLog as Map;
@@ -300,9 +327,30 @@ class _HomeScreenState extends State<HomeScreen> {
           return isMyLog;
         }).toList();
 
+        debugPrint('我的紀錄數: ${myLogs.length}');
+
+        for (final rawLog in myLogs) {
+          final Map log = rawLog as Map;
+          final DateTime? eventDate = _readLogEventDate(log);
+
+          debugPrint(
+            '我的log => '
+            'id:${log['id']}, '
+            'member:${log['member']}, '
+            'exercise_type:${log['exercise_type']}, '
+            'type:${log['type']}, '
+            'activity:${log['activity']}, '
+            'start_time:${log['start_time']}, '
+            'created_at:${log['created_at']}, '
+            '轉成本地eventDate:$eventDate, '
+            '是否合格運動:${_isQualifiedExerciseLog(log)}',
+          );
+        }
+
         final List todayLogs = myLogs.where((rawLog) {
           final Map log = rawLog as Map;
           final DateTime? eventDate = _readLogEventDate(log);
+
           return eventDate != null &&
               _isSameDay(eventDate, now) &&
               _isQualifiedExerciseLog(log);
@@ -316,6 +364,27 @@ class _HomeScreenState extends State<HomeScreen> {
 
           return bTime.compareTo(aTime);
         });
+
+        debugPrint('今日紀錄數: ${todayLogs.length}');
+
+        for (final rawLog in todayLogs) {
+          final Map log = rawLog as Map;
+
+          debugPrint(
+            '今日log => '
+            'id:${log['id']}, '
+            'member:${log['member']}, '
+            'exercise_type:${log['exercise_type']}, '
+            'type:${log['type']}, '
+            'activity:${log['activity']}, '
+            'start_time:${log['start_time']}, '
+            'created_at:${log['created_at']}, '
+            '轉成本地eventDate:${_readLogEventDate(log)}, '
+            'steps:${log['step_count'] ?? log['steps'] ?? log['stepCount']}, '
+            'mins:${log['total_mins'] ?? log['total_minutes']}, '
+            'calories:${log['calories'] ?? log['kcal']}',
+          );
+        }
 
         final int todayTrainingCount = todayLogs.length;
 
@@ -366,6 +435,13 @@ class _HomeScreenState extends State<HomeScreen> {
           activeDates.add(_onlyDate(eventDate));
         }
 
+        debugPrint('今日訓練次數: $todayTrainingCount');
+        debugPrint('今日熱量: $todayCalories');
+        debugPrint('今日步數: $todaySteps');
+        debugPrint('今日分鐘: $todayMins');
+        debugPrint('月曆 activeDates: ${activeDates.toList()}');
+        debugPrint('========== 首頁資料 Debug 結束 ==========');
+
         if (mounted) {
           setState(() {
             _todayTrainingCount = todayTrainingCount;
@@ -380,6 +456,8 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       } else {
         debugPrint('首頁 API 錯誤，狀態碼：${response.statusCode}');
+        debugPrint('首頁 API 回傳內容：${response.body}');
+        debugPrint('========== 首頁資料 Debug 結束 ==========');
 
         if (mounted) {
           setState(() => _isLoading = false);
@@ -387,6 +465,7 @@ class _HomeScreenState extends State<HomeScreen> {
       }
     } catch (e) {
       debugPrint('首頁抓取資料失敗：$e');
+      debugPrint('========== 首頁資料 Debug 結束 ==========');
 
       if (mounted) {
         setState(() => _isLoading = false);
