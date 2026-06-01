@@ -4478,7 +4478,7 @@ class _GroupsPanelState extends State<_GroupsPanel> {
       progressText: '32/50 次慢跑',
       progress: 0.64,
       isPrivate: false,
-      exerciseType: 'slow_jogging',
+      exerciseType: 'mixed',
       showCrown: true,
       showSettings: true,
       memberPreview: [
@@ -4546,7 +4546,7 @@ class _GroupsPanelState extends State<_GroupsPanel> {
       progressText: '32/30 次慢跑',
       progress: 1,
       isPrivate: false,
-      exerciseType: 'slow_jogging',
+      exerciseType: 'mixed',
       memberPreview: [
         _GroupMember(
           initial: 'C',
@@ -4744,23 +4744,10 @@ class _GroupsPanelState extends State<_GroupsPanel> {
     }
 
     final updatedGroup = group.copyWith(
-      members: (group.members + 1).clamp(0, _maxGroupMembers),
-      memberPreview: [
-        ...group.memberPreview,
-        _GroupMember(
-          initial: friend.initial,
-          name: friend.name,
-          totalRuns: friend.runsTogether,
-          runsThisWeek: friend.streak,
-          totalSquats: 0,
-          squatsThisWeek: 0,
-          joinedDate: '今天',
-        ),
-      ],
       activities: [
         _GroupActivityEntry(
-          title: '${friend.name} 加入了群組',
-          subtitle: '由 $_currentUserName 邀請',
+          title: '已邀請 ${friend.name}',
+          subtitle: '等待對方接受群組邀請',
           timestamp: '剛剛',
         ),
         ...group.activities,
@@ -4772,22 +4759,13 @@ class _GroupsPanelState extends State<_GroupsPanel> {
       if (index != -1) {
         _myGroups[index] = updatedGroup;
       }
-      final discoverIndex =
-          _discoverGroups.indexWhere((item) => item.name == group.name);
-      if (discoverIndex != -1) {
-        _discoverGroups[discoverIndex] =
-            _discoverGroups[discoverIndex].copyWith(
-          members: (_discoverGroups[discoverIndex].members + 1)
-              .clamp(0, _maxGroupMembers),
-        );
-      }
     });
 
     widget.onSystemMessage(
       friend,
-      '$_currentUserName invited you to join "${group.name}".',
+      '$_currentUserName 邀請你加入「${group.name}」，等待你接受邀請後才會正式加入。',
     );
-    _showMessage('${friend.name} 已加入 ${group.name}');
+    _showMessage('已送出邀請給 ${friend.name}，等待對方同意');
     return updatedGroup;
   }
 
@@ -4811,62 +4789,6 @@ class _GroupsPanelState extends State<_GroupsPanel> {
     _showMessage('已開啟 $name 的設定');
   }
 
-  void _joinGroup(_DiscoverGroup group) {
-    if (group.members >= _maxGroupMembers) {
-      _showMessage('${group.name} 已達 30 人上限');
-      return;
-    }
-
-    setState(() {
-      _myGroups.add(
-        _MyGroup(
-          ownerName: '群組管理員',
-          ownerInitial: 'G',
-          name: group.name,
-          description: group.description,
-          members: group.members + 1,
-          runs: 0,
-          weeklyGoalCurrent: 0,
-          weeklyGoalTarget: 20,
-          progressText: '0/20 activities',
-          progress: 0,
-          isPrivate: group.isPrivate,
-          exerciseType: group.exerciseType,
-          memberPreview: const [
-            _GroupMember(
-              initial: 'Y',
-              name: '你',
-              totalRuns: 0,
-              runsThisWeek: 0,
-              totalSquats: 0,
-              squatsThisWeek: 0,
-              joinedDate: '今天',
-              canMessage: false,
-            ),
-          ],
-          activities: const [
-            _GroupActivityEntry(
-              title: '歡迎加入群組',
-              subtitle: '你的會員資格已建立',
-              timestamp: '剛剛',
-            ),
-          ],
-        ),
-      );
-      final discoverIndex =
-          _discoverGroups.indexWhere((item) => item.name == group.name);
-      if (discoverIndex != -1) {
-        _discoverGroups[discoverIndex] =
-            _discoverGroups[discoverIndex].copyWith(
-          joined: true,
-          members: (group.members + 1).clamp(0, _maxGroupMembers),
-        );
-      }
-      _selectedTab = 0;
-    });
-    _showMessage('已加入 ${group.name}');
-  }
-
   void _requestGroup(_DiscoverGroup group) {
     setState(() {
       final index =
@@ -4877,7 +4799,7 @@ class _GroupsPanelState extends State<_GroupsPanel> {
         );
       }
     });
-    _showMessage('已送出加入 ${group.name} 的請求');
+    _showMessage('已送出加入 ${group.name} 的申請，等待群組邀請通過');
   }
 
   @override
@@ -4998,7 +4920,8 @@ class _GroupsPanelState extends State<_GroupsPanel> {
                   actionLabel: '查看群組',
                   isPrivate: group.isPrivate,
                   exerciseType: group.exerciseType,
-                  showCrown: group.showCrown,
+                  showCrown:
+                      group.ownerName == _GroupsPanelState._currentUserName,
                   showSettings: group.showSettings,
                   onActionTap: () => _viewGroup(group),
                   onSettingsTap: group.showSettings
@@ -5024,14 +4947,12 @@ class _GroupsPanelState extends State<_GroupsPanel> {
                       ? '已加入'
                       : group.requestSent
                           ? '已申請'
-                          : (group.isPrivate ? '申請加入' : '加入群組'),
+                          : '申請加入',
                   isPrivate: group.isPrivate,
                   isDisabled: group.joined || group.requestSent,
                   onTap: group.joined || group.requestSent
                       ? null
-                      : () => group.isPrivate
-                          ? _requestGroup(group)
-                          : _joinGroup(group),
+                      : () => _requestGroup(group),
                 ),
               );
             }),
@@ -5747,7 +5668,7 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
   }
 
   bool get _isOwner => _group.ownerName == _GroupsPanelState._currentUserName;
-  bool get _canDirectInvite => _isOwner || !_group.isPrivate;
+  bool get _canDirectInvite => _isOwner;
 
   Future<void> _handleLeaveGroup() async {
     final bool? shouldLeave = await showDialog<bool>(
@@ -5804,6 +5725,13 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
   }
 
   Future<void> _openWeeklyGoalSheet() async {
+    if (!_isOwner) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('只有創立群組的人可以更改每週目標')),
+      );
+      return;
+    }
+
     int selectedTarget = _group.weeklyGoalTarget.clamp(1, 999);
 
     await showModalBottomSheet<void>(
@@ -5962,7 +5890,6 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
 
     setState(() {
       _group = _group.copyWith(
-        exerciseType: _selectedEventActivityType,
         activities: [
           _GroupActivityEntry(
             title: title,
@@ -6015,7 +5942,7 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _canDirectInvite ? '邀請你的好友' : '請求新成員加入',
+                  _canDirectInvite ? '邀請好友加入群組' : '請求創群者邀請成員',
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w900,
@@ -6025,8 +5952,8 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
                 const SizedBox(height: 8),
                 Text(
                   _canDirectInvite
-                      ? '只有你的好友可以直接受邀加入此群組。'
-                      : '只能推薦你自己的好友，且必須先由群組擁有者核准。',
+                      ? '送出邀請後，對方必須接受群組邀請才會正式加入。'
+                      : '你可以推薦自己的好友，但必須先由創群者送出邀請。',
                   style: const TextStyle(
                     fontSize: 13,
                     height: 1.45,
@@ -6143,7 +6070,7 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
             itemBuilder: (context) => [
               PopupMenuItem<String>(
                 value: 'invite',
-                child: Text(_canDirectInvite ? '邀請好友進群組' : '請求邀請成員'),
+                child: Text(_canDirectInvite ? '邀請好友進群組' : '請求創群者邀請成員'),
               ),
               const PopupMenuItem<String>(
                 value: 'leave',
@@ -6196,7 +6123,7 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
                                     ),
                                   ),
                                 ),
-                                if (group.showCrown)
+                                if (_isOwner)
                                   const Padding(
                                     padding: EdgeInsets.only(right: 6),
                                     child: Text('👑',
@@ -6267,27 +6194,30 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
                               ),
                             ),
                             const Spacer(),
-                            TextButton.icon(
-                              onPressed: _openWeeklyGoalSheet,
-                              style: TextButton.styleFrom(
-                                foregroundColor: const Color(0xFF64748B),
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                minimumSize: Size.zero,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 6,
+                            if (_isOwner) ...[
+                              TextButton.icon(
+                                onPressed: _openWeeklyGoalSheet,
+                                style: TextButton.styleFrom(
+                                  foregroundColor: const Color(0xFF64748B),
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                  minimumSize: Size.zero,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 6,
+                                  ),
+                                ),
+                                icon: const Icon(Icons.edit_outlined, size: 15),
+                                label: const Text(
+                                  '設定',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w800,
+                                  ),
                                 ),
                               ),
-                              icon: const Icon(Icons.edit_outlined, size: 15),
-                              label: const Text(
-                                '設定',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 6),
+                              const SizedBox(width: 6),
+                            ],
                             Text(
                               _groupWeeklyGoalLabel(
                                 group.exerciseType,

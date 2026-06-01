@@ -1136,12 +1136,14 @@ class _HomeScreenState extends State<HomeScreen> {
             ],
           ),
           const SizedBox(height: 14),
-          ..._dailyGoals.map(
-            (goal) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: _DailyGoalTile(goal: goal),
-            ),
-          ),
+          ..._dailyGoals.asMap().entries.map(
+                (entry) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _DailyGoalTile(
+                    goal: entry.value,
+                  ),
+                ),
+              ),
           if (_isDailyGoalRewardUnlocked) ...[
             const SizedBox(height: 6),
             Container(
@@ -1248,12 +1250,14 @@ class _DailyRewardCoinsOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final Size size = MediaQuery.of(context).size;
-    final Offset target = Offset(size.width - 44, size.height - 62);
+    final Offset target = Offset(size.width - 110, size.height - 118);
 
     return AnimatedBuilder(
       animation: animation,
       builder: (context, child) {
         final double t = Curves.easeInOutCubic.transform(animation.value);
+        final double walletScale =
+            1 + (math.sin(t * math.pi) * 0.08 * (t > 0.55 ? 1 : 0));
 
         return Stack(
           children: [
@@ -1268,34 +1272,131 @@ class _DailyRewardCoinsOverlay extends StatelessWidget {
                 end: target,
               ),
             Positioned(
-              right: 28,
-              bottom: 74,
+              right: 18,
+              bottom: 84,
+              child: Transform.scale(
+                scale: walletScale,
+                child: ValueListenableBuilder<double>(
+                  valueListenable: UserSession.walletBalanceNotifier,
+                  builder: (context, walletBalance, _) {
+                    return Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(color: const Color(0xFFFACC15)),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.08),
+                            blurRadius: 16,
+                            offset: const Offset(0, 8),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 26,
+                            height: 26,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFFFF7D6),
+                              shape: BoxShape.circle,
+                            ),
+                            child: const Icon(
+                              Icons.account_balance_wallet_rounded,
+                              size: 16,
+                              color: Color(0xFF92400E),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text(
+                                '點券入帳',
+                                style: TextStyle(
+                                  color: Color(0xFF6B7280),
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              Text(
+                                '${_formatWalletAmount(walletBalance)} 點',
+                                style: const TextStyle(
+                                  color: Colors.black,
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+              ),
+            ),
+            Positioned(
+              right: 44,
+              bottom: 140,
               child: Opacity(
-                opacity: animation.value < 0.25 ? 0 : 1 - t,
-                child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFFFF7D6),
-                    borderRadius: BorderRadius.circular(999),
-                    border: Border.all(color: const Color(0xFFFACC15)),
-                  ),
-                  child: const Text(
-                    '+0.1 點',
-                    style: TextStyle(
-                      color: Color(0xFF92400E),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w900,
+                opacity: animation.value < 0.18 ? 0 : (1 - t).clamp(0, 1),
+                child: Transform.translate(
+                  offset: Offset(0, -18 * t),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF7D6),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(color: const Color(0xFFFACC15)),
+                    ),
+                    child: const Text(
+                      '+0.1 點券',
+                      style: TextStyle(
+                        color: Color(0xFF92400E),
+                        fontSize: 13,
+                        fontWeight: FontWeight.w900,
+                      ),
                     ),
                   ),
                 ),
               ),
             ),
+            if (t > 0.7)
+              Positioned(
+                right: 78,
+                bottom: 118,
+                child: Opacity(
+                  opacity: ((t - 0.7) / 0.3).clamp(0, 1),
+                  child: const Icon(
+                    Icons.auto_awesome,
+                    color: Color(0xFFFACC15),
+                    size: 18,
+                  ),
+                ),
+              ),
           ],
         );
       },
     );
   }
+}
+
+String _formatWalletAmount(double value) {
+  if (value == value.roundToDouble()) {
+    return value.toStringAsFixed(0);
+  }
+
+  return value.toStringAsFixed(1);
 }
 
 class _AnimatedCoin extends StatelessWidget {
@@ -1442,69 +1543,76 @@ class _DailyGoalTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 14,
-        vertical: 12,
-      ),
-      decoration: BoxDecoration(
-        color: goal.isCompleted ? const Color(0xFFF0FDF4) : Colors.white,
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: goal.isCompleted
-              ? const Color(0xFF86EFAC)
-              : const Color(0xFFE5E7EB),
-        ),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
+        onTap: null,
+        child: Container(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 12,
+          ),
+          decoration: BoxDecoration(
+            color: goal.isCompleted ? const Color(0xFFF0FDF4) : Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
               color: goal.isCompleted
-                  ? const Color(0xFF16A34A)
-                  : const Color(0xFFF8FAFC),
-              shape: BoxShape.circle,
-            ),
-            child: goal.isCompleted
-                ? const Icon(
-                    Icons.check,
-                    size: 16,
-                    color: Colors.white,
-                  )
-                : const Icon(
-                    Icons.radio_button_unchecked,
-                    size: 16,
-                    color: Color(0xFF94A3B8),
-                  ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  goal.title,
-                  style: const TextStyle(
-                    color: Colors.black,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  goal.subtitle,
-                  style: const TextStyle(
-                    color: Color(0xFF6B7280),
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
+                  ? const Color(0xFF86EFAC)
+                  : const Color(0xFFE5E7EB),
             ),
           ),
-        ],
+          child: Row(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: goal.isCompleted
+                      ? const Color(0xFF16A34A)
+                      : const Color(0xFFF8FAFC),
+                  shape: BoxShape.circle,
+                ),
+                child: goal.isCompleted
+                    ? const Icon(
+                        Icons.check,
+                        size: 16,
+                        color: Colors.white,
+                      )
+                    : const Icon(
+                        Icons.radio_button_unchecked,
+                        size: 16,
+                        color: Color(0xFF94A3B8),
+                      ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      goal.title,
+                      style: const TextStyle(
+                        color: Colors.black,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      goal.subtitle,
+                      style: const TextStyle(
+                        color: Color(0xFF6B7280),
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
