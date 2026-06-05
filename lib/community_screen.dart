@@ -1300,7 +1300,7 @@ class _PostComposerState extends State<_PostComposer> {
         border: Border.all(color: Colors.black, width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
+            color: Colors.black.withOpacity(0.08),
             offset: const Offset(0, 8),
             blurRadius: 18,
           ),

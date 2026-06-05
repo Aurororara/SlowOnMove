@@ -6,10 +6,16 @@ from rest_framework.response import Response
 from django.db.models import Avg, Sum
 from api.leaderboard_service import get_leaderboard
 
-from core.models import Member, BodyRecord, BoardRanking, CommunityPost, Favorite, TrainingLog
+from core.models import (
+    Member, BodyRecord, BoardRanking, CommunityPost, Favorite, TrainingLog,
+    PostLike, PostComment, PostReport, PoseAnalysis, PointTransaction,
+    Task, MemberTask, Badge, MemberBadge, WorkoutMenu, WorkoutItem
+)
 from .serializers import (
     MemberSerializer, BodyRecordSerializer, BoardRankingSerializer,
-    CommunityPostSerializer, FavoriteSerializer, TrainingLogSerializer
+    CommunityPostSerializer, FavoriteSerializer, TrainingLogSerializer,
+    PostLikeSerializer, PostCommentSerializer, PostReportSerializer, PoseAnalysisSerializer, PointTransactionSerializer,
+    TaskSerializer, MemberTaskSerializer, BadgeSerializer, MemberBadgeSerializer, WorkoutMenuSerializer, WorkoutItemSerializer
 )
 
 
@@ -93,6 +99,7 @@ class TrainingLogViewSet(viewsets.ModelViewSet):
             total_time=Sum('total_mins'),
             total_calories=Sum('calories'),
             total_steps=Sum('step_count'),
+            total_distance=Sum('distance'),
         )
 
         # 如果沒有紀錄，Sum 會回傳 None，所以要用 'or 0' 給預設值
@@ -102,4 +109,60 @@ class TrainingLogViewSet(viewsets.ModelViewSet):
             "total_time": stats['total_time'] or 0,
             "total_calories": stats['total_calories'] or 0,
             "total_steps": stats['total_steps'] or 0,
+            "total_distance": round(stats['total_distance'] or 0.0, 2)
         })
+
+class PostLikeViewSet(viewsets.ModelViewSet):
+    queryset = PostLike.objects.all()
+    serializer_class = PostLikeSerializer
+    permission_classes = [AllowAny]
+
+class PostCommentViewSet(viewsets.ModelViewSet):
+    queryset = PostComment.objects.all()
+    serializer_class = PostCommentSerializer
+    permission_classes = [AllowAny]
+
+class PostReportViewSet(viewsets.ModelViewSet):
+    queryset = PostReport.objects.all()
+    serializer_class = PostReportSerializer
+    permission_classes = [AllowAny]
+
+class PoseAnalysisViewSet(viewsets.ModelViewSet):
+    queryset = PoseAnalysis.objects.all()
+    serializer_class = PoseAnalysisSerializer
+    permission_classes = [AllowAny]
+
+class PointTransactionViewSet(viewsets.ModelViewSet):
+    queryset = PointTransaction.objects.all()
+    serializer_class = PointTransactionSerializer
+    permission_classes = [AllowAny]
+
+class TaskViewSet(viewsets.ModelViewSet):
+    queryset = Task.objects.all()
+    serializer_class = TaskSerializer
+    permission_classes = [AllowAny]
+
+class MemberTaskViewSet(viewsets.ModelViewSet):
+    queryset = MemberTask.objects.all()
+    serializer_class = MemberTaskSerializer
+    permission_classes = [AllowAny]
+
+class BadgeViewSet(viewsets.ModelViewSet):
+    queryset = Badge.objects.all()
+    serializer_class = BadgeSerializer
+    permission_classes = [AllowAny]
+
+class MemberBadgeViewSet(viewsets.ModelViewSet):
+    queryset = MemberBadge.objects.all()
+    serializer_class = MemberBadgeSerializer
+    permission_classes = [AllowAny]
+
+class WorkoutMenuViewSet(viewsets.ModelViewSet):
+    queryset = WorkoutMenu.objects.all()
+    serializer_class = WorkoutMenuSerializer
+    permission_classes = [AllowAny]
+
+class WorkoutItemViewSet(viewsets.ModelViewSet):
+    queryset = WorkoutItem.objects.all()
+    serializer_class = WorkoutItemSerializer
+    permission_classes = [AllowAny]

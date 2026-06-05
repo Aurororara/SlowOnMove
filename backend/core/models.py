@@ -47,3 +47,69 @@ class TrainingLog(models.Model):
     calories = models.IntegerField()
     step_count = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
+
+class PostLike(models.Model):
+    member = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='post_likes')
+    post = models.ForeignKey(CommunityPost, on_delete=models.CASCADE, related_name='likes')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+class PostComment(models.Model):
+    member = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='post_comments')
+    post = models.ForeignKey(CommunityPost, on_delete=models.CASCADE, related_name='comments')
+    content = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+class PostReport(models.Model):
+    member = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='post_reports')
+    post = models.ForeignKey(CommunityPost, on_delete=models.CASCADE, related_name='reports')
+    reason = models.CharField(max_length=255)
+    status = models.CharField(max_length=50)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+class PoseAnalysis(models.Model):
+    log = models.ForeignKey(TrainingLog, on_delete=models.CASCADE, related_name='pose_analyses')
+    status = models.CharField(max_length=255)
+    error_time = models.IntegerField()
+
+class PointTransaction(models.Model):
+    member = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='point_transactions')
+    points_changed = models.IntegerField()
+    tran_type = models.CharField(max_length=50)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+class Task(models.Model):
+    member = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='created_tasks', null=True, blank=True)
+    status = models.CharField(max_length=50)
+    current = models.IntegerField()
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+class MemberTask(models.Model):
+    member = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='assigned_tasks', null=True, blank=True)
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name='member_tasks')
+    status = models.CharField(max_length=255)
+    current = models.IntegerField()
+    completed = models.DateTimeField(null=True, blank=True)
+
+class Badge(models.Model):
+    badge_name = models.CharField(max_length=100)
+    description = models.CharField(max_length=255)
+    badge_icon = models.CharField(max_length=50)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+class MemberBadge(models.Model):
+    member = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='badges')
+    badge = models.ForeignKey(Badge, on_delete=models.CASCADE, related_name='earned_by')
+    earn_at = models.DateTimeField(auto_now_add=True)
+
+class WorkoutMenu(models.Model):
+    member = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='workout_menus')
+    title = models.CharField(max_length=255)
+    description = models.CharField(max_length=255)
+    is_public = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    update_at = models.DateTimeField(auto_now=True)
+
+class WorkoutItem(models.Model):
+    member = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='workout_items')
+    menu = models.ForeignKey(WorkoutMenu, on_delete=models.CASCADE, related_name='items')
+    save_at = models.DateTimeField(auto_now_add=True)

@@ -309,12 +309,12 @@ class PoseAnalyzer {
       // 4. 超慢跑計步與腳步判定 (改用「腳踝」判斷步伐，因為慢跑時腳踝的高低差遠大於膝蓋！)
       double yDiff = leftAnkle!.y - rightAnkle!.y;
       
-      // 🎥 動態步伐門檻：腳踝高低差只要大於軀幹的 5% 就視為踏步
+      // 🎥 動態步伐門檻：腳踝高低差大於軀幹的 3% 就視為踏步 (超慢跑步伐較小，調降門檻避免漏判)
       double torsoHeight = 100.0;
       if (leftShoulder != null && leftHip != null && rightShoulder != null && rightHip != null) {
          torsoHeight = ((leftShoulder.y + rightShoulder.y) / 2 - (leftHip.y + rightHip.y) / 2).abs();
       }
-      double stepThreshold = math.max(5.0, torsoHeight * 0.05);
+      double stepThreshold = math.max(5.0, torsoHeight * 0.03);
 
       if (yDiff < -stepThreshold) {
         if (!_isKneeHigh) {
@@ -345,23 +345,25 @@ class PoseAnalyzer {
           
           // 如果腳跟的 Y 座標「明顯大於」腳尖 (腳跟比腳尖低)，代表是「腳跟重落地 (Heel Strike)」
           // 正常的超慢跑應該是前腳掌/全腳掌著地，腳尖高度會低於或等於腳跟
-          // 這裡加上一個小寬容值避免誤判
-          if (activeHeel.y > activeToe.y + (torsoHeight * 0.05)) {
-            currentAccuracy -= 20.0; 
-            _currentFeedback.add('請以前腳掌或全腳掌輕觸地面，腳跟再自然跟上，避免腳跟重落地！');
+          // 這裡加上一個寬容值避免誤判，同時檢查 likelihood，因為腳部端點非常容易模糊誤判
+          if (activeHeel.likelihood > 0.5 && activeToe.likelihood > 0.5) {
+            if (activeHeel.y > activeToe.y + (torsoHeight * 0.08)) {
+              currentAccuracy -= 15.0; 
+              _currentFeedback.add('請以前腳掌或全腳掌輕觸地面，腳跟再自然跟上，避免腳跟重落地！');
+            }
           }
         }
       }
       
-      // 怠速判定 (1.5 秒)
+      // 怠速判定 (放寬至 2.5 秒，避免步伐漏判導致誤扣分)
       if (stepTaken) {
         _lastStepTime = DateTime.now();
         _standingStillFrames = 0;
       } else {
         DateTime referenceTime = _lastStepTime ?? _firstFrameTime!;
-        if (DateTime.now().difference(referenceTime).inMilliseconds > 1500) {
+        if (DateTime.now().difference(referenceTime).inMilliseconds > 2500) {
           _standingStillFrames++;
-          currentAccuracy -= 50.0;
+          currentAccuracy -= 20.0; // 降低怠速的單次扣分，避免斷崖式掉分
           if (_standingStillFrames > 10) _currentFeedback.add('請保持動作，不要停下來喔！');
         }
       }
