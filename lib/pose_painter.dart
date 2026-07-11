@@ -1,4 +1,3 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 import 'package:camera/camera.dart';
@@ -88,16 +87,6 @@ class PosePainter extends CustomPainter {
 
       if (leftHip == null || leftKnee == null || leftAnkle == null || leftHeel == null || leftToe == null) continue;
 
-      double calculateAngle(PoseLandmark a, PoseLandmark b, PoseLandmark c) {
-        double radians = atan2(c.y - b.y, c.x - b.x) - atan2(a.y - b.y, a.x - b.x);
-        double angle = radians * 180.0 / pi;
-        angle = angle.abs();
-        if (angle > 180.0) angle = 360.0 - angle;
-        return angle;
-      }
-
-      double kneeAngle = calculateAngle(leftHip, leftKnee, leftAnkle);
-      double footDiff = leftToe.y - leftHeel.y;
 
       // check relative to imageSize.height
       double currentFootYRelative = leftAnkle.y / imageSize.height;
@@ -108,52 +97,12 @@ class PosePainter extends CustomPainter {
         isFootOnGround = false;
       }
 
-      double elapsedMinutes = DateTime.now().difference(startTime).inSeconds / 60.0;
-      int cadence = elapsedMinutes > 0 ? (stepCount / elapsedMinutes).round() : 0;
-
-      String feedback = "Good Form!";
-      Color feedbackColor = Colors.green;
-
-      if (leftHeel.likelihood < 0.5 || leftToe.likelihood < 0.5) {
-        feedback = "Feet not visible!";
-        feedbackColor = Colors.redAccent;
-      } else if (kneeAngle > 175) {
-        feedback = "Knees Too Straight! Bend Slightly";
-        feedbackColor = Colors.redAccent;
-      } else if (kneeAngle < 130) {
-        feedback = "Knees Bending Too Much!";
-        feedbackColor = Colors.orangeAccent;
-      } else if (footDiff < 0) { 
-        feedback = "Midfoot Strike Needed!";
-        feedbackColor = Colors.redAccent;
-      }
-
-      // Draw Summary Texts on Canvas
-      final textPainter = TextPainter(textDirection: TextDirection.ltr);
-      
-      void drawText(String text, Offset offset, Color color, double fontSize) {
-        textPainter.text = TextSpan(
-          text: text, 
-          style: TextStyle(
-            color: color, 
-            fontSize: fontSize, 
-            fontWeight: FontWeight.bold,
-            shadows: const [Shadow(blurRadius: 4.0, color: Colors.black, offset: Offset(1, 1))]
-          )
-        );
-        textPainter.layout();
-        textPainter.paint(canvas, offset);
-      }
-
-      // 依據使用者要求，移除黑色框下方的三段提示文字 (Status, Knee Angle, Steps)
-      // drawText("Status: $feedback", const Offset(30, 80), feedbackColor, 28);
-      // drawText("Knee Angle: ${kneeAngle.toInt()}", const Offset(30, 130), Colors.white, 20);
-      // drawText("Steps: $stepCount (Cadence: $cadence spm)", const Offset(30, 170), Colors.white, 20);
+      // 依據使用者要求，黑色框下方三段提示文字目前不繪製於 Canvas
     }
   }
 
   @override
   bool shouldRepaint(covariant PosePainter oldDelegate) {
-    return true;
+    return oldDelegate.poses != poses || oldDelegate.imageSize != imageSize;
   }
 }

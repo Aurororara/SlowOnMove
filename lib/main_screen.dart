@@ -1290,7 +1290,7 @@ class _DailyRewardCoinsOverlay extends StatelessWidget {
                         border: Border.all(color: const Color(0xFFFACC15)),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.08),
+                            color: Colors.black.withOpacity(0.08),
                             blurRadius: 16,
                             offset: const Offset(0, 8),
                           ),
@@ -1435,7 +1435,7 @@ class _AnimatedCoin extends StatelessWidget {
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: const Color(0xFFFACC15).withValues(alpha: 0.32),
+                  color: const Color(0xFFFACC15).withOpacity(0.32),
                   blurRadius: 10,
                   offset: const Offset(0, 4),
                 ),

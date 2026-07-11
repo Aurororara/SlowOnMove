@@ -18,7 +18,8 @@ class PoseDetectorView extends StatefulWidget {
   State<StatefulWidget> createState() => _PoseDetectorViewState();
 }
 
-class _PoseDetectorViewState extends State<PoseDetectorView> {
+class _PoseDetectorViewState extends State<PoseDetectorView>
+    with WidgetsBindingObserver {
   bool get _supportsPoseDetectionPlatform =>
       !kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.android ||
@@ -45,6 +46,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
 
     // ⭐ 初始化 PoseDetector 前先檢查是否為網頁
     if (_supportsPoseDetectionPlatform) {
@@ -70,6 +72,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
   }
 
   void _startTimer() {
+    _timer?.cancel();
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
       if (mounted) {
         setState(() {
@@ -81,6 +84,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
     _canProcess = false;
     if (_supportsPoseDetectionPlatform) {
@@ -88,6 +92,31 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
     }
     _cameraController?.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (_cameraController == null || !_cameraController!.value.isInitialized) {
+      return;
+    }
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      // 進入背景時暫停 AI 偵測與相機串流，避免背景持續發熱與耗電
+      _canProcess = false;
+      _timer?.cancel();
+      if (_cameraController!.value.isStreamingImages) {
+        _cameraController?.stopImageStream();
+      }
+    } else if (state == AppLifecycleState.resumed) {
+      _canProcess = true;
+      if (_supportsPoseDetectionPlatform &&
+          !kIsWeb &&
+          !_cameraController!.value.isStreamingImages) {
+        _cameraController?.startImageStream(_processCameraImage);
+      }
+      _startTimer();
+    }
   }
 
   Future _startLiveFeed() async {
@@ -98,7 +127,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
     // ⭐ 這裡改動了：Platform 檢查前先加上 !kIsWeb
     _cameraController = CameraController(
       camera,
-      ResolutionPreset.high,
+      ResolutionPreset.medium, // 降低相機解析度至中等 (480p/720p)，大幅降低 ISP 傳輸與影像轉換發熱耗電
       enableAudio: false,
       imageFormatGroup: (!kIsWeb && Platform.isAndroid)
           ? ImageFormatGroup.nv21
@@ -122,8 +151,8 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
 
     final currentTime = DateTime.now();
     if (_lastImageProcessTime != null &&
-        currentTime.difference(_lastImageProcessTime!).inMilliseconds < 60) {
-      return; // 節流：限制在約 15 FPS，減少 CPU 負載與發熱
+        currentTime.difference(_lastImageProcessTime!).inMilliseconds < 100) {
+      return; // 節流：限制在約 10 FPS (100ms)，大幅降低 AI 辨識 CPU/GPU 負載與耗電
     }
     _lastImageProcessTime = currentTime;
 
@@ -195,7 +224,6 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
   Future<void> _processImage(InputImage inputImage) async {
     if (!_supportsPoseDetectionPlatform || !_canProcess || _isBusy) return;
     _isBusy = true;
-    setState(() {});
 
     final poses = await _poseDetector.processImage(inputImage);
 
@@ -338,11 +366,11 @@ class _PoseDetectorViewState extends State<PoseDetectorView> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         decoration: BoxDecoration(
-          color: Colors.black.withValues(alpha: 0.7),
+          color: Colors.black.withOpacity(0.7),
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.2),
+              color: Colors.black.withOpacity(0.2),
               blurRadius: 10,
               offset: const Offset(0, 5),
             ),
