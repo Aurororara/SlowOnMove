@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart'; // ⭐ 已經匯入了
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'main.dart';
 import 'pose_painter.dart';
 import 'pose_analyzer.dart';
@@ -43,9 +44,33 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
   double _totalAccuracySum = 0.0;
   int _accuracySamples = 0;
 
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  bool _isBpmSoundEnabled = true;
+
+  void _startOrResumeBpmSound() async {
+    if (widget.exerciseTitle != '超慢跑' || !_isBpmSoundEnabled) return;
+    try {
+      await _audioPlayer.setReleaseMode(ReleaseMode.loop);
+      await _audioPlayer.play(AssetSource('audio/180_bpm_metronome.wav'));
+    } catch (e) {
+      debugPrint('Error playing BPM sound: $e');
+    }
+  }
+
+  void _pauseOrStopBpmSound() async {
+    try {
+      await _audioPlayer.pause();
+    } catch (e) {
+      debugPrint('Error pausing BPM sound: $e');
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    if (widget.exerciseTitle != '超慢跑') {
+      _isBpmSoundEnabled = false;
+    }
     WidgetsBinding.instance.addObserver(this);
 
     // ⭐ 初始化 PoseDetector 前先檢查是否為網頁
@@ -87,6 +112,8 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
     WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
     _canProcess = false;
+    _audioPlayer.stop();
+    _audioPlayer.dispose();
     if (_supportsPoseDetectionPlatform) {
       _poseDetector.close();
     }
@@ -105,6 +132,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
       // 進入背景時暫停 AI 偵測與相機串流，避免背景持續發熱與耗電
       _canProcess = false;
       _timer?.cancel();
+      _pauseOrStopBpmSound();
       if (_cameraController!.value.isStreamingImages) {
         _cameraController?.stopImageStream();
       }
@@ -116,6 +144,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
         _cameraController?.startImageStream(_processCameraImage);
       }
       _startTimer();
+      _startOrResumeBpmSound();
     }
   }
 
@@ -140,6 +169,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
       if (!kIsWeb) {
         _cameraController?.startImageStream(_processCameraImage);
       }
+      _startOrResumeBpmSound();
       setState(() {});
     });
   }
@@ -308,6 +338,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
                   const SizedBox(height: 20),
                   ElevatedButton.icon(
                     onPressed: () {
+                      _startOrResumeBpmSound();
                       setState(() {
                         _elapsedSeconds = 300; // 5 minutes mock
                         _accuracyRate = 92.5;
@@ -415,9 +446,51 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
                 ),
               ],
             ),
+            if (widget.exerciseTitle == '超慢跑') ...[
+              Container(width: 1, height: 40, color: Colors.white24),
+              GestureDetector(
+                onTap: () {
+                  setState(() {
+                    _isBpmSoundEnabled = !_isBpmSoundEnabled;
+                    if (_isBpmSoundEnabled) {
+                      _startOrResumeBpmSound();
+                    } else {
+                      _pauseOrStopBpmSound();
+                    }
+                  });
+                },
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      _isBpmSoundEnabled
+                          ? Icons.volume_up_rounded
+                          : Icons.volume_off_rounded,
+                      color: _isBpmSoundEnabled
+                          ? Colors.amberAccent
+                          : Colors.white38,
+                      size: 26,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _isBpmSoundEnabled ? '180 BPM' : '靜音',
+                      style: TextStyle(
+                        color: _isBpmSoundEnabled
+                            ? Colors.amberAccent
+                            : Colors.white38,
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            Container(width: 1, height: 40, color: Colors.white24),
             GestureDetector(
               onTap: () async {
                 _timer?.cancel();
+                _audioPlayer.stop();
                 if (_supportsPoseDetectionPlatform) _poseDetector.close();
                 _cameraController?.dispose();
 

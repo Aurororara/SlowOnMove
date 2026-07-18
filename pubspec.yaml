@@ -45,6 +45,7 @@ dependencies:
   http: ^1.2.2
   google_sign_in: ^6.2.1
   flutter_facebook_auth: ^7.0.0
+  audioplayers: ^6.4.0
 
 
 dev_dependencies:
@@ -66,6 +67,7 @@ flutter:
   assets:
     - assets/
     - assets/models/
+    - assets/audio/
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
