@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 
 import 'bottom_nav_bar.dart';
+import 'community/community_store.dart';
 import 'community_screen.dart';
 import 'config/api_config.dart';
 import 'exercise_selection_screen.dart';

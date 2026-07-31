@@ -99,7 +99,6 @@ class TrainingLogViewSet(viewsets.ModelViewSet):
             total_time=Sum('total_mins'),
             total_calories=Sum('calories'),
             total_steps=Sum('step_count'),
-            total_distance=Sum('distance'),
         )
 
         # 如果沒有紀錄，Sum 會回傳 None，所以要用 'or 0' 給預設值
@@ -109,7 +108,6 @@ class TrainingLogViewSet(viewsets.ModelViewSet):
             "total_time": stats['total_time'] or 0,
             "total_calories": stats['total_calories'] or 0,
             "total_steps": stats['total_steps'] or 0,
-            "total_distance": round(stats['total_distance'] or 0.0, 2)
         })
 
 class PostLikeViewSet(viewsets.ModelViewSet):

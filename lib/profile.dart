@@ -5,6 +5,8 @@ import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 
 import 'community_screen.dart';
+import 'community/community_store.dart';
+import 'community/models/community_post.dart';
 import 'exercise_history_screen.dart';
 import 'edit_profile_screen.dart';
 import 'services/user_session.dart';
@@ -474,7 +476,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ElevatedButton(
               onPressed: () async {
                 Navigator.pop(dialogContext); // 關閉 dialog
-                
                 // 清除 session 和 token
                 UserSession.clearSession();
                 await ApiService().clearToken();

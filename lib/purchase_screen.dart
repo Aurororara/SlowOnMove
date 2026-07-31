@@ -232,7 +232,7 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
           const SizedBox(height: 8),
           Text(
             '${_formatPoints(currentBalance)} 點',
-            style: TextStyle(
+            style: const TextStyle(
               color: Colors.black,
               fontSize: 34,
               fontWeight: FontWeight.w900,
