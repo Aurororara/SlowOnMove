@@ -20,7 +20,7 @@ class PoseDetectorView extends StatefulWidget {
 }
 
 class _PoseDetectorViewState extends State<PoseDetectorView>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, TickerProviderStateMixin {
   bool get _supportsPoseDetectionPlatform =>
       !kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.android ||
@@ -47,6 +47,12 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
   final AudioPlayer _audioPlayer = AudioPlayer();
   bool _isBpmSoundEnabled = true;
 
+  // ⚠️ 姿勢錯誤彈跳視窗相關狀態
+  String? _currentErrorPopupMessage;
+  Timer? _popupDismissTimer;
+  late AnimationController _popupProgressController;
+  DateTime? _lastPopupTriggerTime;
+
   void _startOrResumeBpmSound() async {
     if (widget.exerciseTitle != '超慢跑' || !_isBpmSoundEnabled) return;
     try {
@@ -72,6 +78,11 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
       _isBpmSoundEnabled = false;
     }
     WidgetsBinding.instance.addObserver(this);
+
+    _popupProgressController = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 5),
+    );
 
     // ⭐ 初始化 PoseDetector 前先檢查是否為網頁
     if (_supportsPoseDetectionPlatform) {
@@ -107,10 +118,57 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
     });
   }
 
+  /// 顯示/更新姿勢錯誤彈跳視窗 (顯示 5 秒自動消失)
+  void _showPostureErrorPopup(String message) {
+    if (message.isEmpty) return;
+
+    final now = DateTime.now();
+    // 避免 1 秒內重複重置相同的訊息
+    if (_currentErrorPopupMessage == message &&
+        _lastPopupTriggerTime != null &&
+        now.difference(_lastPopupTriggerTime!).inMilliseconds < 1000) {
+      return;
+    }
+
+    _lastPopupTriggerTime = now;
+    _popupDismissTimer?.cancel();
+
+    if (mounted) {
+      setState(() {
+        _currentErrorPopupMessage = message;
+      });
+      _popupProgressController.stop();
+      _popupProgressController.reset();
+      _popupProgressController.forward();
+    }
+
+    // 設定 5 秒後自動隱藏視窗
+    _popupDismissTimer = Timer(const Duration(seconds: 5), () {
+      if (mounted) {
+        setState(() {
+          _currentErrorPopupMessage = null;
+        });
+      }
+    });
+  }
+
+  /// 手動關閉姿勢錯誤彈窗
+  void _dismissPostureErrorPopup() {
+    _popupDismissTimer?.cancel();
+    _popupProgressController.stop();
+    if (mounted) {
+      setState(() {
+        _currentErrorPopupMessage = null;
+      });
+    }
+  }
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
+    _popupDismissTimer?.cancel();
+    _popupProgressController.dispose();
     _canProcess = false;
     _audioPlayer.stop();
     _audioPlayer.dispose();
@@ -268,6 +326,16 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
     }
     _stepCount = analysisResult.stepCount;
 
+    // 🚨 當姿勢分析回傳錯誤提醒時，觸發 5 秒自動消失的彈跳視窗
+    if (analysisResult.feedback.isNotEmpty) {
+      final postureErrors = analysisResult.feedback
+          .where((msg) => msg != '請站在鏡頭前')
+          .toList();
+      if (postureErrors.isNotEmpty) {
+        _showPostureErrorPopup(postureErrors.first);
+      }
+    }
+
     if (poses.isNotEmpty) {
       _totalAccuracySum += _accuracyRate;
       _accuracySamples++;
@@ -345,12 +413,13 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
                         _stepCount = 1200;
                         _feedback.add("模擬運動數據生成成功！這是一次超慢跑測試。");
                       });
+                      _showPostureErrorPopup("膝蓋抬太高了！超慢跑只需微微抬腳，不要變成高抬腿喔。");
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('模擬數據已生成')),
+                        const SnackBar(content: Text('模擬數據已生成（並觸發 5 秒姿勢彈窗）')),
                       );
                     },
                     icon: const Icon(Icons.bug_report),
-                    label: const Text('生成模擬數據 (測試用)'),
+                    label: const Text('生成模擬數據 (測試 5秒彈窗)'),
                     style: ElevatedButton.styleFrom(
                       foregroundColor: Colors.white,
                       backgroundColor: Colors.blueGrey,
@@ -360,6 +429,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
               ),
             ),
             _buildDetectionOverlay(),
+            _buildPostureErrorPopup(),
           ],
         ),
       );
@@ -381,6 +451,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
           ),
           if (_customPaint != null) _customPaint!,
           _buildDetectionOverlay(),
+          _buildPostureErrorPopup(),
         ],
       ),
     );
@@ -522,6 +593,137 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// ⚠️ 姿勢錯誤彈跳視窗 (顯示5秒後自動消失)
+  Widget _buildPostureErrorPopup() {
+    if (_currentErrorPopupMessage == null) return const SizedBox.shrink();
+
+    return Positioned(
+      top: 135,
+      left: 16,
+      right: 16,
+      child: AnimatedOpacity(
+        duration: const Duration(milliseconds: 300),
+        opacity: _currentErrorPopupMessage != null ? 1.0 : 0.0,
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                Colors.red.shade900.withOpacity(0.92),
+                Colors.amber.shade900.withOpacity(0.92),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: Colors.amberAccent.withOpacity(0.8),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.redAccent.withOpacity(0.4),
+                blurRadius: 15,
+                spreadRadius: 2,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.amberAccent.withOpacity(0.2),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.warning_amber_rounded,
+                          color: Colors.amberAccent,
+                          size: 28,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Row(
+                              children: [
+                                Text(
+                                  '姿勢錯誤提醒',
+                                  style: TextStyle(
+                                    color: Colors.amberAccent,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                                SizedBox(width: 6),
+                                Text(
+                                  '(5秒後自動消失)',
+                                  style: TextStyle(
+                                    color: Colors.white54,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              _currentErrorPopupMessage!,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(
+                          Icons.close_rounded,
+                          color: Colors.white70,
+                          size: 22,
+                        ),
+                        onPressed: _dismissPostureErrorPopup,
+                        tooltip: '關閉提醒',
+                      ),
+                    ],
+                  ),
+                ),
+                // 5 秒倒數進度條
+                AnimatedBuilder(
+                  animation: _popupProgressController,
+                  builder: (context, child) {
+                    return LinearProgressIndicator(
+                      value: 1.0 - _popupProgressController.value,
+                      backgroundColor: Colors.white10,
+                      valueColor: const AlwaysStoppedAnimation<Color>(
+                        Colors.amberAccent,
+                      ),
+                      minHeight: 4,
+                    );
+                  },
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
