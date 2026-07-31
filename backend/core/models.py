@@ -12,6 +12,21 @@ class BodyRecord(models.Model):
     height = models.IntegerField()
     weight = models.IntegerField()
 
+class BloodPressureRecord(models.Model):
+
+    member = models.ForeignKey(
+        Member,
+        on_delete=models.CASCADE
+    )
+
+    systolic = models.IntegerField()
+
+    diastolic = models.IntegerField()
+
+    pulse = models.IntegerField()
+
+    record_date = models.DateField(auto_now_add=True)
+
 class BoardRanking(models.Model):
     member = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='rankings')
     category = models.CharField(max_length=50)

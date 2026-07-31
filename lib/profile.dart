@@ -15,6 +15,7 @@ import 'login_screen.dart';
 import 'config/api_config.dart';
 import 'monthly_recap_screen.dart';
 import 'purchase_screen.dart';
+import 'body_record_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final CommunityStore store;
@@ -120,6 +121,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             MaterialPageRoute(
                               builder: (context) =>
                                   const ExerciseHistoryScreen(),
+                            ),
+                          ),
+                        ),
+                        _buildMenuButton(
+                          icon: Icons.monitor_heart_outlined,
+                          title: '健康紀錄',
+                          subtitle: '查看身高、體重與血壓變化',
+                          iconColor: Colors.redAccent,
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const BodyRecordScreen(),
                             ),
                           ),
                         ),

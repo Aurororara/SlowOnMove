@@ -1,7 +1,7 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import (
-    MemberViewSet, BodyRecordViewSet, BoardRankingViewSet,
+    MemberViewSet, BodyRecordViewSet, BloodPressureRecordViewSet, BoardRankingViewSet,
     CommunityPostViewSet, FavoriteViewSet, TrainingLogViewSet,
     PostLikeViewSet, PostCommentViewSet, PostReportViewSet, PoseAnalysisViewSet, PointTransactionViewSet,
     TaskViewSet, MemberTaskViewSet, BadgeViewSet, MemberBadgeViewSet, WorkoutMenuViewSet, WorkoutItemViewSet
@@ -11,6 +11,7 @@ from .auth_views import GoogleLoginView, FacebookLoginView, RegisterView, LoginV
 router = DefaultRouter()
 router.register(r'members', MemberViewSet)
 router.register(r'body-records', BodyRecordViewSet)
+router.register(r'blood-pressure-records', BloodPressureRecordViewSet)
 router.register(r'board-rankings', BoardRankingViewSet)
 router.register(r'community-posts', CommunityPostViewSet)
 router.register(r'favorites', FavoriteViewSet)

@@ -7,12 +7,12 @@ from django.db.models import Avg, Sum
 from api.leaderboard_service import get_leaderboard
 
 from core.models import (
-    Member, BodyRecord, BoardRanking, CommunityPost, Favorite, TrainingLog,
+    Member, BodyRecord, BloodPressureRecord, BoardRanking, CommunityPost, Favorite, TrainingLog,
     PostLike, PostComment, PostReport, PoseAnalysis, PointTransaction,
     Task, MemberTask, Badge, MemberBadge, WorkoutMenu, WorkoutItem
 )
 from .serializers import (
-    MemberSerializer, BodyRecordSerializer, BoardRankingSerializer,
+    MemberSerializer, BodyRecordSerializer, BloodPressureRecordSerializer, BoardRankingSerializer,
     CommunityPostSerializer, FavoriteSerializer, TrainingLogSerializer,
     PostLikeSerializer, PostCommentSerializer, PostReportSerializer, PoseAnalysisSerializer, PointTransactionSerializer,
     TaskSerializer, MemberTaskSerializer, BadgeSerializer, MemberBadgeSerializer, WorkoutMenuSerializer, WorkoutItemSerializer
@@ -60,6 +60,11 @@ class BodyRecordViewSet(viewsets.ModelViewSet):
     serializer_class = BodyRecordSerializer
     permission_classes = [AllowAny]
    # permission_classes = [IsAuthenticated]
+
+class BloodPressureRecordViewSet(viewsets.ModelViewSet):
+    queryset = BloodPressureRecord.objects.all()
+    serializer_class = BloodPressureRecordSerializer
+    permission_classes = [AllowAny]
 
 
 class BoardRankingViewSet(viewsets.ModelViewSet):

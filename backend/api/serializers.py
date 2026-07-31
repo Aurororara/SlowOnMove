@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from core.models import (
-    Member, BodyRecord, BoardRanking, CommunityPost, Favorite, TrainingLog,
+    Member, BodyRecord, BloodPressureRecord, BoardRanking, CommunityPost, Favorite, TrainingLog,
     PostLike, PostComment, PostReport, PoseAnalysis, PointTransaction,
     Task, MemberTask, Badge, MemberBadge, WorkoutMenu, WorkoutItem
 )
@@ -15,6 +15,12 @@ class BodyRecordSerializer(serializers.ModelSerializer):
     class Meta:
         model = BodyRecord
         fields = '__all__'
+
+class BloodPressureRecordSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BloodPressureRecord
+        fields = '__all__'
+
 
 class BoardRankingSerializer(serializers.ModelSerializer):
     class Meta:
