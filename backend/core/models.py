@@ -7,10 +7,22 @@ class Member(AbstractUser):
     provider_id = models.CharField(max_length=100, blank=True, null=True)
 
 class BodyRecord(models.Model):
-    member = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='body_records')
+
+    member = models.ForeignKey(
+        Member,
+        on_delete=models.CASCADE,
+        related_name='body_records'
+    )
+
     record_date = models.DateField()
+
     height = models.IntegerField()
+
     weight = models.IntegerField()
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
 
 class BloodPressureRecord(models.Model):
 
@@ -25,7 +37,11 @@ class BloodPressureRecord(models.Model):
 
     pulse = models.IntegerField()
 
-    record_date = models.DateField(auto_now_add=True)
+    record_date = models.DateField()
+
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
 
 class BoardRanking(models.Model):
     member = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='rankings')

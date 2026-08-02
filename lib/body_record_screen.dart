@@ -3,11 +3,14 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 
-import 'config/api_config.dart';
-import 'services/user_session.dart';
+import '../config/api_config.dart';
+import '../services/user_session.dart';
+import 'health_record_card.dart';
 
 class BodyRecordScreen extends StatefulWidget {
-  const BodyRecordScreen({super.key});
+  const BodyRecordScreen({
+    super.key,
+  });
 
   @override
   State<BodyRecordScreen> createState() => _BodyRecordScreenState();
@@ -26,9 +29,14 @@ class _BodyRecordScreenState extends State<BodyRecordScreen> {
 
   bool loading = true;
 
+  // 身體紀錄
   List bodyRecords = [];
 
+  // 血壓紀錄
   List bloodRecords = [];
+
+  // 顯示用
+  List healthRecords = [];
 
   @override
   void initState() {
@@ -43,31 +51,81 @@ class _BodyRecordScreenState extends State<BodyRecordScreen> {
 
   Future<void> fetchRecords() async {
     try {
-      final bodyResponse = await http.get(
-        Uri.parse('${ApiConfig.baseUrl}body-records/'),
+      print("開始抓健康紀錄");
+
+      final bodyResponse = await http
+          .get(
+            Uri.parse(
+              '${ApiConfig.baseUrl}body-records/',
+            ),
+          )
+          .timeout(
+            const Duration(seconds: 5),
+          );
+
+      final bloodResponse = await http
+          .get(
+            Uri.parse(
+              '${ApiConfig.baseUrl}blood-pressure-records/',
+            ),
+          )
+          .timeout(
+            const Duration(seconds: 5),
+          );
+
+      print(
+        "body status: ${bodyResponse.statusCode}",
       );
 
-      final bloodResponse = await http.get(
-        Uri.parse('${ApiConfig.baseUrl}blood-pressure-records/'),
+      print(
+        "blood status: ${bloodResponse.statusCode}",
       );
 
       if (bodyResponse.statusCode == 200 && bloodResponse.statusCode == 200) {
         final memberId = UserSession.memberId;
+
+        print(
+          "目前會員ID: $memberId",
+        );
 
         final bodyData = json.decode(bodyResponse.body);
 
         final bloodData = json.decode(bloodResponse.body);
 
         setState(() {
-          bodyRecords = bodyData.where((e) => e['member'] == memberId).toList();
+          bodyRecords = bodyData
+              .where(
+                (e) => e['member'] == memberId,
+              )
+              .toList();
 
-          bloodRecords =
-              bloodData.where((e) => e['member'] == memberId).toList();
+          bloodRecords = bloodData
+              .where(
+                (e) => e['member'] == memberId,
+              )
+              .toList();
 
+          healthRecords = [
+            ...bodyRecords,
+            ...bloodRecords,
+          ];
+
+          loading = false;
+        });
+      } else {
+        print(
+          "API錯誤",
+        );
+
+        setState(() {
           loading = false;
         });
       }
     } catch (e) {
+      print(
+        "抓取健康紀錄失敗",
+      );
+
       print(e);
 
       setState(() {
@@ -78,36 +136,48 @@ class _BodyRecordScreenState extends State<BodyRecordScreen> {
 
   Future<void> addBodyRecord() async {
     if (heightController.text.isEmpty || weightController.text.isEmpty) {
-      showMessage("請輸入身高與體重");
+      showMessage(
+        "請輸入身高與體重",
+      );
 
       return;
     }
 
     final response = await http.post(
-      Uri.parse('${ApiConfig.baseUrl}body-records/'),
-      headers: {"Content-Type": "application/json"},
+      Uri.parse(
+        '${ApiConfig.baseUrl}body-records/',
+      ),
+      headers: {
+        "Content-Type": "application/json",
+      },
       body: json.encode({
         "member": UserSession.memberId,
-        "height": int.parse(heightController.text),
-        "weight": int.parse(weightController.text),
+        "height": int.parse(
+          heightController.text,
+        ),
+        "weight": int.parse(
+          weightController.text,
+        ),
         "record_date": today(),
       }),
     );
 
-    print(response.statusCode);
-
-    print(response.body);
-
     if (response.statusCode == 201) {
-      showMessage("身體紀錄新增成功");
-
       heightController.clear();
 
       weightController.clear();
 
+      showMessage(
+        "身體紀錄新增成功",
+      );
+
       fetchRecords();
     } else {
-      showMessage("身體紀錄新增失敗");
+      print(response.body);
+
+      showMessage(
+        "新增失敗",
+      );
     }
   }
 
@@ -115,39 +185,53 @@ class _BodyRecordScreenState extends State<BodyRecordScreen> {
     if (systolicController.text.isEmpty ||
         diastolicController.text.isEmpty ||
         pulseController.text.isEmpty) {
-      showMessage("請輸入完整血壓資料");
+      showMessage(
+        "請輸入完整血壓資料",
+      );
 
       return;
     }
 
     final response = await http.post(
-      Uri.parse('${ApiConfig.baseUrl}blood-pressure-records/'),
-      headers: {"Content-Type": "application/json"},
+      Uri.parse(
+        '${ApiConfig.baseUrl}blood-pressure-records/',
+      ),
+      headers: {
+        "Content-Type": "application/json",
+      },
       body: json.encode({
         "member": UserSession.memberId,
-        "systolic": int.parse(systolicController.text),
-        "diastolic": int.parse(diastolicController.text),
-        "pulse": int.parse(pulseController.text),
+        "systolic": int.parse(
+          systolicController.text,
+        ),
+        "diastolic": int.parse(
+          diastolicController.text,
+        ),
+        "pulse": int.parse(
+          pulseController.text,
+        ),
         "record_date": today(),
       }),
     );
 
-    print(response.statusCode);
-
-    print(response.body);
-
     if (response.statusCode == 201) {
-      showMessage("血壓紀錄新增成功");
-
       systolicController.clear();
 
       diastolicController.clear();
 
       pulseController.clear();
 
+      showMessage(
+        "血壓紀錄新增成功",
+      );
+
       fetchRecords();
     } else {
-      showMessage("血壓紀錄新增失敗");
+      print(response.body);
+
+      showMessage(
+        "血壓新增失敗",
+      );
     }
   }
 
@@ -163,7 +247,9 @@ class _BodyRecordScreenState extends State<BodyRecordScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("每日健康紀錄"),
+        title: const Text(
+          "每日健康紀錄",
+        ),
       ),
       body: loading
           ? const Center(
@@ -175,7 +261,7 @@ class _BodyRecordScreenState extends State<BodyRecordScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    "身體資料",
+                    "新增健康資料",
                     style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
@@ -184,65 +270,71 @@ class _BodyRecordScreenState extends State<BodyRecordScreen> {
                   TextField(
                     controller: heightController,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: "身高(cm)"),
+                    decoration: const InputDecoration(
+                      labelText: "身高(cm)",
+                    ),
                   ),
                   TextField(
                     controller: weightController,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: "體重(kg)"),
+                    decoration: const InputDecoration(
+                      labelText: "體重(kg)",
+                    ),
                   ),
                   ElevatedButton(
                     onPressed: addBodyRecord,
-                    child: const Text("新增身體紀錄"),
-                  ),
-                  const SizedBox(height: 30),
-                  const Text(
-                    "血壓紀錄",
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
+                    child: const Text(
+                      "新增身體紀錄",
                     ),
+                  ),
+                  const SizedBox(
+                    height: 20,
                   ),
                   TextField(
                     controller: systolicController,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: "收縮壓 SYS"),
+                    decoration: const InputDecoration(
+                      labelText: "收縮壓 SYS",
+                    ),
                   ),
                   TextField(
                     controller: diastolicController,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: "舒張壓 DIA"),
+                    decoration: const InputDecoration(
+                      labelText: "舒張壓 DIA",
+                    ),
                   ),
                   TextField(
                     controller: pulseController,
                     keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: "心率"),
+                    decoration: const InputDecoration(
+                      labelText: "心率",
+                    ),
                   ),
                   ElevatedButton(
                     onPressed: addBloodPressure,
-                    child: const Text("新增血壓紀錄"),
+                    child: const Text(
+                      "新增血壓紀錄",
+                    ),
                   ),
-                  const SizedBox(height: 30),
+                  const SizedBox(
+                    height: 30,
+                  ),
                   const Text(
-                    "歷史紀錄",
+                    "健康日誌",
                     style: TextStyle(
                       fontSize: 22,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  ...bodyRecords.map((e) => Card(
-                        child: ListTile(
-                          title: Text(e['record_date'] ?? ""),
-                          subtitle: Text("體重 ${e['weight']} kg"),
-                        ),
-                      )),
-                  ...bloodRecords.map((e) => Card(
-                        child: ListTile(
-                          title: Text(e['record_date'] ?? ""),
-                          subtitle: Text(
-                              "血壓 ${e['systolic']}/${e['diastolic']}  心率 ${e['pulse']}"),
-                        ),
-                      ))
+                  const SizedBox(
+                    height: 10,
+                  ),
+                  ...healthRecords.map(
+                    (record) => HealthRecordCard(
+                      record: record,
+                    ),
+                  ),
                 ],
               ),
             ),
