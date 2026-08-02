@@ -147,7 +147,7 @@ class _BodyRecordScreenState extends State<BodyRecordScreen> {
 
       fetchRecords();
     } else {
-      showMessage("血壓新增失敗");
+      showMessage("血壓紀錄新增失敗");
     }
   }
 
