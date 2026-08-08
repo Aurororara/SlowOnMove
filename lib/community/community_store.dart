@@ -1,75 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:dio/dio.dart';
 
+import '../services/api_service.dart';
 import 'models/community_post.dart';
 
 class CommunityStore extends ChangeNotifier {
-  final List<CommunityPost> _posts = [
-    const CommunityPost(
-      initial: 'S',
-      name: 'Sarah Chen',
-      timeAgo: '2 小時前',
-      content: '剛完成了我的第一個5公里超慢跑！感覺超棒，完全沒有疼痛。關鍵在於耐心和持之以恆！',
-      tags: ['#晨跑', '#零疼痛', '#進步比完美更重要'],
-      likes: 24,
-      commentThreads: ['很喜歡你的進步！', '真的很激勵人心'],
-    ),
-    const CommunityPost(
-      initial: 'M',
-      name: 'Mike Johnson',
-      timeAgo: '5 小時前',
-      content: '超慢跑第三週，我的膝蓋痛完全消失了。這個方法真的有效！💪',
-      tags: ['#超慢跑挑戰', '#健康習慣'],
-      likes: 18,
-      commentThreads: ['今天正需要看到這段話'],
-      type: CommunityPostType.plan,
-      plan: WorkoutPlanData(
-        title: '超慢跑計畫',
-        summary: '一個幫助你改善超慢跑技巧並減少膝蓋疼痛的4週計畫。',
-        difficulty: '中等',
-        totalMinutes: 40,
-        steps: [
-          WorkoutPlanStep(name: '暖身', minutes: 5),
-          WorkoutPlanStep(name: '超慢跑', minutes: 30),
-          WorkoutPlanStep(name: '緩和', minutes: 5),
-        ],
-      ),
-    ),
-    const CommunityPost(
-      initial: 'A',
-      name: 'Anna Lee',
-      timeAgo: '昨天',
-      content: '小步幅、穩定的呼吸，沒有壓力。今天的跑步感覺像是我第一次真的想再跑一次。',
-      tags: ['#輕鬆跑', '#持續前進'],
-      likes: 31,
-      commentThreads: ['穩穩來真的最有用', '這個心態我要收藏起來'],
-    ),
-    const CommunityPost(
-      initial: 'J',
-      name: 'Jamie Wu',
-      timeAgo: '昨天',
-      content: '跑後快速的一餐，讓我吃飽又充滿能量。',
-      tags: ['#恢復餐', '#高蛋白'],
-      likes: 15,
-      commentThreads: ['今晚就來試試看'],
-      type: CommunityPostType.recipe,
-      recipe: RecipeData(
-        title: '雞肉飯恢復餐',
-        description: '運動後均衡的碳水化合物和蛋白質。',
-        cookMinutes: 20,
-        ingredients: [
-          RecipeIngredient(name: '雞胸肉', grams: 120),
-          RecipeIngredient(name: '白飯', grams: 150),
-          RecipeIngredient(name: '花椰菜', grams: 80),
-        ],
-        nutrition: NutritionSummary(
-          calories: 430,
-          carbs: 47,
-          protein: 35,
-          fat: 8,
-        ),
-      ),
-    ),
-  ];
+  final List<CommunityPost> _posts = [];
+
+  bool _isLoading = false;
+  String? _errorMessage;
 
   List<CommunityPost> get posts => List.unmodifiable(_posts);
 
@@ -78,80 +17,551 @@ class CommunityStore extends ChangeNotifier {
 
   int get savedCount => savedPosts.length;
 
-  void addPost({
-    required String initial,
-    required String name,
-    required String timeAgo,
+  bool get isLoading => _isLoading;
+
+  String? get errorMessage => _errorMessage;
+
+  // ============================================================
+  // 取得貼文
+  // ============================================================
+
+  Future<void> loadPosts() async {
+    _isLoading = true;
+    _errorMessage = null;
+
+    notifyListeners();
+
+    try {
+      final response = await ApiService().dio.get(
+            'community-posts/',
+          );
+
+      final data = response.data;
+
+      if (data is! List) {
+        throw Exception('貼文資料格式錯誤');
+      }
+
+      _posts
+        ..clear()
+        ..addAll(
+          data.whereType<Map>().map(
+                (item) => CommunityPost.fromJson(
+                  Map<String, dynamic>.from(item),
+                ),
+              ),
+        );
+    } on DioException catch (e) {
+      _errorMessage = _getDioErrorMessage(
+        e,
+        defaultMessage: '取得貼文失敗',
+      );
+    } catch (e) {
+      _errorMessage = e.toString();
+    } finally {
+      _isLoading = false;
+
+      notifyListeners();
+    }
+  }
+
+  // ============================================================
+  // 發文
+  // ============================================================
+
+  Future<bool> addPost({
     required String content,
     required List<String> tags,
     CommunityPostType type = CommunityPostType.journey,
     WorkoutPlanData? plan,
     RecipeData? recipe,
-  }) {
-    _posts.insert(
-      0,
-      CommunityPost(
-        initial: initial,
-        name: name,
-        timeAgo: timeAgo,
-        content: content,
-        tags: tags,
-        likes: 0,
-        commentThreads: const [],
-        type: type,
-        plan: plan,
-        recipe: recipe,
-      ),
-    );
-    notifyListeners();
+  }) async {
+    _errorMessage = null;
+
+    final data = <String, dynamic>{
+      'post_type': _postTypeToApi(type),
+      'content': content,
+      'tags': tags,
+    };
+
+    if (type == CommunityPostType.plan && plan != null) {
+      data['workout_plan'] = plan.toJson();
+    }
+
+    try {
+      final response = await ApiService().dio.post(
+            'community-posts/',
+            data: data,
+          );
+
+      final newPost = CommunityPost.fromJson(
+        Map<String, dynamic>.from(response.data),
+      );
+
+      _posts.insert(
+        0,
+        newPost,
+      );
+
+      notifyListeners();
+
+      return true;
+    } on DioException catch (e) {
+      _errorMessage = _getDioErrorMessage(
+        e,
+        defaultMessage: '發文失敗',
+      );
+
+      notifyListeners();
+
+      return false;
+    } catch (e) {
+      _errorMessage = e.toString();
+
+      notifyListeners();
+
+      return false;
+    }
   }
 
-  void updatePost(
+  // ============================================================
+  // 修改貼文
+  // ============================================================
+
+  Future<bool> updatePost(
     int index, {
     required String content,
     required List<String> tags,
     required CommunityPostType type,
     WorkoutPlanData? plan,
     RecipeData? recipe,
+  }) async {
+    if (index < 0 || index >= _posts.length) {
+      return false;
+    }
+
+    _errorMessage = null;
+
+    final post = _posts[index];
+
+    final data = <String, dynamic>{
+      'post_type': _postTypeToApi(type),
+      'content': content,
+      'tags': tags,
+    };
+
+    if (type == CommunityPostType.plan && plan != null) {
+      data['workout_plan'] = plan.toJson();
+    }
+
+    try {
+      final response = await ApiService().dio.patch(
+            'community-posts/${post.id}/',
+            data: data,
+          );
+
+      _posts[index] = CommunityPost.fromJson(
+        Map<String, dynamic>.from(response.data),
+      );
+
+      notifyListeners();
+
+      return true;
+    } on DioException catch (e) {
+      _errorMessage = _getDioErrorMessage(
+        e,
+        defaultMessage: '修改貼文失敗',
+      );
+
+      notifyListeners();
+
+      return false;
+    } catch (e) {
+      _errorMessage = e.toString();
+
+      notifyListeners();
+
+      return false;
+    }
+  }
+
+  // ============================================================
+  // 刪除貼文
+  // ============================================================
+
+  Future<bool> deletePost(
+    int index,
+  ) async {
+    if (index < 0 || index >= _posts.length) {
+      return false;
+    }
+
+    _errorMessage = null;
+
+    final post = _posts[index];
+
+    try {
+      await ApiService().dio.delete(
+            'community-posts/${post.id}/',
+          );
+
+      _posts.removeAt(index);
+
+      notifyListeners();
+
+      return true;
+    } on DioException catch (e) {
+      _errorMessage = _getDioErrorMessage(
+        e,
+        defaultMessage: '刪除貼文失敗',
+      );
+
+      notifyListeners();
+
+      return false;
+    } catch (e) {
+      _errorMessage = e.toString();
+
+      notifyListeners();
+
+      return false;
+    }
+  }
+
+  // ============================================================
+  // 按讚
+  // ============================================================
+
+  Future<bool> toggleLike(
+    int index,
+  ) async {
+    if (index < 0 || index >= _posts.length) {
+      return false;
+    }
+
+    _errorMessage = null;
+
+    final post = _posts[index];
+
+    try {
+      final response = await ApiService().dio.post(
+            'community-posts/${post.id}/toggle-like/',
+          );
+
+      final data = response.data;
+
+      _posts[index] = post.copyWith(
+        isLiked: data['is_liked'] == true,
+        likes: _toInt(data['like_count']),
+      );
+
+      notifyListeners();
+
+      return true;
+    } on DioException catch (e) {
+      _errorMessage = _getDioErrorMessage(
+        e,
+        defaultMessage: '按讚失敗',
+      );
+
+      notifyListeners();
+
+      return false;
+    } catch (e) {
+      _errorMessage = e.toString();
+
+      notifyListeners();
+
+      return false;
+    }
+  }
+
+  // ============================================================
+  // 收藏
+  // ============================================================
+
+  Future<bool> toggleSave(
+    int index,
+  ) async {
+    if (index < 0 || index >= _posts.length) {
+      return false;
+    }
+
+    _errorMessage = null;
+
+    final post = _posts[index];
+
+    try {
+      final response = await ApiService().dio.post(
+            'community-posts/${post.id}/toggle-favorite/',
+          );
+
+      final data = response.data;
+
+      _posts[index] = post.copyWith(
+        isSaved: data['is_saved'] == true,
+      );
+
+      notifyListeners();
+
+      return true;
+    } on DioException catch (e) {
+      _errorMessage = _getDioErrorMessage(
+        e,
+        defaultMessage: '收藏失敗',
+      );
+
+      notifyListeners();
+
+      return false;
+    } catch (e) {
+      _errorMessage = e.toString();
+
+      notifyListeners();
+
+      return false;
+    }
+  }
+
+  // ============================================================
+  // 留言
+  // ============================================================
+
+  Future<List<Map<String, dynamic>>> loadComments(
+    int postId,
+  ) async {
+    _errorMessage = null;
+
+    try {
+      final response = await ApiService().dio.get(
+            'community-posts/$postId/comments/',
+          );
+
+      final data = response.data;
+
+      if (data is! List) {
+        throw Exception('留言資料格式錯誤');
+      }
+
+      return data
+          .whereType<Map>()
+          .map(
+            (item) => Map<String, dynamic>.from(item),
+          )
+          .toList();
+    } on DioException catch (e) {
+      _errorMessage = _getDioErrorMessage(
+        e,
+        defaultMessage: '取得留言失敗',
+      );
+
+      return [];
+    } catch (e) {
+      _errorMessage = e.toString();
+
+      return [];
+    }
+  }
+
+  Future<bool> addComment(
+    int index,
+    String comment,
+  ) async {
+    if (index < 0 || index >= _posts.length) {
+      return false;
+    }
+
+    final content = comment.trim();
+
+    if (content.isEmpty) {
+      return false;
+    }
+
+    _errorMessage = null;
+
+    final post = _posts[index];
+
+    try {
+      await ApiService().dio.post(
+        'community-posts/${post.id}/comments/',
+        data: {
+          'content': content,
+        },
+      );
+
+      _posts[index] = post.copyWith(
+        commentCount: post.commentCount + 1,
+      );
+
+      notifyListeners();
+
+      return true;
+    } on DioException catch (e) {
+      _errorMessage = _getDioErrorMessage(
+        e,
+        defaultMessage: '留言失敗',
+      );
+
+      notifyListeners();
+
+      return false;
+    } catch (e) {
+      _errorMessage = e.toString();
+
+      notifyListeners();
+
+      return false;
+    }
+  }
+
+  Future<bool> reportPost(
+    int index,
+    String reason,
+  ) async {
+    if (index < 0 || index >= _posts.length) {
+      return false;
+    }
+
+    final post = _posts[index];
+    final reportReason = reason.trim();
+
+    if (reportReason.isEmpty) {
+      return false;
+    }
+
+    _errorMessage = null;
+
+    try {
+      await ApiService().dio.post(
+        'community-posts/${post.id}/report/',
+        data: {
+          'reason': reportReason,
+        },
+      );
+
+      return true;
+    } on DioException catch (e) {
+      _errorMessage = _getDioErrorMessage(
+        e,
+        defaultMessage: '檢舉失敗',
+      );
+
+      notifyListeners();
+
+      return false;
+    } catch (e) {
+      _errorMessage = e.toString();
+
+      notifyListeners();
+
+      return false;
+    }
+  }
+
+  // ============================================================
+  // 搜尋
+  // ============================================================
+
+  Future<void> searchPosts(
+    String keyword,
+  ) async {
+    final query = keyword.trim();
+
+    if (query.isEmpty) {
+      await loadPosts();
+      return;
+    }
+
+    _isLoading = true;
+    _errorMessage = null;
+
+    notifyListeners();
+
+    try {
+      final response = await ApiService().dio.get(
+        'community-posts/',
+        queryParameters: {
+          'search': query,
+        },
+      );
+
+      final data = response.data;
+
+      if (data is! List) {
+        throw Exception('搜尋結果格式錯誤');
+      }
+
+      _posts
+        ..clear()
+        ..addAll(
+          data.whereType<Map>().map(
+                (item) => CommunityPost.fromJson(
+                  Map<String, dynamic>.from(item),
+                ),
+              ),
+        );
+    } on DioException catch (e) {
+      _errorMessage = _getDioErrorMessage(
+        e,
+        defaultMessage: '搜尋失敗',
+      );
+    } catch (e) {
+      _errorMessage = e.toString();
+    } finally {
+      _isLoading = false;
+
+      notifyListeners();
+    }
+  }
+
+  // ============================================================
+  // Helpers
+  // ============================================================
+
+  String _postTypeToApi(
+    CommunityPostType type,
+  ) {
+    switch (type) {
+      case CommunityPostType.journey:
+        return 'journey';
+
+      case CommunityPostType.plan:
+        return 'plan';
+
+      case CommunityPostType.recipe:
+        return 'recipe';
+    }
+  }
+
+  int _toInt(
+    dynamic value,
+  ) {
+    if (value is int) {
+      return value;
+    }
+
+    return int.tryParse(
+          value?.toString() ?? '',
+        ) ??
+        0;
+  }
+
+  String _getDioErrorMessage(
+    DioException e, {
+    required String defaultMessage,
   }) {
-    final post = _posts[index];
-    _posts[index] = post.copyWith(
-      content: content,
-      tags: tags,
-      type: type,
-      plan: plan,
-      recipe: recipe,
-    );
-    notifyListeners();
-  }
+    final data = e.response?.data;
 
-  void deletePost(int index) {
-    if (index < 0 || index >= _posts.length) return;
-    _posts.removeAt(index);
-    notifyListeners();
-  }
+    if (data is Map) {
+      if (data['error'] != null) {
+        return data['error'].toString();
+      }
 
-  void toggleLike(int index) {
-    final post = _posts[index];
-    final isLiked = !post.isLiked;
-    _posts[index] = post.copyWith(
-      isLiked: isLiked,
-      likes: post.likes + (isLiked ? 1 : -1),
-    );
-    notifyListeners();
-  }
+      if (data['detail'] != null) {
+        return data['detail'].toString();
+      }
+    }
 
-  void toggleSave(int index) {
-    final post = _posts[index];
-    _posts[index] = post.copyWith(isSaved: !post.isSaved);
-    notifyListeners();
-  }
-
-  void addComment(int index, String comment) {
-    final post = _posts[index];
-    _posts[index] = post.copyWith(
-      commentThreads: [...post.commentThreads, comment],
-    );
-    notifyListeners();
+    return defaultMessage;
   }
 }

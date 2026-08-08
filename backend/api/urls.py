@@ -13,7 +13,11 @@ router.register(r'members', MemberViewSet)
 router.register(r'body-records', BodyRecordViewSet)
 router.register(r'blood-pressure-records', BloodPressureRecordViewSet)
 router.register(r'board-rankings', BoardRankingViewSet)
-router.register(r'community-posts', CommunityPostViewSet)
+router.register(
+    r'community-posts',
+    CommunityPostViewSet,
+    basename='community-post'
+)
 router.register(r'favorites', FavoriteViewSet)
 router.register(r'training-logs', TrainingLogViewSet)
 router.register(r'post-likes', PostLikeViewSet)

@@ -19,7 +19,19 @@ class BoardRankingAdmin(admin.ModelAdmin):
 
 @admin.register(CommunityPost)
 class CommunityPostAdmin(admin.ModelAdmin):
-    list_display = ('member', 'content', 'like_count', 'created_at')
+    list_display = (
+        'id',
+        'member',
+        'post_type',
+        'get_like_count',
+        'created_at',
+        'updated_at',
+    )
+
+    def get_like_count(self, obj):
+        return obj.likes.count()
+
+    get_like_count.short_description = '按讚數'
 
 @admin.register(Favorite)
 class FavoriteAdmin(admin.ModelAdmin):

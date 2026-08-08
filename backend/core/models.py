@@ -50,11 +50,94 @@ class BoardRanking(models.Model):
     rank_position = models.IntegerField()
 
 class CommunityPost(models.Model):
-    member = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='posts')
+    POST_TYPE_CHOICES = [
+        ("journey", "旅程"),
+        ("plan", "計畫"),
+        ("recipe", "食譜"),
+    ]
+    member = models.ForeignKey(
+        Member,
+        on_delete=models.CASCADE, related_name='posts'
+    )
+    post_type = models.CharField(
+        max_length=20,
+        choices=POST_TYPE_CHOICES,
+        default="journey"
+    )
     content = models.TextField()
-    image = models.CharField(max_length=255, blank=True, null=True)
-    like_count = models.IntegerField(default=0)
-    created_at = models.DateTimeField(auto_now_add=True)
+    image = models.CharField(
+        max_length=255,
+        blank=True,
+        null=True
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True
+    )
+    updated_at = models.DateTimeField(
+        auto_now=True
+    )
+
+    def __str__(self):
+        return f"{self.member.username} - {self.post_type} - {self.id}"
+
+
+class PostTag(models.Model):
+    post = models.ForeignKey(
+        CommunityPost,
+        on_delete=models.CASCADE,
+        related_name="tags"
+    )
+    name = models.CharField(
+        max_length=50
+    )
+
+    def __str__(self):
+        return self.name
+
+
+class PostWorkoutPlan(models.Model):
+    post = models.OneToOneField(
+        CommunityPost,
+        on_delete=models.CASCADE,
+        related_name="workout_plan"
+    )
+    title = models.CharField(
+        max_length=255
+    )
+    summary = models.TextField(
+        blank=True
+    )
+    difficulty = models.CharField(
+        max_length=50,
+        default="中等"
+    )
+    total_minutes = models.IntegerField(
+        default=0
+    )
+
+    def __str__(self):
+        return self.title
+
+
+class PostWorkoutPlanStep(models.Model):
+    plan = models.ForeignKey(
+        PostWorkoutPlan,
+        on_delete=models.CASCADE,
+        related_name="steps"
+    )
+    name = models.CharField(
+        max_length=255
+    )
+    minutes = models.IntegerField()
+    order = models.IntegerField(
+        default=0
+    )
+    class Meta:
+        ordering = ["order"]
+
+    def __str__(self):
+        return f"{self.name} - {self.minutes}分鐘"
+
 
 class Favorite(models.Model):
     member = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='favorites')

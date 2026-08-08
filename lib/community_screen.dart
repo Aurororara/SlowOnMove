@@ -60,6 +60,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
   final GlobalKey<_GroupsPanelState> _groupsPanelKey =
       GlobalKey<_GroupsPanelState>();
   final TextEditingController _searchController = TextEditingController();
+  Timer? _searchDebounce;
   final Map<String, Timer> _groupEventReminderTimers = {};
   final Map<String, List<_ChatEntry>> _friendChats = {
     'Sarah Chen': const [
@@ -93,69 +94,67 @@ class _CommunityScreenState extends State<CommunityScreen> {
   String get _searchQuery => _searchController.text.trim().toLowerCase();
 
   List<({int index, CommunityPost post})> get _filteredPosts {
-    if (_searchQuery.isEmpty) {
-      return List.generate(
-        _posts.length,
-        (index) => (index: index, post: _posts[index]),
-      );
-    }
-
-    return _posts
-        .asMap()
-        .entries
-        .where((entry) {
-          final post = entry.value;
-          final tagsText = post.tags.join(' ').toLowerCase();
-          final planText = post.plan == null
-              ? ''
-              : [
-                  post.plan!.title,
-                  post.plan!.summary,
-                  post.plan!.difficulty,
-                  ...post.plan!.steps.map((step) => step.name),
-                ].join(' ').toLowerCase();
-          final recipeText = post.recipe == null
-              ? ''
-              : [
-                  post.recipe!.title,
-                  post.recipe!.description,
-                  ...post.recipe!.ingredients.map((item) => item.name),
-                ].join(' ').toLowerCase();
-          final searchableText = [
-            post.name,
-            post.content,
-            tagsText,
-            planText,
-            recipeText,
-          ].join(' ').toLowerCase();
-          return searchableText.contains(_searchQuery);
-        })
-        .map((entry) => (index: entry.key, post: entry.value))
-        .toList();
+    return List.generate(
+      _posts.length,
+      (index) => (
+        index: index,
+        post: _posts[index],
+      ),
+    );
   }
 
   @override
   void initState() {
     super.initState();
+
     widget.store.addListener(_handleStoreChanged);
-    _searchController.addListener(_handleStoreChanged);
+    _searchController.addListener(_handleSearchChanged);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      widget.store.loadPosts();
+    });
   }
 
   void _handleStoreChanged() {
-    if (mounted) {
-      setState(() {});
-    }
+    _searchDebounce?.cancel();
+
+    _searchDebounce = Timer(
+      const Duration(milliseconds: 400),
+      () {
+        final keyword = _searchController.text.trim();
+
+        widget.store.searchPosts(keyword);
+      },
+    );
+  }
+
+  void _handleSearchChanged() {
+    _searchDebounce?.cancel();
+
+    _searchDebounce = Timer(
+      const Duration(milliseconds: 400),
+      () {
+        final keyword = _searchController.text.trim();
+
+        widget.store.searchPosts(keyword);
+      },
+    );
   }
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
+
     for (final timer in _groupEventReminderTimers.values) {
       timer.cancel();
     }
+
     widget.store.removeListener(_handleStoreChanged);
+
     _searchController
-      ..removeListener(_handleStoreChanged)
+      ..removeListener(_handleSearchChanged)
       ..dispose();
+
     super.dispose();
   }
 
@@ -172,17 +171,24 @@ class _CommunityScreenState extends State<CommunityScreen> {
     });
   }
 
-  void _submitPost(_ComposerSubmission submission) {
-    widget.store.addPost(
-      initial: UserSession.displayInitial,
-      name: UserSession.displayName,
-      timeAgo: '剛剛',
+  Future<void> _submitPost(_ComposerSubmission submission) async {
+    final success = await widget.store.addPost(
       content: submission.content,
       tags: submission.tags,
       type: submission.type,
       plan: submission.plan,
       recipe: submission.recipe,
     );
+
+    if (!success && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.store.errorMessage ?? '發文失敗',
+          ),
+        ),
+      );
+    }
 
     setState(() {
       _isComposerOpen = false;
@@ -511,7 +517,10 @@ class _CommunityScreenState extends State<CommunityScreen> {
                   subtitle: const Text('標記這則貼文以供審查'),
                   onTap: () {
                     Navigator.pop(context);
-                    _showReportReasons(post.name);
+                    _showReportReasons(
+                      index,
+                      post.name,
+                    );
                   },
                 ),
               ],
@@ -522,7 +531,10 @@ class _CommunityScreenState extends State<CommunityScreen> {
     );
   }
 
-  Future<void> _showReportReasons(String authorName) async {
+  Future<void> _showReportReasons(
+    int postIndex,
+    String authorName,
+  ) async {
     const reasons = [
       '詐騙或欺詐',
       '性騷擾',
@@ -537,78 +549,106 @@ class _CommunityScreenState extends State<CommunityScreen> {
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (context) {
+      isScrollControlled: true,
+      builder: (sheetContext) {
         return Container(
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-          ),
-          child: SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(18, 14, 18, 20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 42,
-                      height: 4,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFD1D5DB),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    '你為何要檢舉 $authorName 的貼文？',
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.black,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    '選擇最符合此內容的理由。',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Color(0xFF6B7280),
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  ...reasons.map(
-                    (reason) => ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: const CircleAvatar(
-                        radius: 18,
-                        backgroundColor: Color(0xFFF8FAFC),
-                        child:
-                            Icon(Icons.flag_outlined, color: Colors.redAccent),
-                      ),
-                      title: Text(
-                        reason,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF111827),
-                        ),
-                      ),
-                      onTap: () {
-                        Navigator.pop(context);
-                        ScaffoldMessenger.of(this.context).showSnackBar(
-                          SnackBar(content: Text('檢舉已提交：$reason')),
-                        );
-                      },
-                    ),
-                  ),
-                ],
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.85,
+            ),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.vertical(
+                top: Radius.circular(24),
               ),
             ),
-          ),
-        );
+            child: SafeArea(
+              top: false,
+              child: SingleChildScrollView(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(
+                    18,
+                    14,
+                    18,
+                    20,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Center(
+                        child: Container(
+                          width: 42,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFD1D5DB),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        '你為何要檢舉 $authorName 的貼文？',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                          color: Colors.black,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        '選擇最符合此內容的理由。',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: Color(0xFF6B7280),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      ...reasons.map(
+                        (reason) => ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const CircleAvatar(
+                            radius: 18,
+                            backgroundColor: Color(0xFFF8FAFC),
+                            child: Icon(Icons.flag_outlined,
+                                color: Colors.redAccent),
+                          ),
+                          title: Text(
+                            reason,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF111827),
+                            ),
+                          ),
+                          onTap: () async {
+                            Navigator.pop(sheetContext);
+
+                            final success = await widget.store.reportPost(
+                              postIndex,
+                              reason,
+                            );
+
+                            if (!mounted) {
+                              return;
+                            }
+
+                            ScaffoldMessenger.of(this.context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  success
+                                      ? '檢舉已提交：$reason'
+                                      : widget.store.errorMessage ?? '檢舉失敗',
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ));
       },
     );
   }
@@ -623,7 +663,8 @@ class _CommunityScreenState extends State<CommunityScreen> {
 
     await showModalBottomSheet<void>(
       context: context,
-      builder: (context) {
+      isScrollControlled: true,
+      builder: (sheetContext) {
         return SafeArea(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
@@ -7194,17 +7235,7 @@ class CommunityProfileScreen extends StatelessWidget {
 
   bool get _isCurrentUserProfile => profileName == UserSession.displayName;
 
-  List<_ReplyEntry> get _replies => _profilePosts
-      .expand(
-        (entry) => entry.post.commentThreads.map(
-          (reply) => _ReplyEntry(
-            reply: reply,
-            postPreview: entry.post.content,
-            timeAgo: entry.post.timeAgo,
-          ),
-        ),
-      )
-      .toList(growable: false);
+  List<_ReplyEntry> get _replies => const <_ReplyEntry>[];
 
   @override
   Widget build(BuildContext context) {
@@ -7805,25 +7836,97 @@ class _CommentsSheet extends StatefulWidget {
 class _CommentsSheetState extends State<_CommentsSheet> {
   late final TextEditingController _controller;
 
+  List<Map<String, dynamic>> _comments = [];
+
+  bool _isLoading = true;
+  bool _isSubmitting = false;
+
   @override
   void initState() {
     super.initState();
+
     _controller = TextEditingController();
+
+    _loadComments();
+  }
+
+  Future<void> _loadComments() async {
+    if (widget.postIndex < 0 || widget.postIndex >= widget.store.posts.length) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+
+      return;
+    }
+
+    final post = widget.store.posts[widget.postIndex];
+
+    final comments = await widget.store.loadComments(
+      post.id,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _comments = comments;
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _submitComment() async {
+    final text = _controller.text.trim();
+
+    if (text.isEmpty || _isSubmitting) {
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = true;
+    });
+
+    final success = await widget.store.addComment(
+      widget.postIndex,
+      text,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    if (success) {
+      _controller.clear();
+
+      FocusScope.of(context).unfocus();
+
+      await _loadComments();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.store.errorMessage ?? '留言失敗',
+          ),
+        ),
+      );
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isSubmitting = false;
+    });
   }
 
   @override
   void dispose() {
     _controller.dispose();
+
     super.dispose();
-  }
-
-  void _submitComment() {
-    final text = _controller.text.trim();
-    if (text.isEmpty) return;
-
-    widget.store.addComment(widget.postIndex, text);
-    _controller.clear();
-    FocusScope.of(context).unfocus();
   }
 
   @override
@@ -7831,9 +7934,6 @@ class _CommentsSheetState extends State<_CommentsSheet> {
     return ListenableBuilder(
       listenable: widget.store,
       builder: (context, _) {
-        final post = widget.store.posts[widget.postIndex];
-        final comments = post.commentThreads;
-
         return Padding(
           padding: EdgeInsets.only(
             bottom: MediaQuery.viewInsetsOf(context).bottom,
@@ -7841,9 +7941,16 @@ class _CommentsSheetState extends State<_CommentsSheet> {
           child: Container(
             decoration: const BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              borderRadius: BorderRadius.vertical(
+                top: Radius.circular(24),
+              ),
             ),
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
+            padding: const EdgeInsets.fromLTRB(
+              18,
+              18,
+              18,
+              20,
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -7868,9 +7975,20 @@ class _CommentsSheetState extends State<_CommentsSheet> {
                   ),
                 ),
                 const SizedBox(height: 14),
-                if (comments.isEmpty)
+                if (_isLoading)
                   const Padding(
-                    padding: EdgeInsets.only(bottom: 16),
+                    padding: EdgeInsets.symmetric(
+                      vertical: 24,
+                    ),
+                    child: Center(
+                      child: CircularProgressIndicator(),
+                    ),
+                  )
+                else if (_comments.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.only(
+                      bottom: 16,
+                    ),
                     child: Text(
                       '目前還沒有留言。開始對話吧。',
                       style: TextStyle(
@@ -7882,13 +8000,27 @@ class _CommentsSheetState extends State<_CommentsSheet> {
                   )
                 else
                   ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 260),
+                    constraints: const BoxConstraints(
+                      maxHeight: 260,
+                    ),
                     child: ListView.separated(
                       shrinkWrap: true,
-                      itemCount: comments.length,
+                      itemCount: _comments.length,
                       separatorBuilder: (_, __) => const SizedBox(height: 10),
-                      itemBuilder: (context, commentIndex) {
-                        final comment = comments[commentIndex];
+                      itemBuilder: (
+                        context,
+                        commentIndex,
+                      ) {
+                        final comment = _comments[commentIndex];
+
+                        final name =
+                            (comment['member_name'] ?? '社群成員').toString();
+
+                        final initial =
+                            (comment['member_initial'] ?? 'U').toString();
+
+                        final content = (comment['content'] ?? '').toString();
+
                         return Container(
                           padding: const EdgeInsets.all(12),
                           decoration: BoxDecoration(
@@ -7898,23 +8030,27 @@ class _CommentsSheetState extends State<_CommentsSheet> {
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const _Avatar(initial: 'C'),
+                              _Avatar(
+                                initial: initial.isEmpty ? 'U' : initial,
+                              ),
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    const Text(
-                                      '社群成員',
-                                      style: TextStyle(
+                                    Text(
+                                      name,
+                                      style: const TextStyle(
                                         fontSize: 13,
                                         fontWeight: FontWeight.w800,
                                         color: Colors.black,
                                       ),
                                     ),
-                                    const SizedBox(height: 4),
+                                    const SizedBox(
+                                      height: 4,
+                                    ),
                                     Text(
-                                      comment,
+                                      content,
                                       style: const TextStyle(
                                         fontSize: 14,
                                         height: 1.4,
@@ -7954,10 +8090,16 @@ class _CommentsSheetState extends State<_CommentsSheet> {
                     const SizedBox(width: 10),
                     ValueListenableBuilder<TextEditingValue>(
                       valueListenable: _controller,
-                      builder: (context, value, child) {
+                      builder: (
+                        context,
+                        value,
+                        child,
+                      ) {
+                        final canSubmit =
+                            value.text.trim().isNotEmpty && !_isSubmitting;
+
                         return ElevatedButton(
-                          onPressed:
-                              value.text.trim().isEmpty ? null : _submitComment,
+                          onPressed: canSubmit ? _submitComment : null,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF65C16F),
                             foregroundColor: Colors.white,
@@ -7972,10 +8114,21 @@ class _CommentsSheetState extends State<_CommentsSheet> {
                               vertical: 14,
                             ),
                           ),
-                          child: const Text(
-                            '送出',
-                            style: TextStyle(fontWeight: FontWeight.w800),
-                          ),
+                          child: _isSubmitting
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Text(
+                                  '送出',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
                         );
                       },
                     ),
