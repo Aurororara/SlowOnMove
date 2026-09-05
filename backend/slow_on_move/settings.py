@@ -48,7 +48,7 @@ INSTALLED_APPS = [
     'corsheaders',
 
     # Local apps
-    'core',
+    'core.apps.CoreConfig',
     'api',
 ]
 

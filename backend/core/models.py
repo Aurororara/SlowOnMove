@@ -6,6 +6,80 @@ class Member(AbstractUser):
     login_provider = models.CharField(max_length=50, blank=True, null=True)
     provider_id = models.CharField(max_length=100, blank=True, null=True)
 
+class FriendRequest(models.Model):
+    STATUS_PENDING = "pending"
+    STATUS_ACCEPTED = "accepted"
+    STATUS_REJECTED = "rejected"
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "待處理"),
+        (STATUS_ACCEPTED, "已接受"),
+        (STATUS_REJECTED, "已拒絕"),
+    ]
+
+    sender = models.ForeignKey(
+        Member,
+        on_delete=models.CASCADE,
+        related_name="sent_friend_requests",
+    )
+    receiver = models.ForeignKey(
+        Member,
+        on_delete=models.CASCADE,
+        related_name="received_friend_requests",
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_PENDING,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+        models.UniqueConstraint(
+            fields=["sender", "receiver"],
+            condition=models.Q(status="pending"),
+            name="unique_pending_friend_request",
+        ),
+        models.CheckConstraint(
+            check=~models.Q(sender=models.F("receiver")),
+            name="friend_request_not_self",
+        ),
+    ]
+
+    def __str__(self):
+        return f"{self.sender_id} -> {self.receiver_id} ({self.status})"
+
+
+class Friendship(models.Model):
+    member1 = models.ForeignKey(
+        Member,
+        on_delete=models.CASCADE,
+        related_name="friendships_as_member1",
+    )
+    member2 = models.ForeignKey(
+        Member,
+        on_delete=models.CASCADE,
+        related_name="friendships_as_member2",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["member1", "member2"],
+                name="unique_friendship_pair",
+            ),
+            models.CheckConstraint(
+                check=~models.Q(member1=models.F("member2")),
+                name="friendship_not_self",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.member1_id} <-> {self.member2_id}"
+
 class BodyRecord(models.Model):
 
     member = models.ForeignKey(
@@ -140,9 +214,25 @@ class PostWorkoutPlanStep(models.Model):
 
 
 class Favorite(models.Model):
-    member = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='favorites')
-    post = models.ForeignKey(CommunityPost, on_delete=models.CASCADE, related_name='favorited_by')
+    member = models.ForeignKey(
+        Member,
+        on_delete=models.CASCADE,
+        related_name='favorites'
+    )
+    post = models.ForeignKey(
+        CommunityPost,
+        on_delete=models.CASCADE,
+        related_name='favorited_by'
+    )
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['member', 'post'],
+                name='unique_member_favorite_post',
+            ),
+        ]
 
 class TrainingLog(models.Model):
     member = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='training_logs')
@@ -163,9 +253,25 @@ class TrainingLog(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
 class PostLike(models.Model):
-    member = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='post_likes')
-    post = models.ForeignKey(CommunityPost, on_delete=models.CASCADE, related_name='likes')
+    member = models.ForeignKey(
+        Member,
+        on_delete=models.CASCADE,
+        related_name='post_likes'
+    )
+    post = models.ForeignKey(
+        CommunityPost,
+        on_delete=models.CASCADE,
+        related_name='likes'
+    )
     created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['member', 'post'],
+                name='unique_member_like_post',
+            ),
+        ]
 
 class PostComment(models.Model):
     member = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='post_comments')

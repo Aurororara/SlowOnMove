@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import 'community/community_store.dart';
 import 'community/models/community_post.dart';
 import 'services/user_session.dart';
+import 'community/friend_store.dart';
+import 'community/models/community_friend.dart';
 
 const List<_RunInviteFriend> _sharedFriendsSeed = [
   _RunInviteFriend(
@@ -116,16 +118,11 @@ class _CommunityScreenState extends State<CommunityScreen> {
   }
 
   void _handleStoreChanged() {
-    _searchDebounce?.cancel();
+    if (!mounted) {
+      return;
+    }
 
-    _searchDebounce = Timer(
-      const Duration(milliseconds: 400),
-      () {
-        final keyword = _searchController.text.trim();
-
-        widget.store.searchPosts(keyword);
-      },
-    );
+    setState(() {});
   }
 
   void _handleSearchChanged() {
@@ -180,7 +177,11 @@ class _CommunityScreenState extends State<CommunityScreen> {
       recipe: submission.recipe,
     );
 
-    if (!success && mounted) {
+    if (!mounted) {
+      return;
+    }
+
+    if (!success) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
@@ -188,6 +189,8 @@ class _CommunityScreenState extends State<CommunityScreen> {
           ),
         ),
       );
+
+      return;
     }
 
     setState(() {
@@ -225,8 +228,8 @@ class _CommunityScreenState extends State<CommunityScreen> {
             child: _PostComposer(
               initialSubmission: _submissionFromPost(post),
               submitLabel: '儲存',
-              onPost: (submission) {
-                widget.store.updatePost(
+              onPost: (submission) async {
+                final success = await widget.store.updatePost(
                   index,
                   content: submission.content,
                   tags: submission.tags,
@@ -234,7 +237,25 @@ class _CommunityScreenState extends State<CommunityScreen> {
                   plan: submission.plan,
                   recipe: submission.recipe,
                 );
-                Navigator.of(sheetContext).pop();
+
+                if (!sheetContext.mounted) {
+                  return;
+                }
+
+                if (success) {
+                  Navigator.of(sheetContext).pop();
+                  return;
+                }
+
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        widget.store.errorMessage ?? '修改貼文失敗',
+                      ),
+                    ),
+                  );
+                }
               },
               onClose: () => Navigator.of(sheetContext).pop(),
             ),
@@ -447,17 +468,36 @@ class _CommunityScreenState extends State<CommunityScreen> {
     });
   }
 
-  void _toggleLike(int index) {
-    widget.store.toggleLike(index);
+  Future<void> _toggleLike(int index) async {
+    final success = await widget.store.toggleLike(index);
+
+    if (!success && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.store.errorMessage ?? '按讚失敗',
+          ),
+        ),
+      );
+    }
   }
 
-  void _toggleSave(int index) {
+  Future<void> _toggleSave(int index) async {
     final isSaving = !_posts[index].isSaved;
-    widget.store.toggleSave(index);
+
+    final success = await widget.store.toggleSave(index);
+
+    if (!mounted) {
+      return;
+    }
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(isSaving ? '已加入我的珍藏' : '已從我的珍藏移除'),
+        content: Text(
+          success
+              ? (isSaving ? '已加入我的珍藏' : '已從我的珍藏移除')
+              : widget.store.errorMessage ?? '收藏失敗',
+        ),
         duration: const Duration(seconds: 2),
       ),
     );
@@ -479,7 +519,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
 
   Future<void> _showPostMenu(int index) async {
     final post = _posts[index];
-    final isOwnPost = post.name == UserSession.displayName;
+    final isOwnPost = post.memberId == UserSession.memberId;
     await showModalBottomSheet<void>(
       context: context,
       builder: (context) {
@@ -2766,83 +2806,141 @@ class _FriendsPanel extends StatefulWidget {
 
 class _FriendsPanelState extends State<_FriendsPanel> {
   int _selectedTab = 0;
-  final List<_RunInviteFriend> _friends = List<_RunInviteFriend>.from(
-    _sharedFriendsSeed,
-  );
-  final List<_FriendRequest> _requests = [
-    const _FriendRequest(initial: 'A', name: 'Alex Rivera'),
-  ];
-  final List<_FriendRequest> _pendingRequests = [
-    const _FriendRequest(initial: 'E', name: 'Emma Wilson'),
-  ];
-  final List<_FriendSuggestion> _suggestions = [
-    const _FriendSuggestion(
-        initial: 'T', name: 'Taylor Swift', mutualFriends: 3),
-    const _FriendSuggestion(
-        initial: 'C', name: 'Chris Evans', mutualFriends: 2),
-    const _FriendSuggestion(
-        initial: 'O', name: 'Olivia Brown', mutualFriends: 5),
-  ];
+
+  final FriendStore _friendStore = FriendStore();
+
+  @override
+  void initState() {
+    super.initState();
+
+    _friendStore.addListener(_handleFriendStoreChanged);
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _friendStore.loadAll();
+    });
+  }
+
+  void _handleFriendStoreChanged() {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _friendStore.removeListener(_handleFriendStoreChanged);
+    super.dispose();
+  }
 
   void _showMessage(String text) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
 
-  void _acceptRequest(_FriendRequest request) {
-    setState(() {
-      _requests.removeWhere((item) => item.name == request.name);
-      _friends.add(
-        _RunInviteFriend(
-          initial: request.initial,
-          name: request.name,
-          runsTogether: 0,
-          streak: 0,
-          lastRun: '尚未一起運動',
-        ),
-      );
-    });
-    _showMessage('已將 ${request.name} 加為好友');
+  Future<void> _acceptRequest(
+    CommunityFriendRequest request,
+  ) async {
+    final success = await _friendStore.acceptRequest(
+      request.id,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    _showMessage(
+      success
+          ? '已將 ${request.sender.name} 加為好友'
+          : _friendStore.errorMessage ?? '接受好友邀請失敗',
+    );
   }
 
-  void _declineRequest(_FriendRequest request) {
-    setState(() {
-      _requests.removeWhere((item) => item.name == request.name);
-    });
-    _showMessage('已拒絕 ${request.name} 的好友請求');
+  Future<void> _declineRequest(
+    CommunityFriendRequest request,
+  ) async {
+    final success = await _friendStore.rejectRequest(
+      request.id,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    _showMessage(
+      success
+          ? '已拒絕 ${request.sender.name} 的好友請求'
+          : _friendStore.errorMessage ?? '拒絕好友邀請失敗',
+    );
   }
 
-  void _cancelPending(_FriendRequest request) {
-    setState(() {
-      _pendingRequests.removeWhere((item) => item.name == request.name);
-    });
-    _showMessage('已取消對 ${request.name} 的好友邀請');
+  Future<void> _cancelPending(
+    CommunityFriendRequest request,
+  ) async {
+    final success = await _friendStore.cancelRequest(
+      request.id,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    _showMessage(
+      success
+          ? '已取消對 ${request.receiver.name} 的好友邀請'
+          : _friendStore.errorMessage ?? '取消好友邀請失敗',
+    );
   }
 
-  void _addSuggestion(_FriendSuggestion suggestion) {
-    setState(() {
-      _suggestions.removeWhere((item) => item.name == suggestion.name);
-      _pendingRequests.add(
-        _FriendRequest(initial: suggestion.initial, name: suggestion.name),
-      );
-    });
-    _showMessage('已送出好友邀請給 ${suggestion.name}');
+  Future<void> _addSuggestion(
+    CommunityFriend suggestion,
+  ) async {
+    final success = await _friendStore.sendRequest(
+      suggestion.id,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    _showMessage(
+      success
+          ? '已送出好友邀請給 ${suggestion.name}'
+          : _friendStore.errorMessage ?? '好友邀請送出失敗',
+    );
   }
 
-  void _removeFriend(_RunInviteFriend friend) {
-    setState(() {
-      _friends.removeWhere((item) => item.name == friend.name);
-    });
-    _showMessage('已將 ${friend.name} 從好友移除');
+  Future<void> _removeFriend(
+    CommunityFriend friend,
+  ) async {
+    final success = await _friendStore.removeFriend(
+      friend.id,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    _showMessage(
+      success
+          ? '已將 ${friend.name} 從好友移除'
+          : _friendStore.errorMessage ?? '刪除好友失敗',
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final friends = _friendStore.friends;
+    final requests = _friendStore.requests;
+    final pendingRequests = _friendStore.pendingRequests;
+    final suggestions = _friendStore.suggestions;
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 14, 18, 24),
       children: [
         _FriendTabs(
-          friendsCount: _friends.length,
-          requestsCount: _requests.length + _pendingRequests.length,
+          friendsCount: friends.length,
+          requestsCount: requests.length + pendingRequests.length,
           selectedIndex: _selectedTab,
           onChanged: (index) {
             setState(() {
@@ -2854,83 +2952,158 @@ class _FriendsPanelState extends State<_FriendsPanel> {
         if (_selectedTab == 0) ...[
           const _FriendSearchField(),
           const SizedBox(height: 14),
-          _SectionLabel('你的運動好友 (${_friends.length})'),
+          _SectionLabel(
+            '你的運動好友 (${friends.length})',
+          ),
           const SizedBox(height: 12),
-          if (_friends.isEmpty)
-            const _EmptyState(text: '目前還沒有運動好友。')
+          if (_friendStore.isLoading && friends.isEmpty)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else if (friends.isEmpty)
+            const _EmptyState(
+              text: '目前還沒有運動好友。',
+            )
           else
-            ...List.generate(_friends.length, (index) {
-              final friend = _friends[index];
-              return Padding(
-                padding: EdgeInsets.only(
-                    bottom: index == _friends.length - 1 ? 0 : 12),
-                child: _RunningBuddyCard(
-                  initial: friend.initial,
-                  name: friend.name,
-                  runsTogether: friend.runsTogether,
-                  streak: friend.streak,
-                  lastRun: friend.lastRun,
-                  onInviteTap: widget.onInviteTap,
-                  onMessageTap: widget.onMessageTap,
-                  onRemoveTap: () => _removeFriend(friend),
-                ),
-              );
-            }),
+            ...List.generate(
+              friends.length,
+              (index) {
+                final friend = friends[index];
+
+                return Padding(
+                  padding: EdgeInsets.only(
+                    bottom: index == friends.length - 1 ? 0 : 12,
+                  ),
+                  child: _RunningBuddyCard(
+                    initial: friend.initial,
+                    name: friend.name,
+
+                    // v1 尚未串 TrainingLog 統計
+                    runsTogether: 0,
+                    streak: 0,
+                    lastRun: '尚無資料',
+
+                    onInviteTap: widget.onInviteTap,
+                    onMessageTap: widget.onMessageTap,
+                    onRemoveTap: () => _removeFriend(friend),
+                  ),
+                );
+              },
+            ),
         ] else if (_selectedTab == 1) ...[
-          _SectionLabel('好友請求 (${_requests.length})'),
+          _SectionLabel(
+            '好友請求 (${requests.length})',
+          ),
           const SizedBox(height: 12),
-          if (_requests.isEmpty)
-            const _EmptyState(text: '目前沒有新的好友請求。')
-          else
-            ...List.generate(_requests.length, (index) {
-              final request = _requests[index];
-              return Padding(
-                padding: EdgeInsets.only(
-                    bottom: index == _requests.length - 1 ? 0 : 12),
-                child: _FriendRequestCard(
-                  request: request,
-                  onAccept: () => _acceptRequest(request),
-                  onDecline: () => _declineRequest(request),
-                ),
-              );
-            }),
-          const SizedBox(height: 18),
-          _SectionLabel('待處理 (${_pendingRequests.length})'),
-          const SizedBox(height: 12),
-          if (_pendingRequests.isEmpty)
-            const _EmptyState(text: '目前沒有待處理請求。')
-          else
-            ...List.generate(_pendingRequests.length, (index) {
-              final request = _pendingRequests[index];
-              return Padding(
-                padding: EdgeInsets.only(
-                  bottom: index == _pendingRequests.length - 1 ? 0 : 12,
-                ),
-                child: _PendingFriendCard(
-                  request: request,
-                  onCancel: () => _cancelPending(request),
-                ),
-              );
-            }),
+          if (_friendStore.isLoading &&
+              requests.isEmpty &&
+              pendingRequests.isEmpty)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else ...[
+            if (requests.isEmpty)
+              const _EmptyState(
+                text: '目前沒有新的好友請求。',
+              )
+            else
+              ...List.generate(
+                requests.length,
+                (index) {
+                  final request = requests[index];
+
+                  return Padding(
+                    padding: EdgeInsets.only(
+                      bottom: index == requests.length - 1 ? 0 : 12,
+                    ),
+                    child: _FriendRequestCard(
+                      request: request,
+                      onAccept: () => _acceptRequest(request),
+                      onDecline: () => _declineRequest(request),
+                    ),
+                  );
+                },
+              ),
+            const SizedBox(height: 18),
+            _SectionLabel(
+              '待處理 (${pendingRequests.length})',
+            ),
+            const SizedBox(height: 12),
+            if (pendingRequests.isEmpty)
+              const _EmptyState(
+                text: '目前沒有待處理請求。',
+              )
+            else
+              ...List.generate(
+                pendingRequests.length,
+                (index) {
+                  final request = pendingRequests[index];
+
+                  return Padding(
+                    padding: EdgeInsets.only(
+                      bottom: index == pendingRequests.length - 1 ? 0 : 12,
+                    ),
+                    child: _PendingFriendCard(
+                      request: request,
+                      onCancel: () => _cancelPending(request),
+                    ),
+                  );
+                },
+              ),
+          ],
         ] else ...[
           const _SectionLabel('你可能認識的人'),
           const SizedBox(height: 12),
-          if (_suggestions.isEmpty)
-            const _EmptyState(text: '目前沒有推薦對象。')
+          if (_friendStore.isLoading && suggestions.isEmpty)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else if (suggestions.isEmpty)
+            const _EmptyState(
+              text: '目前沒有推薦對象。',
+            )
           else
-            ...List.generate(_suggestions.length, (index) {
-              final suggestion = _suggestions[index];
-              return Padding(
-                padding: EdgeInsets.only(
-                    bottom: index == _suggestions.length - 1 ? 0 : 12),
-                child: _SuggestionCard(
-                  initial: suggestion.initial,
-                  name: suggestion.name,
-                  mutualFriends: suggestion.mutualFriends,
-                  onAdd: () => _addSuggestion(suggestion),
-                ),
-              );
-            }),
+            ...List.generate(
+              suggestions.length,
+              (index) {
+                final suggestion = suggestions[index];
+
+                return Padding(
+                  padding: EdgeInsets.only(
+                    bottom: index == suggestions.length - 1 ? 0 : 12,
+                  ),
+                  child: _SuggestionCard(
+                    initial: suggestion.initial,
+                    name: suggestion.name,
+
+                    // v1 尚未實作共同好友數
+                    mutualFriends: 0,
+
+                    onAdd: () => _addSuggestion(suggestion),
+                  ),
+                );
+              },
+            ),
+        ],
+        if (_friendStore.errorMessage != null) ...[
+          const SizedBox(height: 16),
+          Text(
+            _friendStore.errorMessage!,
+            style: const TextStyle(
+              color: Colors.red,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
         ],
       ],
     );
@@ -4072,7 +4245,7 @@ class _InviteFieldLabel extends StatelessWidget {
 }
 
 class _FriendRequestCard extends StatelessWidget {
-  final _FriendRequest request;
+  final CommunityFriendRequest request;
   final VoidCallback onAccept;
   final VoidCallback onDecline;
 
@@ -4089,14 +4262,14 @@ class _FriendRequestCard extends StatelessWidget {
       decoration: _friendCardDecoration,
       child: Row(
         children: [
-          _DarkInitialAvatar(initial: request.initial),
+          _DarkInitialAvatar(initial: request.sender.initial),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  request.name,
+                  request.sender.name,
                   style: const TextStyle(
                     color: Colors.black,
                     fontSize: 15,
@@ -4137,7 +4310,7 @@ class _FriendRequestCard extends StatelessWidget {
 }
 
 class _PendingFriendCard extends StatelessWidget {
-  final _FriendRequest request;
+  final CommunityFriendRequest request;
   final VoidCallback onCancel;
 
   const _PendingFriendCard({
@@ -4152,14 +4325,16 @@ class _PendingFriendCard extends StatelessWidget {
       decoration: _friendCardDecoration,
       child: Row(
         children: [
-          _DarkInitialAvatar(initial: request.initial),
+          _DarkInitialAvatar(
+            initial: request.receiver.initial,
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  request.name,
+                  request.receiver.name,
                   style: const TextStyle(
                     color: Colors.black,
                     fontSize: 15,
@@ -4168,9 +4343,16 @@ class _PendingFriendCard extends StatelessWidget {
                 ),
                 const Row(
                   children: [
-                    Icon(Icons.access_time, color: Color(0xFF718096), size: 14),
+                    Icon(
+                      Icons.access_time,
+                      color: Color(0xFF718096),
+                      size: 14,
+                    ),
                     SizedBox(width: 4),
-                    Text('請求待處理', style: _friendMetaStyle),
+                    Text(
+                      '請求待處理',
+                      style: _friendMetaStyle,
+                    ),
                   ],
                 ),
               ],
@@ -4391,28 +4573,6 @@ class _GoalAdjustButton extends StatelessWidget {
       ),
     );
   }
-}
-
-class _FriendRequest {
-  final String initial;
-  final String name;
-
-  const _FriendRequest({
-    required this.initial,
-    required this.name,
-  });
-}
-
-class _FriendSuggestion {
-  final String initial;
-  final String name;
-  final int mutualFriends;
-
-  const _FriendSuggestion({
-    required this.initial,
-    required this.name,
-    required this.mutualFriends,
-  });
 }
 
 class _EmptyState extends StatelessWidget {

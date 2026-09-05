@@ -12,13 +12,15 @@ from core.models import (
     PostLike, PostComment, PostReport, PoseAnalysis, PointTransaction,
     Task, MemberTask, Badge, MemberBadge, WorkoutMenu, WorkoutItem, PostTag,
     PostWorkoutPlan,
-    PostWorkoutPlanStep
+    PostWorkoutPlanStep,FriendRequest,
+    Friendship,
 )
 from .serializers import (
     MemberSerializer, BodyRecordSerializer, BloodPressureRecordSerializer, BoardRankingSerializer,
     CommunityPostSerializer, FavoriteSerializer, TrainingLogSerializer,
     PostLikeSerializer, PostCommentSerializer, PostReportSerializer, PoseAnalysisSerializer, PointTransactionSerializer,
-    TaskSerializer, MemberTaskSerializer, BadgeSerializer, MemberBadgeSerializer, WorkoutMenuSerializer, WorkoutItemSerializer
+    TaskSerializer, MemberTaskSerializer, BadgeSerializer, MemberBadgeSerializer, WorkoutMenuSerializer, WorkoutItemSerializer,FriendMemberSerializer,
+    FriendRequestSerializer,
 )
 
 
@@ -810,3 +812,347 @@ class WorkoutItemViewSet(viewsets.ModelViewSet):
     queryset = WorkoutItem.objects.all()
     serializer_class = WorkoutItemSerializer
     permission_classes = [AllowAny]
+
+class FriendViewSet(viewsets.ViewSet):
+    permission_classes = [IsAuthenticated]
+
+    def _friend_ids(self, user):
+        friendships = Friendship.objects.filter(
+            Q(member1=user) | Q(member2=user)
+        )
+
+        friend_ids = []
+
+        for friendship in friendships:
+            if friendship.member1_id == user.id:
+                friend_ids.append(friendship.member2_id)
+            else:
+                friend_ids.append(friendship.member1_id)
+
+        return friend_ids
+
+    # =========================
+    # 好友列表
+    # =========================
+
+    def list(self, request):
+        friend_ids = self._friend_ids(request.user)
+
+        friends = Member.objects.filter(
+            id__in=friend_ids
+        ).order_by("first_name", "username")
+
+        serializer = FriendMemberSerializer(
+            friends,
+            many=True,
+        )
+
+        return Response(serializer.data)
+
+    # =========================
+    # 收到的好友邀請
+    # =========================
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="requests",
+    )
+    def requests(self, request):
+        requests = (
+            FriendRequest.objects
+            .filter(
+                receiver=request.user,
+                status=FriendRequest.STATUS_PENDING,
+            )
+            .select_related("sender", "receiver")
+            .order_by("-created_at")
+        )
+
+        serializer = FriendRequestSerializer(
+            requests,
+            many=True,
+        )
+
+        return Response(serializer.data)
+
+    # =========================
+    # 已送出的邀請
+    # =========================
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="pending",
+    )
+    def pending(self, request):
+        requests = (
+            FriendRequest.objects
+            .filter(
+                sender=request.user,
+                status=FriendRequest.STATUS_PENDING,
+            )
+            .select_related("sender", "receiver")
+            .order_by("-created_at")
+        )
+
+        serializer = FriendRequestSerializer(
+            requests,
+            many=True,
+        )
+
+        return Response(serializer.data)
+
+    # =========================
+    # 好友推薦
+    # =========================
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="suggestions",
+    )
+    def suggestions(self, request):
+        friend_ids = self._friend_ids(request.user)
+
+        pending_user_ids = set(
+            FriendRequest.objects.filter(
+                Q(
+                    sender=request.user,
+                    status=FriendRequest.STATUS_PENDING,
+                )
+                | Q(
+                    receiver=request.user,
+                    status=FriendRequest.STATUS_PENDING,
+                )
+            ).values_list(
+                "sender_id",
+                "receiver_id",
+            )
+        )
+
+        excluded_ids = {
+            request.user.id,
+            *friend_ids,
+        }
+
+        for sender_id, receiver_id in pending_user_ids:
+            excluded_ids.add(sender_id)
+            excluded_ids.add(receiver_id)
+
+        users = (
+            Member.objects
+            .exclude(id__in=excluded_ids)
+            .order_by("-date_joined")[:20]
+        )
+
+        serializer = FriendMemberSerializer(
+            users,
+            many=True,
+        )
+
+        return Response(serializer.data)
+
+    # =========================
+    # 送出好友邀請
+    # =========================
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="request",
+    )
+    def send_request(self, request):
+        receiver_id = request.data.get("member_id")
+
+        try:
+            receiver = Member.objects.get(id=receiver_id)
+        except Member.DoesNotExist:
+            return Response(
+                {"error": "找不到使用者"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if receiver.id == request.user.id:
+            return Response(
+                {"error": "不能加自己為好友"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        exists = Friendship.objects.filter(
+            Q(member1=request.user, member2=receiver)
+            | Q(member1=receiver, member2=request.user)
+        ).exists()
+
+        if exists:
+            return Response(
+                {"error": "你們已經是好友"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        reverse_request = FriendRequest.objects.filter(
+            sender=receiver,
+            receiver=request.user,
+            status=FriendRequest.STATUS_PENDING,
+        ).first()
+
+        if reverse_request:
+            return Response(
+                {
+                    "error": "對方已經送出好友邀請給你，請直接接受邀請"
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        friend_request, created = FriendRequest.objects.get_or_create(
+            sender=request.user,
+            receiver=receiver,
+            status=FriendRequest.STATUS_PENDING,
+        )
+
+        if not created:
+            return Response(
+                {"error": "好友邀請已送出"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        serializer = FriendRequestSerializer(friend_request)
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    # =========================
+    # 接受好友邀請
+    # =========================
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="accept",
+    )
+    @transaction.atomic
+    def accept(self, request, pk=None):
+        friend_request = FriendRequest.objects.filter(
+            id=pk,
+            receiver=request.user,
+            status=FriendRequest.STATUS_PENDING,
+        ).first()
+
+        if friend_request is None:
+            return Response(
+                {"error": "找不到好友邀請"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        member1, member2 = sorted(
+            [friend_request.sender, friend_request.receiver],
+            key=lambda member: member.id,
+        )
+
+        Friendship.objects.get_or_create(
+            member1=member1,
+            member2=member2,
+        )
+
+        friend_request.status = FriendRequest.STATUS_ACCEPTED
+        friend_request.save(
+            update_fields=[
+                "status",
+                "updated_at",
+            ]
+        )
+
+        return Response({
+            "message": "已接受好友邀請"
+        })
+
+    # =========================
+    # 拒絕好友邀請
+    # =========================
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="reject",
+    )
+    def reject(self, request, pk=None):
+        friend_request = FriendRequest.objects.filter(
+            id=pk,
+            receiver=request.user,
+            status=FriendRequest.STATUS_PENDING,
+        ).first()
+
+        if friend_request is None:
+            return Response(
+                {"error": "找不到好友邀請"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        friend_request.status = FriendRequest.STATUS_REJECTED
+        friend_request.save(
+            update_fields=[
+                "status",
+                "updated_at",
+            ]
+        )
+
+        return Response({
+            "message": "已拒絕好友邀請"
+        })
+
+    # =========================
+    # 取消已送出的好友邀請
+    # =========================
+
+    @action(
+        detail=True,
+        methods=["delete"],
+        url_path="cancel",
+    )
+    def cancel(self, request, pk=None):
+        friend_request = FriendRequest.objects.filter(
+            id=pk,
+            sender=request.user,
+            status=FriendRequest.STATUS_PENDING,
+        ).first()
+
+        if friend_request is None:
+            return Response(
+                {"error": "找不到好友邀請"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        friend_request.delete()
+
+        return Response(
+            status=status.HTTP_204_NO_CONTENT
+        )
+
+    # =========================
+    # 刪除好友
+    # =========================
+
+    @action(
+        detail=True,
+        methods=["delete"],
+        url_path="remove",
+    )
+    def remove_friend(self, request, pk=None):
+        friendship = Friendship.objects.filter(
+            Q(member1=request.user, member2_id=pk)
+            | Q(member1_id=pk, member2=request.user)
+        ).first()
+
+        if friendship is None:
+            return Response(
+                {"error": "你們不是好友"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        friendship.delete()
+
+        return Response(
+            status=status.HTTP_204_NO_CONTENT
+        )

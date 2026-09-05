@@ -3,7 +3,7 @@ from core.models import (
     Member, BodyRecord, BloodPressureRecord, BoardRanking, CommunityPost, Favorite, TrainingLog,
     PostLike, PostComment, PostReport, PoseAnalysis, PointTransaction,
     PostTag, PostWorkoutPlan, PostWorkoutPlanStep,
-    Task, MemberTask, Badge, MemberBadge, WorkoutMenu, WorkoutItem
+    Task, MemberTask, Badge, MemberBadge, WorkoutMenu, WorkoutItem,FriendRequest,Friendship,
 )
 
 class MemberSerializer(serializers.ModelSerializer):
@@ -282,3 +282,42 @@ class WorkoutItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = WorkoutItem
         fields = '__all__'
+
+class FriendMemberSerializer(serializers.ModelSerializer):
+    name = serializers.SerializerMethodField()
+    initial = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Member
+        fields = [
+            "id",
+            "name",
+            "initial",
+            "avatar",
+        ]
+
+    def get_name(self, obj):
+        return obj.get_full_name().strip() or obj.username
+
+    def get_initial(self, obj):
+        name = self.get_name(obj)
+
+        if not name:
+            return "U"
+
+        return name[0].upper()
+
+
+class FriendRequestSerializer(serializers.ModelSerializer):
+    sender = FriendMemberSerializer(read_only=True)
+    receiver = FriendMemberSerializer(read_only=True)
+
+    class Meta:
+        model = FriendRequest
+        fields = [
+            "id",
+            "sender",
+            "receiver",
+            "status",
+            "created_at",
+        ]

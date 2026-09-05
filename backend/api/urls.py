@@ -4,7 +4,7 @@ from .views import (
     MemberViewSet, BodyRecordViewSet, BloodPressureRecordViewSet, BoardRankingViewSet,
     CommunityPostViewSet, FavoriteViewSet, TrainingLogViewSet,
     PostLikeViewSet, PostCommentViewSet, PostReportViewSet, PoseAnalysisViewSet, PointTransactionViewSet,
-    TaskViewSet, MemberTaskViewSet, BadgeViewSet, MemberBadgeViewSet, WorkoutMenuViewSet, WorkoutItemViewSet
+    TaskViewSet, MemberTaskViewSet, BadgeViewSet, MemberBadgeViewSet, WorkoutMenuViewSet, WorkoutItemViewSet,FriendViewSet
 )
 from .auth_views import GoogleLoginView, FacebookLoginView, RegisterView, LoginView
 
@@ -13,11 +13,8 @@ router.register(r'members', MemberViewSet)
 router.register(r'body-records', BodyRecordViewSet)
 router.register(r'blood-pressure-records', BloodPressureRecordViewSet)
 router.register(r'board-rankings', BoardRankingViewSet)
-router.register(
-    r'community-posts',
-    CommunityPostViewSet,
-    basename='community-post'
-)
+router.register(r'community-posts', CommunityPostViewSet, basename='community-post')
+router.register(r'friends', FriendViewSet, basename='friend')
 router.register(r'favorites', FavoriteViewSet)
 router.register(r'training-logs', TrainingLogViewSet)
 router.register(r'post-likes', PostLikeViewSet)
