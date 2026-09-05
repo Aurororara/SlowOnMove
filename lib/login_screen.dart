@@ -397,7 +397,7 @@ class _LoginScreenState extends State<LoginScreen> {
       } else if (loginType == 'Facebook') {
         isNewUser = await FacebookAuthService().signIn();
       } else if (loginType == 'Apple') {
-        isNewUser = false;
+        isNewUser = await LocalAuthService().signIn('dev', 'dev123456');
       } else {
         _showAlert('$loginType 登入尚未實作');
         return;
