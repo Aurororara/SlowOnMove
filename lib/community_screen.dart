@@ -6,6 +6,60 @@ import 'community/models/community_post.dart';
 import 'services/user_session.dart';
 import 'community/friend_store.dart';
 import 'community/models/community_friend.dart';
+import 'community/chat_store.dart';
+import 'community/models/community_chat.dart';
+import 'community/run_invitation_store.dart';
+import 'community/models/run_invitation.dart';
+import 'community/group_store.dart';
+import 'community/models/community_group.dart';
+import 'community/group_invitation_store.dart';
+import 'community/models/community_group_invitation.dart';
+import 'community/group_activity_store.dart';
+import 'community/models/community_group_activity.dart';
+import 'community/utils/group_formatters.dart';
+import 'community/widgets/groups/group_activity_card.dart';
+import 'community/widgets/common/community_avatar.dart';
+import 'community/widgets/groups/group_tab_button.dart';
+import 'community/widgets/common/community_card_styles.dart';
+import 'community/widgets/groups/group_activity_form.dart';
+import 'community/widgets/groups/group_detail_panel.dart';
+import 'community/widgets/groups/group_stat_tile.dart';
+import 'community/widgets/common/community_section_label.dart';
+import 'community/widgets/common/community_empty_state.dart';
+import 'community/widgets/common/community_button.dart';
+import 'community/widgets/groups/group_invitation_card.dart';
+import 'community/widgets/posts/post_card.dart';
+import 'community/widgets/posts/workout_plan_card.dart';
+import 'community/widgets/posts/recipe_card.dart';
+import 'community/widgets/common/community_tag_pill.dart';
+import 'community/widgets/posts/post_composer.dart';
+import 'community/widgets/common/community_input.dart';
+
+enum _CommunityChatEntryType {
+  message,
+  runInvitation,
+}
+
+class _CommunityChatEntry {
+  final _CommunityChatEntryType type;
+  final DateTime createdAt;
+  final CommunityChatMessage? message;
+  final CommunityRunInvitation? invitation;
+
+  _CommunityChatEntry.message({
+    required CommunityChatMessage message,
+  })  : type = _CommunityChatEntryType.message,
+        createdAt = message.createdAt,
+        message = message,
+        invitation = null;
+
+  _CommunityChatEntry.runInvitation({
+    required CommunityRunInvitation invitation,
+  })  : type = _CommunityChatEntryType.runInvitation,
+        createdAt = invitation.createdAt,
+        invitation = invitation,
+        message = null;
+}
 
 const List<_RunInviteFriend> _sharedFriendsSeed = [
   _RunInviteFriend(
@@ -64,6 +118,16 @@ class _CommunityScreenState extends State<CommunityScreen> {
   final TextEditingController _searchController = TextEditingController();
   Timer? _searchDebounce;
   final Map<String, Timer> _groupEventReminderTimers = {};
+  final FriendStore _friendStore = FriendStore();
+  final ChatStore _chatStore = ChatStore();
+  final RunInvitationStore _runInvitationStore = RunInvitationStore();
+  final GroupStore _groupStore = GroupStore();
+  final GroupInvitationStore _groupInvitationStore = GroupInvitationStore();
+  final GroupActivityStore _groupActivityStore = GroupActivityStore();
+
+  Timer? _chatPollingTimer;
+  Timer? _notificationPollingTimer;
+
   final Map<String, List<_ChatEntry>> _friendChats = {
     'Sarah Chen': const [
       _ChatEntry(
@@ -89,8 +153,9 @@ class _CommunityScreenState extends State<CommunityScreen> {
   bool _isComposerOpen = false;
   bool _isFriendsOpen = false;
   bool _isGroupsOpen = false;
-  _RunInviteFriend? _inviteFriend;
-  _RunInviteFriend? _chatFriend;
+  CommunityFriend? _inviteFriend;
+  CommunityFriend? _chatFriend;
+  CommunityGroup? _groupDetail;
 
   List<CommunityPost> get _posts => widget.store.posts;
   String get _searchQuery => _searchController.text.trim().toLowerCase();
@@ -105,16 +170,148 @@ class _CommunityScreenState extends State<CommunityScreen> {
     );
   }
 
+  List<_CommunityChatEntry> _chatEntriesFor(
+    int friendId,
+  ) {
+    final entries = <_CommunityChatEntry>[
+      ..._chatStore.messagesFor(friendId).map(
+            (message) => _CommunityChatEntry.message(
+              message: message,
+            ),
+          ),
+      ..._runInvitationStore.invitationsFor(friendId).map(
+            (invitation) => _CommunityChatEntry.runInvitation(
+              invitation: invitation,
+            ),
+          ),
+    ];
+
+    entries.sort(
+      (a, b) => a.createdAt.compareTo(
+        b.createdAt,
+      ),
+    );
+
+    return entries;
+  }
+
+  void _openLegacyChat(_RunInviteFriend friend) {
+    // 群組目前仍是假資料，
+    // 不接真正好友 Chat API。
+  }
+
+  void _startNotificationPolling() {
+    _stopNotificationPolling();
+
+    _notificationPollingTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) {
+        if (!mounted) {
+          return;
+        }
+
+        _chatStore.loadUnread();
+        _runInvitationStore.loadPending();
+        _groupInvitationStore.loadPending();
+      },
+    );
+  }
+
+  void _stopNotificationPolling() {
+    _notificationPollingTimer?.cancel();
+    _notificationPollingTimer = null;
+  }
+
+  void _startChatPolling(int friendId) {
+    _stopChatPolling();
+
+    _chatPollingTimer = Timer.periodic(
+      const Duration(seconds: 3),
+      (_) {
+        if (!mounted || _chatFriend?.id != friendId) {
+          return;
+        }
+
+        _chatStore.loadMessages(
+          friendId,
+          showLoading: false,
+          preserveFirstUnread: true,
+        );
+
+        _runInvitationStore.loadInvitations(
+          friendId,
+        );
+      },
+    );
+  }
+
+  void _stopChatPolling() {
+    _chatPollingTimer?.cancel();
+    _chatPollingTimer = null;
+  }
+
   @override
   void initState() {
     super.initState();
 
     widget.store.addListener(_handleStoreChanged);
+    _friendStore.addListener(_handleFriendStoreChanged);
     _searchController.addListener(_handleSearchChanged);
+    _chatStore.addListener(_handleChatStoreChanged);
+    _runInvitationStore.addListener(_handleRunInvitationStoreChanged);
+    _groupStore.addListener(_handleGroupStoreChanged);
+    _groupInvitationStore.addListener(_handleGroupInvitationStoreChanged);
+    _groupActivityStore.addListener(_handleGroupActivityStoreChanged);
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       widget.store.loadPosts();
+      _friendStore.loadAll();
+      _chatStore.loadUnread();
+      _runInvitationStore.loadPending();
+      _groupInvitationStore.loadPending();
+
+      _startNotificationPolling();
     });
+  }
+
+  void _handleGroupActivityStoreChanged() {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {});
+  }
+
+  void _handleGroupInvitationStoreChanged() {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {});
+  }
+
+  void _handleGroupStoreChanged() {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {});
+  }
+
+  void _handleRunInvitationStoreChanged() {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {});
+  }
+
+  void _handleFriendStoreChanged() {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {});
   }
 
   void _handleStoreChanged() {
@@ -138,15 +335,31 @@ class _CommunityScreenState extends State<CommunityScreen> {
     );
   }
 
+  void _handleChatStoreChanged() {
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {});
+  }
+
   @override
   void dispose() {
     _searchDebounce?.cancel();
+    _stopChatPolling();
+    _stopNotificationPolling();
 
     for (final timer in _groupEventReminderTimers.values) {
       timer.cancel();
     }
 
     widget.store.removeListener(_handleStoreChanged);
+    _friendStore.removeListener(_handleFriendStoreChanged);
+    _chatStore.removeListener(_handleChatStoreChanged);
+    _runInvitationStore.removeListener(_handleRunInvitationStoreChanged);
+    _groupStore.removeListener(_handleGroupStoreChanged);
+    _groupInvitationStore.removeListener(_handleGroupInvitationStoreChanged);
+    _groupActivityStore.removeListener(_handleGroupActivityStoreChanged);
 
     _searchController
       ..removeListener(_handleSearchChanged)
@@ -168,7 +381,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
     });
   }
 
-  Future<void> _submitPost(_ComposerSubmission submission) async {
+  Future<void> _submitPost(PostComposerSubmission submission) async {
     final success = await widget.store.addPost(
       content: submission.content,
       tags: submission.tags,
@@ -200,8 +413,8 @@ class _CommunityScreenState extends State<CommunityScreen> {
     FocusScope.of(context).unfocus();
   }
 
-  _ComposerSubmission _submissionFromPost(CommunityPost post) {
-    return _ComposerSubmission(
+  PostComposerSubmission _submissionFromPost(CommunityPost post) {
+    return PostComposerSubmission(
       type: post.type,
       content: post.content,
       tags: post.tags,
@@ -225,7 +438,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
             bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 18,
           ),
           child: SingleChildScrollView(
-            child: _PostComposer(
+            child: PostComposer(
               initialSubmission: _submissionFromPost(post),
               submitLabel: '儲存',
               onPost: (submission) async {
@@ -266,21 +479,61 @@ class _CommunityScreenState extends State<CommunityScreen> {
   }
 
   void _openFriends() {
+    _stopChatPolling();
+
     FocusScope.of(context).unfocus();
     setState(() {
       _isComposerOpen = false;
-      _isFriendsOpen = true;
       _isGroupsOpen = false;
+      _inviteFriend = null;
+      _chatFriend = null;
+      _isFriendsOpen = true;
     });
+
+    _friendStore.loadAll();
+    _chatStore.loadUnread();
+    _runInvitationStore.loadPending();
+    _groupInvitationStore.loadPending();
   }
 
   void _openGroups() {
+    _stopChatPolling();
+
     FocusScope.of(context).unfocus();
     setState(() {
       _isComposerOpen = false;
       _isFriendsOpen = false;
       _isGroupsOpen = true;
+      _chatFriend = null;
+      _inviteFriend = null;
+      _groupDetail = null;
     });
+
+    _groupStore.loadGroups();
+    _groupInvitationStore.loadPending();
+  }
+
+  void _openGroupDetail(
+    CommunityGroup group,
+  ) {
+    _stopChatPolling();
+
+    FocusScope.of(context).unfocus();
+
+    setState(() {
+      _isComposerOpen = false;
+      _isFriendsOpen = false;
+      _isGroupsOpen = false;
+
+      _inviteFriend = null;
+      _chatFriend = null;
+
+      _groupDetail = group;
+    });
+
+    _groupActivityStore.loadActivities(
+      group.id,
+    );
   }
 
   void _openMyCommunityProfile() {
@@ -309,22 +562,60 @@ class _CommunityScreenState extends State<CommunityScreen> {
   }
 
   void _closeSecondaryPage() {
+    _stopChatPolling();
+
+    final chatFriendId = _chatFriend?.id;
+
+    final returningToFriends = _chatFriend != null || _inviteFriend != null;
+
+    final returningToGroups = _groupDetail != null;
+
+    if (chatFriendId != null) {
+      _chatStore.clearFirstUnreadMessageId(
+        chatFriendId,
+      );
+    }
+
     setState(() {
-      if (_chatFriend != null || _inviteFriend != null) {
+      if (returningToFriends) {
         _isFriendsOpen = true;
         _isGroupsOpen = false;
+
         _inviteFriend = null;
         _chatFriend = null;
+        _groupDetail = null;
+      } else if (returningToGroups) {
+        _isFriendsOpen = false;
+        _isGroupsOpen = true;
+
+        _inviteFriend = null;
+        _chatFriend = null;
+        _groupDetail = null;
       } else {
         _isFriendsOpen = false;
         _isGroupsOpen = false;
+
         _inviteFriend = null;
         _chatFriend = null;
+        _groupDetail = null;
       }
     });
+
+    if (returningToFriends) {
+      _chatStore.loadUnread();
+      _runInvitationStore.loadPending();
+      _groupInvitationStore.loadPending();
+    }
+
+    if (returningToGroups) {
+      _groupStore.loadGroups();
+      _groupInvitationStore.loadPending();
+    }
   }
 
-  void _openInviteToRun(_RunInviteFriend friend) {
+  void _openInviteToRun(CommunityFriend friend) {
+    _stopChatPolling();
+
     FocusScope.of(context).unfocus();
     setState(() {
       _isComposerOpen = false;
@@ -335,8 +626,11 @@ class _CommunityScreenState extends State<CommunityScreen> {
     });
   }
 
-  void _openChat(_RunInviteFriend friend) {
+  Future<void> _openChat(
+    CommunityFriend friend,
+  ) async {
     FocusScope.of(context).unfocus();
+
     setState(() {
       _isComposerOpen = false;
       _isFriendsOpen = false;
@@ -344,6 +638,19 @@ class _CommunityScreenState extends State<CommunityScreen> {
       _inviteFriend = null;
       _chatFriend = friend;
     });
+
+    await Future.wait([
+      _chatStore.loadMessages(friend.id),
+      _runInvitationStore.loadInvitations(
+        friend.id,
+      ),
+    ]);
+
+    if (!mounted || _chatFriend?.id != friend.id) {
+      return;
+    }
+
+    _startChatPolling(friend.id);
   }
 
   void _appendSystemChatMessage(_RunInviteFriend friend, String text) {
@@ -767,149 +1074,272 @@ class _CommunityScreenState extends State<CommunityScreen> {
             duration: const Duration(milliseconds: 200),
             child: _chatFriend != null
                 ? _FriendChatPanel(
-                    key: ValueKey('chat-${_chatFriend!.name}'),
+                    key: ValueKey('chat-${_chatFriend!.id}'),
                     friend: _chatFriend!,
-                    messages: _friendChats[_chatFriend!.name] ?? const [],
-                    onAcceptInvitation: (messageIndex) {
-                      _acceptInvitation(_chatFriend!.name, messageIndex);
-                    },
-                    onSendMessage: (message) {
-                      final existing = _friendChats[_chatFriend!.name] ?? [];
-                      setState(() {
-                        _friendChats[_chatFriend!.name] = [
-                          ...existing,
-                          _ChatEntry(
-                            text: message,
-                            isMine: true,
-                            timestamp: '剛剛',
+                    entries: _chatEntriesFor(_chatFriend!.id),
+                    firstUnreadMessageId: _chatStore.firstUnreadMessageIdFor(
+                      _chatFriend!.id,
+                    ),
+                    isLoading: _chatStore.isLoading,
+                    isSending: _chatStore.isSending,
+                    onCancelInvitation: (
+                      invitation,
+                    ) async {
+                      final friend = _chatFriend;
+
+                      if (friend == null) {
+                        return false;
+                      }
+
+                      final success =
+                          await _runInvitationStore.cancelInvitation(
+                        friendId: friend.id,
+                        invitationId: invitation.id,
+                      );
+
+                      if (!mounted) {
+                        return success;
+                      }
+
+                      if (!success) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              _runInvitationStore.errorMessage ?? '取消跑步邀請失敗',
+                            ),
                           ),
-                        ];
-                      });
+                        );
+                      }
+
+                      return success;
+                    },
+                    onRespondInvitation: (
+                      invitation,
+                      accept,
+                    ) async {
+                      final friend = _chatFriend;
+
+                      if (friend == null) {
+                        return false;
+                      }
+
+                      final success =
+                          await _runInvitationStore.respondInvitation(
+                        friendId: friend.id,
+                        invitationId: invitation.id,
+                        accept: accept,
+                      );
+
+                      if (!mounted) {
+                        return success;
+                      }
+
+                      if (!success) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              _runInvitationStore.errorMessage ?? '跑步邀請處理失敗',
+                            ),
+                          ),
+                        );
+                      }
+
+                      return success;
+                    },
+                    onSendMessage: (message) async {
+                      final success = await _chatStore.sendMessage(
+                        _chatFriend!.id,
+                        message,
+                      );
+
+                      if (!mounted || success) {
+                        return;
+                      }
+
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            _chatStore.errorMessage ?? '訊息傳送失敗',
+                          ),
+                        ),
+                      );
                     },
                   )
                 : _inviteFriend != null
                     ? _InviteToRunPanel(
-                        key: ValueKey('invite-${_inviteFriend!.name}'),
+                        key: ValueKey('invite-${_inviteFriend!.id}'),
                         friend: _inviteFriend!,
-                        onSendInvitation: (invitation) {
-                          final existing =
-                              _friendChats[_inviteFriend!.name] ?? [];
-                          setState(() {
-                            _friendChats[_inviteFriend!.name] = [
-                              ...existing,
-                              _ChatEntry.invitation(
-                                invitation: invitation,
-                                isMine: true,
-                                timestamp: '剛剛',
+                        onSendInvitation: ({
+                          required scheduledAt,
+                          targetDistanceKm,
+                          targetDurationMinutes,
+                          required notes,
+                        }) async {
+                          final friend = _inviteFriend;
+
+                          if (friend == null) {
+                            return false;
+                          }
+
+                          final success =
+                              await _runInvitationStore.sendInvitation(
+                            inviteeId: friend.id,
+                            scheduledAt: scheduledAt,
+                            targetDistanceKm: targetDistanceKm,
+                            targetDurationMinutes: targetDurationMinutes,
+                            notes: notes,
+                          );
+
+                          if (!mounted) {
+                            return success;
+                          }
+
+                          if (!success) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  _runInvitationStore.errorMessage ??
+                                      '跑步邀請送出失敗',
+                                ),
                               ),
-                            ];
-                            _chatFriend = _inviteFriend;
+                            );
+
+                            return false;
+                          }
+
+                          setState(() {
                             _inviteFriend = null;
-                            _isFriendsOpen = false;
+                            _isFriendsOpen = true;
                           });
+
+                          return true;
                         },
                       )
-                    : _isFriendsOpen
-                        ? _FriendsPanel(
-                            key: const ValueKey('friends'),
-                            onInviteTap: _openInviteToRun,
-                            onMessageTap: _openChat,
+                    : _groupDetail != null
+                        ? GroupDetailPanel(
+                            key: ValueKey(
+                              'group-detail-${_groupDetail!.id}',
+                            ),
+                            group: _groupDetail!,
+                            friends: _friendStore.friends,
+                            groupStore: _groupStore,
+                            groupInvitationStore: _groupInvitationStore,
+                            groupActivityStore: _groupActivityStore,
+                            onBack: _closeSecondaryPage,
                           )
-                        : _isGroupsOpen
-                            ? SafeArea(
-                                top: true,
-                                bottom: false,
-                                child: _GroupsPanel(
-                                  key: _groupsPanelKey,
-                                  onBack: _closeSecondaryPage,
-                                  onMessageTap: _openChat,
-                                  onSystemMessage: _appendSystemChatMessage,
-                                  onScheduleEventReminder:
-                                      _scheduleGroupEventReminder,
-                                ),
+                        : _isFriendsOpen
+                            ? _FriendsPanel(
+                                key: const ValueKey('friends'),
+                                store: _friendStore,
+                                chatStore: _chatStore,
+                                runInvitationStore: _runInvitationStore,
+                                onInviteTap: _openInviteToRun,
+                                onMessageTap: _openChat,
                               )
-                            : ListView(
-                                key: const ValueKey('community-feed'),
-                                padding:
-                                    const EdgeInsets.fromLTRB(18, 14, 18, 24),
-                                children: [
-                                  _SearchField(
-                                    controller: _searchController,
-                                    onClear: _searchQuery.isEmpty
-                                        ? null
-                                        : () => _searchController.clear(),
-                                  ),
-                                  const SizedBox(height: 14),
-                                  AnimatedSwitcher(
-                                    duration: const Duration(milliseconds: 220),
-                                    switchInCurve: Curves.easeOutCubic,
-                                    switchOutCurve: Curves.easeInCubic,
-                                    child: _isComposerOpen
-                                        ? _PostComposer(
-                                            key:
-                                                const ValueKey('composer-open'),
-                                            onPost: _submitPost,
-                                            onClose: _closeComposer,
-                                          )
-                                        : _CreatePostCard(
-                                            key: const ValueKey(
-                                                'composer-closed'),
-                                            onTap: _openComposer,
-                                            onProfileTap:
-                                                _openMyCommunityProfile,
-                                          ),
-                                  ),
-                                  const SizedBox(height: 18),
-                                  const _SectionLabel('社群動態'),
-                                  const SizedBox(height: 12),
-                                  if (_filteredPosts.isEmpty)
-                                    const _EmptyState(
-                                      text: '找不到符合關鍵字的貼文。',
-                                    )
-                                  else
-                                    ...List.generate(_filteredPosts.length,
-                                        (visibleIndex) {
-                                      final matched =
-                                          _filteredPosts[visibleIndex];
-                                      final index = matched.index;
-                                      final post = matched.post;
-                                      return Padding(
-                                        padding: EdgeInsets.only(
-                                          bottom: visibleIndex ==
-                                                  _filteredPosts.length - 1
-                                              ? 0
-                                              : 14,
-                                        ),
-                                        child: _PostCard(
-                                          onMoreTap: () => _showPostMenu(index),
-                                          onLikeTap: () => _toggleLike(index),
-                                          onCommentTap: () =>
-                                              _openComments(index),
-                                          onSaveTap: () => _toggleSave(index),
-                                          onShareTap: () =>
-                                              _showShareSheet(index),
-                                          onProfileTap: () =>
-                                              _openAuthorCommunityProfile(
-                                            initial: post.initial,
-                                            name: post.name,
-                                          ),
-                                          initial: post.initial,
-                                          name: post.name,
-                                          timeAgo: post.timeAgo,
-                                          content: post.content,
-                                          tags: post.tags,
-                                          type: post.type,
-                                          plan: post.plan,
-                                          recipe: post.recipe,
-                                          likes: post.likes,
-                                          comments: post.commentCount,
-                                          isLiked: post.isLiked,
-                                          isSaved: post.isSaved,
-                                        ),
-                                      );
-                                    }),
-                                ],
-                              )),
+                            : _isGroupsOpen
+                                ? SafeArea(
+                                    top: true,
+                                    bottom: false,
+                                    child: _GroupsPanel(
+                                      key: _groupsPanelKey,
+                                      groupStore: _groupStore,
+                                      friendStore: _friendStore,
+                                      groupInvitationStore:
+                                          _groupInvitationStore,
+                                      onGroupDetailTap: _openGroupDetail,
+                                      onBack: _closeSecondaryPage,
+                                      onMessageTap: _openLegacyChat,
+                                      onSystemMessage: _appendSystemChatMessage,
+                                      onScheduleEventReminder:
+                                          _scheduleGroupEventReminder,
+                                    ),
+                                  )
+                                : ListView(
+                                    key: const ValueKey('community-feed'),
+                                    padding: const EdgeInsets.fromLTRB(
+                                        18, 14, 18, 24),
+                                    children: [
+                                      _SearchField(
+                                        controller: _searchController,
+                                        onClear: _searchQuery.isEmpty
+                                            ? null
+                                            : () => _searchController.clear(),
+                                      ),
+                                      const SizedBox(height: 14),
+                                      AnimatedSwitcher(
+                                        duration:
+                                            const Duration(milliseconds: 220),
+                                        switchInCurve: Curves.easeOutCubic,
+                                        switchOutCurve: Curves.easeInCubic,
+                                        child: _isComposerOpen
+                                            ? PostComposer(
+                                                key: const ValueKey(
+                                                    'composer-open'),
+                                                onPost: _submitPost,
+                                                onClose: _closeComposer,
+                                              )
+                                            : _CreatePostCard(
+                                                key: const ValueKey(
+                                                    'composer-closed'),
+                                                onTap: _openComposer,
+                                                onProfileTap:
+                                                    _openMyCommunityProfile,
+                                              ),
+                                      ),
+                                      const SizedBox(height: 18),
+                                      const CommunitySectionLabel('社群動態'),
+                                      const SizedBox(height: 12),
+                                      if (_filteredPosts.isEmpty)
+                                        const CommunityEmptyState(
+                                          text: '找不到符合關鍵字的貼文。',
+                                        )
+                                      else
+                                        ...List.generate(_filteredPosts.length,
+                                            (visibleIndex) {
+                                          final matched =
+                                              _filteredPosts[visibleIndex];
+                                          final index = matched.index;
+                                          final post = matched.post;
+                                          return Padding(
+                                            padding: EdgeInsets.only(
+                                              bottom: visibleIndex ==
+                                                      _filteredPosts.length - 1
+                                                  ? 0
+                                                  : 14,
+                                            ),
+                                            child: PostCard(
+                                              onMoreTap: () =>
+                                                  _showPostMenu(index),
+                                              onLikeTap: () =>
+                                                  _toggleLike(index),
+                                              onCommentTap: () =>
+                                                  _openComments(index),
+                                              onSaveTap: () =>
+                                                  _toggleSave(index),
+                                              onShareTap: () =>
+                                                  _showShareSheet(index),
+                                              onProfileTap: () =>
+                                                  _openAuthorCommunityProfile(
+                                                initial: post.initial,
+                                                name: post.name,
+                                              ),
+                                              initial: post.initial,
+                                              name: post.name,
+                                              timeAgo: post.timeAgo,
+                                              content: post.content,
+                                              tags: post.tags,
+                                              type: post.type,
+                                              plan: post.plan,
+                                              recipe: post.recipe,
+                                              likes: post.likes,
+                                              comments: post.commentCount,
+                                              isLiked: post.isLiked,
+                                              isSaved: post.isSaved,
+                                            ),
+                                          );
+                                        }),
+                                    ],
+                                  )),
       ),
     );
   }
@@ -926,6 +1356,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
             borderRadius: BorderRadius.circular(18),
             onTap: (_chatFriend != null ||
                     _inviteFriend != null ||
+                    _groupDetail != null ||
                     _isFriendsOpen ||
                     _isGroupsOpen)
                 ? _closeSecondaryPage
@@ -962,7 +1393,9 @@ class _CommunityScreenState extends State<CommunityScreen> {
             ],
           ),
           const Spacer(),
-          if (_chatFriend != null || _inviteFriend != null)
+          if (_chatFriend != null ||
+              _inviteFriend != null ||
+              _groupDetail != null)
             const SizedBox(width: 56)
           else if (_isGroupsOpen)
             _CreateGroupButton(
@@ -971,7 +1404,13 @@ class _CommunityScreenState extends State<CommunityScreen> {
               },
             )
           else ...[
-            _FriendRequestsButton(onTap: _openFriends),
+            _FriendRequestsButton(
+              onTap: _openFriends,
+              count: _friendStore.requests.length +
+                  _chatStore.unreadTotal +
+                  _runInvitationStore.pendingTotal +
+                  _groupInvitationStore.pendingTotal,
+            ),
             const SizedBox(width: 8),
             _GroupsButton(onTap: _openGroups),
           ],
@@ -1065,7 +1504,7 @@ class _CreatePostCard extends StatelessWidget {
                 onTap: onProfileTap,
                 child: Padding(
                   padding: const EdgeInsets.all(2),
-                  child: _Avatar(initial: UserSession.displayInitial),
+                  child: CommunityAvatar(initial: UserSession.displayInitial),
                 ),
               ),
               const SizedBox(width: 13),
@@ -1420,8 +1859,22 @@ class _PostComposerState extends State<_PostComposer> {
                           ),
                         ),
                         const SizedBox(height: 10),
-                        _ComposerModeSwitcher(
-                          selectedMode: _mode,
+                        CommunityChoicePicker<_ComposerMode>(
+                          options: const [
+                            _ComposerMode.journey,
+                            _ComposerMode.plan,
+                          ],
+                          value: _mode,
+                          labelBuilder: (mode) {
+                            switch (mode) {
+                              case _ComposerMode.journey:
+                                return '分享你的旅程';
+                              case _ComposerMode.plan:
+                                return '分享你的計畫';
+                              case _ComposerMode.recipe:
+                                return '分享你的食譜';
+                            }
+                          },
                           onChanged: (mode) {
                             setState(() {
                               _mode = mode;
@@ -1446,30 +1899,36 @@ class _PostComposerState extends State<_PostComposer> {
                 minLines: 2,
                 maxLines: 4,
                 textInputAction: TextInputAction.newline,
-                decoration: _composerInputDecoration(_hintText),
+                decoration: communityInputDecoration(_hintText),
               ),
               if (_mode == _ComposerMode.plan) ...[
                 const SizedBox(height: 14),
-                const _ComposerFieldLabel(
+                const CommunityFieldLabel(
                   icon: Icons.route_outlined,
                   text: '計畫詳情',
                 ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: _planTitleController,
-                  decoration: _composerInputDecoration('計畫標題，例如：4週友善膝蓋計畫'),
+                  decoration: communityInputDecoration('計畫標題，例如：4週友善膝蓋計畫'),
                 ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: _planSummaryController,
                   maxLines: 2,
-                  decoration: _composerInputDecoration(
+                  decoration: communityInputDecoration(
                     '簡短的計畫摘要或目標',
                   ),
                 ),
                 const SizedBox(height: 10),
-                _DifficultyPicker(
+                CommunityChoicePicker<String>(
+                  options: const [
+                    '簡單',
+                    '中等',
+                    '進階',
+                  ],
                   value: _planDifficulty,
+                  labelBuilder: (option) => option,
                   onChanged: (value) {
                     setState(() {
                       _planDifficulty = value;
@@ -1491,7 +1950,7 @@ class _PostComposerState extends State<_PostComposer> {
                   );
                 }),
                 const SizedBox(height: 10),
-                _SecondaryActionButton(
+                CommunitySecondaryButton(
                   icon: Icons.add,
                   label: '新增步驟',
                   onTap: _addPlanStep,
@@ -1499,14 +1958,14 @@ class _PostComposerState extends State<_PostComposer> {
               ],
               if (_mode == _ComposerMode.recipe) ...[
                 const SizedBox(height: 14),
-                const _ComposerFieldLabel(
+                const CommunityFieldLabel(
                   icon: Icons.restaurant_menu_outlined,
                   text: '食譜詳情',
                 ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: _recipeTitleController,
-                  decoration: _composerInputDecoration('食譜標題，例如：跑後高蛋白餐'),
+                  decoration: communityInputDecoration('食譜標題，例如：跑後高蛋白餐'),
                 ),
                 const SizedBox(height: 10),
                 TextField(
@@ -1514,7 +1973,7 @@ class _PostComposerState extends State<_PostComposer> {
                   minLines: 2,
                   maxLines: 3,
                   textInputAction: TextInputAction.newline,
-                  decoration: _composerInputDecoration(
+                  decoration: communityInputDecoration(
                     '食譜描述（顯示在食譜卡片內）',
                   ),
                 ),
@@ -1522,7 +1981,7 @@ class _PostComposerState extends State<_PostComposer> {
                 TextField(
                   controller: _recipeCookMinutesController,
                   keyboardType: TextInputType.number,
-                  decoration: _composerInputDecoration('烹調時間（分鐘）'),
+                  decoration: communityInputDecoration('烹調時間（分鐘）'),
                 ),
                 const SizedBox(height: 12),
                 ...List.generate(_recipeIngredients.length, (index) {
@@ -1538,7 +1997,7 @@ class _PostComposerState extends State<_PostComposer> {
                   );
                 }),
                 const SizedBox(height: 10),
-                _SecondaryActionButton(
+                CommunitySecondaryButton(
                   icon: Icons.add,
                   label: '新增食材',
                   onTap: _addRecipeIngredient,
@@ -1571,7 +2030,7 @@ class _PostComposerState extends State<_PostComposer> {
                   runSpacing: 8,
                   children: _tags
                       .map(
-                        (tag) => _TagPill(
+                        (tag) => CommunityTagPill(
                           tag,
                           isSelected: _selectedTags.contains(tag),
                           onTap: () => _toggleTag(tag),
@@ -1643,187 +2102,6 @@ class _PostComposerState extends State<_PostComposer> {
           );
         },
       ),
-    );
-  }
-}
-
-InputDecoration _composerInputDecoration(String hintText) {
-  return InputDecoration(
-    hintText: hintText,
-    hintStyle: const TextStyle(
-      color: Color(0xFF718096),
-      fontSize: 14,
-      height: 1.35,
-      fontWeight: FontWeight.w500,
-    ),
-    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-    filled: true,
-    fillColor: Colors.white,
-    enabledBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(12),
-      borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1.5),
-    ),
-    focusedBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(12),
-      borderSide: const BorderSide(color: Colors.black, width: 1.5),
-    ),
-  );
-}
-
-class _ComposerModeSwitcher extends StatelessWidget {
-  final _ComposerMode selectedMode;
-  final ValueChanged<_ComposerMode> onChanged;
-
-  const _ComposerModeSwitcher({
-    required this.selectedMode,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        _ModeChip(
-          label: '旅程',
-          isSelected: selectedMode == _ComposerMode.journey,
-          onTap: () => onChanged(_ComposerMode.journey),
-        ),
-        _ModeChip(
-          label: '計畫',
-          isSelected: selectedMode == _ComposerMode.plan,
-          onTap: () => onChanged(_ComposerMode.plan),
-        ),
-      ],
-    );
-  }
-}
-
-class _ModeChip extends StatelessWidget {
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _ModeChip({
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(999),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? Colors.black : const Color(0xFFF1F5F9),
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: Text(
-          '分享你的$label',
-          style: TextStyle(
-            color: isSelected ? Colors.white : const Color(0xFF4A5568),
-            fontSize: 12,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ComposerFieldLabel extends StatelessWidget {
-  final IconData icon;
-  final String text;
-
-  const _ComposerFieldLabel({
-    required this.icon,
-    required this.text,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, color: const Color(0xFF4A5568), size: 16),
-        const SizedBox(width: 6),
-        Text(
-          text,
-          style: const TextStyle(
-            color: Color(0xFF4A5568),
-            fontSize: 12,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _SecondaryActionButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-
-  const _SecondaryActionButton({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return OutlinedButton.icon(
-      onPressed: onTap,
-      style: OutlinedButton.styleFrom(
-        foregroundColor: Colors.black,
-        side: const BorderSide(color: Color(0xFFE2E8F0)),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-      icon: Icon(icon, size: 16),
-      label: Text(
-        label,
-        style: const TextStyle(fontWeight: FontWeight.w800),
-      ),
-    );
-  }
-}
-
-class _DifficultyPicker extends StatelessWidget {
-  final String value;
-  final ValueChanged<String> onChanged;
-
-  const _DifficultyPicker({
-    required this.value,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    const options = ['簡單', '中等', '進階'];
-    return Row(
-      children: options
-          .map(
-            (option) => Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: ChoiceChip(
-                label: Text(option),
-                selected: value == option,
-                onSelected: (_) => onChanged(option),
-                labelStyle: TextStyle(
-                  color: value == option ? Colors.white : Colors.black,
-                  fontWeight: FontWeight.w700,
-                ),
-                selectedColor: Colors.black,
-                backgroundColor: const Color(0xFFF1F5F9),
-                side: BorderSide.none,
-              ),
-            ),
-          )
-          .toList(),
     );
   }
 }
@@ -1962,7 +2240,7 @@ class _PlanStepEditor extends StatelessWidget {
               Expanded(
                 child: TextField(
                   controller: step.name,
-                  decoration: _composerInputDecoration('動作名稱'),
+                  decoration: communityInputDecoration('動作名稱'),
                 ),
               ),
               IconButton(
@@ -1978,7 +2256,7 @@ class _PlanStepEditor extends StatelessWidget {
             child: IgnorePointer(
               child: TextField(
                 controller: step.minutes,
-                decoration: _composerInputDecoration('分鐘數'),
+                decoration: communityInputDecoration('分鐘數'),
               ),
             ),
           ),
@@ -2029,7 +2307,7 @@ class _RecipeIngredientEditor extends StatelessWidget {
             flex: 3,
             child: TextField(
               controller: ingredient.name,
-              decoration: _composerInputDecoration('食材名稱'),
+              decoration: communityInputDecoration('食材名稱'),
             ),
           ),
           const SizedBox(width: 10),
@@ -2038,7 +2316,7 @@ class _RecipeIngredientEditor extends StatelessWidget {
             child: TextField(
               controller: ingredient.grams,
               keyboardType: TextInputType.number,
-              decoration: _composerInputDecoration('克數'),
+              decoration: communityInputDecoration('克數'),
             ),
           ),
           IconButton(
@@ -2155,650 +2433,21 @@ NutritionSummary _calculateNutrition(List<RecipeIngredient> ingredients) {
   );
 }
 
-class _SectionLabel extends StatelessWidget {
-  final String text;
-
-  const _SectionLabel(this.text);
-
-  @override
-  Widget build(BuildContext context) {
-    return Text(
-      text,
-      style: const TextStyle(
-        color: Color(0xFF4A5568),
-        fontSize: 13,
-        fontWeight: FontWeight.w900,
-        letterSpacing: 0.8,
-      ),
-    );
-  }
-}
-
-class _PostCard extends StatelessWidget {
-  final VoidCallback onMoreTap;
-  final VoidCallback onLikeTap;
-  final VoidCallback onCommentTap;
-  final VoidCallback onSaveTap;
-  final VoidCallback onShareTap;
-  final VoidCallback onProfileTap;
-  final String initial;
-  final String name;
-  final String timeAgo;
-  final String content;
-  final List<String> tags;
-  final CommunityPostType type;
-  final WorkoutPlanData? plan;
-  final RecipeData? recipe;
-  final int likes;
-  final int comments;
-  final bool isLiked;
-  final bool isSaved;
-
-  const _PostCard({
-    required this.onMoreTap,
-    required this.onLikeTap,
-    required this.onCommentTap,
-    required this.onSaveTap,
-    required this.onShareTap,
-    required this.onProfileTap,
-    required this.initial,
-    required this.name,
-    required this.timeAgo,
-    required this.content,
-    required this.tags,
-    required this.type,
-    required this.plan,
-    required this.recipe,
-    required this.likes,
-    required this.comments,
-    required this.isLiked,
-    required this.isSaved,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 14, 12, 0),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                InkWell(
-                  onTap: onProfileTap,
-                  borderRadius: BorderRadius.circular(999),
-                  child: _Avatar(initial: initial),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: InkWell(
-                    onTap: onProfileTap,
-                    borderRadius: BorderRadius.circular(12),
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 2),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            name,
-                            style: const TextStyle(
-                              color: Color(0xFF111827),
-                              fontSize: 14,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          Text(
-                            timeAgo,
-                            style: const TextStyle(
-                              color: Color(0xFF718096),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-                IconButton(
-                  onPressed: onMoreTap,
-                  visualDensity: VisualDensity.compact,
-                  splashRadius: 20,
-                  icon: const Icon(Icons.more_vert,
-                      color: Color(0xFFA0AEC0), size: 22),
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 0),
-            child: Text(
-              content,
-              style: const TextStyle(
-                color: Colors.black,
-                fontSize: 14,
-                height: 1.45,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-          if (type == CommunityPostType.plan && plan != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
-              child: _WorkoutPlanCard(plan: plan!),
-            ),
-          if (type == CommunityPostType.recipe && recipe != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(14, 14, 14, 0),
-              child: _RecipeCard(recipe: recipe!),
-            ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 2),
-            child: Wrap(
-              spacing: 7,
-              runSpacing: 7,
-              children: tags.map((tag) => _TagPill(tag)).toList(),
-            ),
-          ),
-          const Divider(color: Color(0xFFF1F5F9), height: 18, thickness: 1),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
-            child: Row(
-              children: [
-                _PostAction(
-                  icon: isLiked ? Icons.favorite : Icons.favorite_border,
-                  label: likes.toString(),
-                  onTap: onLikeTap,
-                  iconColor: isLiked
-                      ? const Color(0xFFE11D48)
-                      : const Color(0xFF4A5568),
-                  textColor: isLiked
-                      ? const Color(0xFFE11D48)
-                      : const Color(0xFF4A5568),
-                ),
-                const SizedBox(width: 16),
-                _PostAction(
-                  icon: Icons.chat_bubble_outline,
-                  label: comments.toString(),
-                  onTap: onCommentTap,
-                ),
-                const SizedBox(width: 16),
-                _IconAction(
-                  icon: isSaved ? Icons.bookmark : Icons.bookmark_border,
-                  onTap: onSaveTap,
-                  color: isSaved ? Colors.black : const Color(0xFF4A5568),
-                ),
-                const Spacer(),
-                InkWell(
-                  onTap: onShareTap,
-                  borderRadius: BorderRadius.circular(10),
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 6, vertical: 4),
-                    child: Row(
-                      children: [
-                        Icon(Icons.share_outlined,
-                            color: Color(0xFF4A5568), size: 22),
-                        SizedBox(width: 7),
-                        Text(
-                          '分享',
-                          style: TextStyle(
-                            color: Color(0xFF4A5568),
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _WorkoutPlanCard extends StatelessWidget {
-  final WorkoutPlanData plan;
-
-  const _WorkoutPlanCard({required this.plan});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF3F7FF),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFC7DCFF), width: 1.5),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(
-                Icons.fitness_center,
-                color: Color(0xFF2563EB),
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  plan.title,
-                  style: const TextStyle(
-                    color: Color(0xFF1D4ED8),
-                    fontSize: 15,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            plan.summary,
-            style: const TextStyle(
-              color: Color(0xFF2563EB),
-              fontSize: 14,
-              height: 1.45,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const SizedBox(height: 14),
-          ...List.generate(plan.steps.length, (index) {
-            final step = plan.steps[index];
-            return Padding(
-              padding: EdgeInsets.only(
-                bottom: index == plan.steps.length - 1 ? 0 : 10,
-              ),
-              child: Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(18),
-                ),
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 18,
-                      backgroundColor: const Color(0xFFE8F0FF),
-                      child: Text(
-                        '${index + 1}',
-                        style: const TextStyle(
-                          color: Color(0xFF2563EB),
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            step.name,
-                            style: const TextStyle(
-                              color: Color(0xFF1F2937),
-                              fontSize: 14,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            '${step.minutes} 分鐘',
-                            style: const TextStyle(
-                              color: Color(0xFF6B7280),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          }),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              _PlanMetricPill(
-                icon: Icons.schedule_outlined,
-                label: '${plan.totalMinutes} 分鐘',
-              ),
-              _PlanMetricPill(
-                icon: Icons.local_fire_department_outlined,
-                label: plan.difficulty,
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _PlanMetricPill extends StatelessWidget {
-  final IconData icon;
-  final String label;
-
-  const _PlanMetricPill({
-    required this.icon,
-    required this.label,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-      decoration: BoxDecoration(
-        color: const Color(0xFFE8F0FF),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 16, color: const Color(0xFF2563EB)),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: const TextStyle(
-              color: Color(0xFF2563EB),
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RecipeCard extends StatelessWidget {
-  final RecipeData recipe;
-
-  const _RecipeCard({required this.recipe});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFFBF3),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFF3D69A), width: 1.5),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.restaurant_menu,
-                  color: Color(0xFFD97706), size: 20),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  recipe.title,
-                  style: const TextStyle(
-                    color: Color(0xFFB45309),
-                    fontSize: 15,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          if (recipe.description.trim().isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Text(
-              recipe.description,
-              style: const TextStyle(
-                color: Color(0xFF92400E),
-                fontSize: 14,
-                height: 1.45,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-          const SizedBox(height: 14),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '食材',
-                  style: TextStyle(
-                    color: Color(0xFF1F2937),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                ...recipe.ingredients.map(
-                  (ingredient) => Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
-                    child: Row(
-                      children: [
-                        const Icon(Icons.circle,
-                            size: 7, color: Color(0xFFD97706)),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            ingredient.name,
-                            style: const TextStyle(
-                              color: Color(0xFF374151),
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        Text(
-                          '${ingredient.grams.toStringAsFixed(0)} 克',
-                          style: const TextStyle(
-                            color: Color(0xFF6B7280),
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              _RecipeMetricPill(label: '${recipe.cookMinutes} 分鐘'),
-              _RecipeMetricPill(label: '${recipe.nutrition.calories} 大卡'),
-              _RecipeMetricPill(
-                  label: '${recipe.nutrition.protein.toStringAsFixed(1)}g 蛋白質'),
-              _RecipeMetricPill(
-                  label: '${recipe.nutrition.carbs.toStringAsFixed(1)}g 碳水'),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _RecipeMetricPill extends StatelessWidget {
-  final String label;
-
-  const _RecipeMetricPill({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: Color(0xFFB45309),
-          fontSize: 12,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-    );
-  }
-}
-
-class _Avatar extends StatelessWidget {
-  final String initial;
-
-  const _Avatar({required this.initial});
-
-  @override
-  Widget build(BuildContext context) {
-    return CircleAvatar(
-      radius: 17,
-      backgroundColor: Colors.black,
-      child: Text(
-        initial,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 13,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-    );
-  }
-}
-
-class _TagPill extends StatelessWidget {
-  final String label;
-  final bool isSelected;
-  final VoidCallback? onTap;
-
-  const _TagPill(this.label, {this.isSelected = false, this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: isSelected ? Colors.black : const Color(0xFFECEFF3),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: isSelected ? Colors.white : const Color(0xFF4A5568),
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _PostAction extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onTap;
-  final Color iconColor;
-  final Color textColor;
-
-  const _PostAction({
-    required this.icon,
-    required this.label,
-    required this.onTap,
-    this.iconColor = const Color(0xFF4A5568),
-    this.textColor = const Color(0xFF4A5568),
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: iconColor, size: 22),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                color: textColor,
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _IconAction extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-  final Color color;
-
-  const _IconAction({
-    required this.icon,
-    required this.onTap,
-    this.color = const Color(0xFF4A5568),
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
-        child: Icon(
-          icon,
-          color: color,
-          size: 22,
-        ),
-      ),
-    );
-  }
-}
-
 class _FriendsPanel extends StatefulWidget {
-  final ValueChanged<_RunInviteFriend>? onInviteTap;
-  final ValueChanged<_RunInviteFriend>? onMessageTap;
+  final ValueChanged<CommunityFriend>? onInviteTap;
+  final ValueChanged<CommunityFriend>? onMessageTap;
+  final FriendStore store;
+  final ChatStore chatStore;
+  final RunInvitationStore runInvitationStore;
 
-  const _FriendsPanel({super.key, this.onInviteTap, this.onMessageTap});
+  const _FriendsPanel({
+    super.key,
+    required this.store,
+    required this.chatStore,
+    required this.runInvitationStore,
+    required this.onInviteTap,
+    required this.onMessageTap,
+  });
 
   @override
   State<_FriendsPanel> createState() => _FriendsPanelState();
@@ -2807,30 +2456,13 @@ class _FriendsPanel extends StatefulWidget {
 class _FriendsPanelState extends State<_FriendsPanel> {
   int _selectedTab = 0;
 
-  final FriendStore _friendStore = FriendStore();
-
   @override
   void initState() {
     super.initState();
-
-    _friendStore.addListener(_handleFriendStoreChanged);
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _friendStore.loadAll();
-    });
-  }
-
-  void _handleFriendStoreChanged() {
-    if (!mounted) {
-      return;
-    }
-
-    setState(() {});
   }
 
   @override
   void dispose() {
-    _friendStore.removeListener(_handleFriendStoreChanged);
     super.dispose();
   }
 
@@ -2841,7 +2473,7 @@ class _FriendsPanelState extends State<_FriendsPanel> {
   Future<void> _acceptRequest(
     CommunityFriendRequest request,
   ) async {
-    final success = await _friendStore.acceptRequest(
+    final success = await widget.store.acceptRequest(
       request.id,
     );
 
@@ -2852,14 +2484,14 @@ class _FriendsPanelState extends State<_FriendsPanel> {
     _showMessage(
       success
           ? '已將 ${request.sender.name} 加為好友'
-          : _friendStore.errorMessage ?? '接受好友邀請失敗',
+          : widget.store.errorMessage ?? '接受好友邀請失敗',
     );
   }
 
   Future<void> _declineRequest(
     CommunityFriendRequest request,
   ) async {
-    final success = await _friendStore.rejectRequest(
+    final success = await widget.store.rejectRequest(
       request.id,
     );
 
@@ -2870,14 +2502,14 @@ class _FriendsPanelState extends State<_FriendsPanel> {
     _showMessage(
       success
           ? '已拒絕 ${request.sender.name} 的好友請求'
-          : _friendStore.errorMessage ?? '拒絕好友邀請失敗',
+          : widget.store.errorMessage ?? '拒絕好友邀請失敗',
     );
   }
 
   Future<void> _cancelPending(
     CommunityFriendRequest request,
   ) async {
-    final success = await _friendStore.cancelRequest(
+    final success = await widget.store.cancelRequest(
       request.id,
     );
 
@@ -2888,14 +2520,14 @@ class _FriendsPanelState extends State<_FriendsPanel> {
     _showMessage(
       success
           ? '已取消對 ${request.receiver.name} 的好友邀請'
-          : _friendStore.errorMessage ?? '取消好友邀請失敗',
+          : widget.store.errorMessage ?? '取消好友邀請失敗',
     );
   }
 
   Future<void> _addSuggestion(
     CommunityFriend suggestion,
   ) async {
-    final success = await _friendStore.sendRequest(
+    final success = await widget.store.sendRequest(
       suggestion.id,
     );
 
@@ -2906,14 +2538,14 @@ class _FriendsPanelState extends State<_FriendsPanel> {
     _showMessage(
       success
           ? '已送出好友邀請給 ${suggestion.name}'
-          : _friendStore.errorMessage ?? '好友邀請送出失敗',
+          : widget.store.errorMessage ?? '好友邀請送出失敗',
     );
   }
 
   Future<void> _removeFriend(
     CommunityFriend friend,
   ) async {
-    final success = await _friendStore.removeFriend(
+    final success = await widget.store.removeFriend(
       friend.id,
     );
 
@@ -2924,16 +2556,17 @@ class _FriendsPanelState extends State<_FriendsPanel> {
     _showMessage(
       success
           ? '已將 ${friend.name} 從好友移除'
-          : _friendStore.errorMessage ?? '刪除好友失敗',
+          : widget.store.errorMessage ?? '刪除好友失敗',
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final friends = _friendStore.friends;
-    final requests = _friendStore.requests;
-    final pendingRequests = _friendStore.pendingRequests;
-    final suggestions = _friendStore.suggestions;
+    final friends = widget.store.friends;
+    final requests = widget.store.requests;
+    final pendingRequests = widget.store.pendingRequests;
+    final suggestions = widget.store.suggestions;
+    final searchResults = widget.store.searchResults;
 
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 14, 18, 24),
@@ -2950,13 +2583,39 @@ class _FriendsPanelState extends State<_FriendsPanel> {
         ),
         const SizedBox(height: 20),
         if (_selectedTab == 0) ...[
-          const _FriendSearchField(),
+          _FriendSearchField(
+            onChanged: widget.store.searchMembers,
+          ),
+          if (searchResults.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            const CommunitySectionLabel('搜尋結果'),
+            const SizedBox(height: 8),
+            ...searchResults.map(
+              (friend) => _FriendSearchResultTile(
+                friend: friend,
+                onAdd: () async {
+                  final success = await widget.store.sendRequest(friend.id);
+
+                  if (!mounted) {
+                    return;
+                  }
+
+                  _showMessage(
+                    success
+                        ? '已送出好友邀請給 ${friend.name}'
+                        : widget.store.errorMessage ?? '好友邀請送出失敗',
+                  );
+                },
+              ),
+            ),
+            const SizedBox(height: 20),
+          ],
           const SizedBox(height: 14),
-          _SectionLabel(
+          CommunitySectionLabel(
             '你的運動好友 (${friends.length})',
           ),
           const SizedBox(height: 12),
-          if (_friendStore.isLoading && friends.isEmpty)
+          if (widget.store.isLoading && friends.isEmpty)
             const Center(
               child: Padding(
                 padding: EdgeInsets.all(24),
@@ -2964,7 +2623,7 @@ class _FriendsPanelState extends State<_FriendsPanel> {
               ),
             )
           else if (friends.isEmpty)
-            const _EmptyState(
+            const CommunityEmptyState(
               text: '目前還沒有運動好友。',
             )
           else
@@ -2978,14 +2637,14 @@ class _FriendsPanelState extends State<_FriendsPanel> {
                     bottom: index == friends.length - 1 ? 0 : 12,
                   ),
                   child: _RunningBuddyCard(
-                    initial: friend.initial,
-                    name: friend.name,
+                    friend: friend,
 
                     // v1 尚未串 TrainingLog 統計
                     runsTogether: 0,
                     streak: 0,
                     lastRun: '尚無資料',
-
+                    unreadCount: widget.chatStore.unreadCountFor(friend.id) +
+                        widget.runInvitationStore.pendingCountFor(friend.id),
                     onInviteTap: widget.onInviteTap,
                     onMessageTap: widget.onMessageTap,
                     onRemoveTap: () => _removeFriend(friend),
@@ -2994,11 +2653,11 @@ class _FriendsPanelState extends State<_FriendsPanel> {
               },
             ),
         ] else if (_selectedTab == 1) ...[
-          _SectionLabel(
+          CommunitySectionLabel(
             '好友請求 (${requests.length})',
           ),
           const SizedBox(height: 12),
-          if (_friendStore.isLoading &&
+          if (widget.store.isLoading &&
               requests.isEmpty &&
               pendingRequests.isEmpty)
             const Center(
@@ -3009,7 +2668,7 @@ class _FriendsPanelState extends State<_FriendsPanel> {
             )
           else ...[
             if (requests.isEmpty)
-              const _EmptyState(
+              const CommunityEmptyState(
                 text: '目前沒有新的好友請求。',
               )
             else
@@ -3031,12 +2690,12 @@ class _FriendsPanelState extends State<_FriendsPanel> {
                 },
               ),
             const SizedBox(height: 18),
-            _SectionLabel(
+            CommunitySectionLabel(
               '待處理 (${pendingRequests.length})',
             ),
             const SizedBox(height: 12),
             if (pendingRequests.isEmpty)
-              const _EmptyState(
+              const CommunityEmptyState(
                 text: '目前沒有待處理請求。',
               )
             else
@@ -3058,9 +2717,9 @@ class _FriendsPanelState extends State<_FriendsPanel> {
               ),
           ],
         ] else ...[
-          const _SectionLabel('你可能認識的人'),
+          const CommunitySectionLabel('你可能認識的人'),
           const SizedBox(height: 12),
-          if (_friendStore.isLoading && suggestions.isEmpty)
+          if (widget.store.isLoading && suggestions.isEmpty)
             const Center(
               child: Padding(
                 padding: EdgeInsets.all(24),
@@ -3068,7 +2727,7 @@ class _FriendsPanelState extends State<_FriendsPanel> {
               ),
             )
           else if (suggestions.isEmpty)
-            const _EmptyState(
+            const CommunityEmptyState(
               text: '目前沒有推薦對象。',
             )
           else
@@ -3094,10 +2753,10 @@ class _FriendsPanelState extends State<_FriendsPanel> {
               },
             ),
         ],
-        if (_friendStore.errorMessage != null) ...[
+        if (widget.store.errorMessage != null) ...[
           const SizedBox(height: 16),
           Text(
-            _friendStore.errorMessage!,
+            widget.store.errorMessage!,
             style: const TextStyle(
               color: Colors.red,
               fontSize: 12,
@@ -3227,34 +2886,152 @@ class _FriendTabButton extends StatelessWidget {
   }
 }
 
-class _FriendSearchField extends StatelessWidget {
-  const _FriendSearchField();
+class _FriendSearchField extends StatefulWidget {
+  final ValueChanged<String> onChanged;
+
+  const _FriendSearchField({
+    required this.onChanged,
+  });
+
+  @override
+  State<_FriendSearchField> createState() => _FriendSearchFieldState();
+}
+
+class _FriendSearchFieldState extends State<_FriendSearchField> {
+  final TextEditingController _controller = TextEditingController();
+  Timer? _debounce;
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _handleChanged(String value) {
+    setState(() {});
+
+    _debounce?.cancel();
+
+    _debounce = Timer(
+      const Duration(milliseconds: 400),
+      () {
+        widget.onChanged(value);
+      },
+    );
+  }
+
+  void _clear() {
+    _controller.clear();
+    _debounce?.cancel();
+    widget.onChanged('');
+    setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
+    return TextField(
+      controller: _controller,
+      onChanged: _handleChanged,
+      decoration: InputDecoration(
+        hintText: '搜尋姓名、帳號或 Email',
+        prefixIcon: const Icon(Icons.search),
+        suffixIcon: _controller.text.isNotEmpty
+            ? IconButton(
+                onPressed: _clear,
+                icon: const Icon(Icons.close),
+              )
+            : null,
+        filled: true,
+        fillColor: const Color(0xFFF7F8FA),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide.none,
+        ),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
+      ),
+    );
+  }
+}
+
+class _FriendSearchResultTile extends StatelessWidget {
+  final CommunityFriend friend;
+  final VoidCallback onAdd;
+
+  const _FriendSearchResultTile({
+    required this.friend,
+    required this.onAdd,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final relationship = friend.relationship;
+
+    String buttonText;
+    VoidCallback? action;
+
+    switch (relationship) {
+      case 'friend':
+        buttonText = '已是好友';
+        action = null;
+        break;
+
+      case 'sent':
+        buttonText = '已送出';
+        action = null;
+        break;
+
+      case 'received':
+        buttonText = '待回應';
+        action = null;
+        break;
+
+      default:
+        buttonText = '加好友';
+        action = onAdd;
+    }
+
     return Container(
-      height: 46,
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.symmetric(
+        horizontal: 12,
+        vertical: 10,
+      ),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: const Color(0xFFE8E8E8),
+        ),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      child: const Row(
+      child: Row(
         children: [
-          Icon(Icons.search, color: Color(0xFFA0AEC0), size: 22),
-          SizedBox(width: 10),
+          CircleAvatar(
+            radius: 22,
+            backgroundImage: friend.avatar != null && friend.avatar!.isNotEmpty
+                ? NetworkImage(friend.avatar!)
+                : null,
+            child: friend.avatar == null || friend.avatar!.isEmpty
+                ? Text(friend.initial)
+                : null,
+          ),
+          const SizedBox(width: 12),
           Expanded(
             child: Text(
-              '搜尋好友...',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: Color(0xFF718096),
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
+              friend.name,
+              style: const TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
               ),
             ),
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton(
+            onPressed: action,
+            child: Text(buttonText),
           ),
         ],
       ),
@@ -3263,21 +3040,21 @@ class _FriendSearchField extends StatelessWidget {
 }
 
 class _RunningBuddyCard extends StatelessWidget {
-  final String initial;
-  final String name;
+  final CommunityFriend friend;
   final int runsTogether;
   final int streak;
   final String lastRun;
-  final ValueChanged<_RunInviteFriend>? onInviteTap;
-  final ValueChanged<_RunInviteFriend>? onMessageTap;
+  final int unreadCount;
+  final ValueChanged<CommunityFriend>? onInviteTap;
+  final ValueChanged<CommunityFriend>? onMessageTap;
   final VoidCallback? onRemoveTap;
 
   const _RunningBuddyCard({
-    required this.initial,
-    required this.name,
+    required this.friend,
     required this.runsTogether,
     required this.streak,
     required this.lastRun,
+    required this.unreadCount,
     this.onInviteTap,
     this.onMessageTap,
     this.onRemoveTap,
@@ -3287,18 +3064,18 @@ class _RunningBuddyCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: _friendCardDecoration,
+      decoration: communityCardDecoration(),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _DarkInitialAvatar(initial: initial),
+          CommunityAvatar(initial: friend.initial),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  name,
+                  friend.name,
                   style: const TextStyle(
                     color: Colors.black,
                     fontSize: 15,
@@ -3313,13 +3090,13 @@ class _RunningBuddyCard extends StatelessWidget {
                     const SizedBox(width: 4),
                     Text(
                       '一起運動 $runsTogether 次',
-                      style: _friendMetaStyle,
+                      style: communityMetaStyle,
                     ),
                     const SizedBox(width: 18),
                     const Icon(Icons.emoji_events_outlined,
                         color: Color(0xFFD69E2E), size: 14),
                     const SizedBox(width: 4),
-                    Text('連續 $streak 天', style: _friendMetaStyle),
+                    Text('連續 $streak 天', style: communityMetaStyle),
                   ],
                 ),
                 const SizedBox(height: 8),
@@ -3328,7 +3105,7 @@ class _RunningBuddyCard extends StatelessWidget {
                     const Icon(Icons.calendar_today_outlined,
                         color: Color(0xFF718096), size: 14),
                     const SizedBox(width: 5),
-                    Text('最後一次跑步：$lastRun', style: _friendMetaStyle),
+                    Text('最後一次跑步：$lastRun', style: communityMetaStyle),
                   ],
                 ),
                 const SizedBox(height: 12),
@@ -3339,32 +3116,22 @@ class _RunningBuddyCard extends StatelessWidget {
                       icon: Icons.calendar_today_outlined,
                       isPrimary: true,
                       onTap: () {
-                        onInviteTap?.call(
-                          _RunInviteFriend(
-                            initial: initial,
-                            name: name,
-                            runsTogether: runsTogether,
-                            streak: streak,
-                            lastRun: lastRun,
-                          ),
-                        );
+                        onInviteTap?.call(friend);
                       },
                     ),
                     const SizedBox(width: 8),
-                    _SmallFriendButton(
-                      label: '訊息',
-                      icon: Icons.chat_bubble_outline,
-                      onTap: () {
-                        onMessageTap?.call(
-                          _RunInviteFriend(
-                            initial: initial,
-                            name: name,
-                            runsTogether: runsTogether,
-                            streak: streak,
-                            lastRun: lastRun,
-                          ),
-                        );
-                      },
+                    Badge(
+                      isLabelVisible: unreadCount > 0,
+                      label: Text(
+                        unreadCount > 99 ? '99+' : '$unreadCount',
+                      ),
+                      child: _SmallFriendButton(
+                        label: '訊息',
+                        icon: Icons.chat_bubble_outline,
+                        onTap: () {
+                          onMessageTap?.call(friend);
+                        },
+                      ),
                     ),
                   ],
                 ),
@@ -3372,7 +3139,7 @@ class _RunningBuddyCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          _IconSquareButton(
+          GroupCardIconButton(
             icon: Icons.person_remove_alt_1_outlined,
             onTap: onRemoveTap ?? () {},
           ),
@@ -3475,8 +3242,14 @@ class _RunInvitation {
 }
 
 class _InviteToRunPanel extends StatefulWidget {
-  final _RunInviteFriend friend;
-  final ValueChanged<_RunInvitation> onSendInvitation;
+  final CommunityFriend friend;
+
+  final Future<bool> Function({
+    required DateTime scheduledAt,
+    double? targetDistanceKm,
+    int? targetDurationMinutes,
+    required String notes,
+  }) onSendInvitation;
 
   const _InviteToRunPanel({
     super.key,
@@ -3514,12 +3287,79 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
   String? _selectedTime;
   String? _selectedDistance;
   String? _selectedDuration;
+  bool _isSending = false;
 
   @override
   void dispose() {
     _dateController.dispose();
     _notesController.dispose();
     super.dispose();
+  }
+
+  DateTime? _buildScheduledAt() {
+    final dateMatch = RegExp(
+      r'^(\d{4})\s*/\s*(\d{2})\s*/\s*(\d{2})$',
+    ).firstMatch(
+      _dateController.text.trim(),
+    );
+
+    final timeMatch = RegExp(
+      r'^(\d{2}):(\d{2})\s*(AM|PM)$',
+    ).firstMatch(
+      _selectedTime ?? '',
+    );
+
+    if (dateMatch == null || timeMatch == null) {
+      return null;
+    }
+
+    final year = int.parse(dateMatch.group(1)!);
+    final month = int.parse(dateMatch.group(2)!);
+    final day = int.parse(dateMatch.group(3)!);
+
+    var hour = int.parse(timeMatch.group(1)!);
+    final minute = int.parse(timeMatch.group(2)!);
+    final period = timeMatch.group(3)!;
+
+    if (period == 'PM' && hour != 12) {
+      hour += 12;
+    }
+
+    if (period == 'AM' && hour == 12) {
+      hour = 0;
+    }
+
+    return DateTime(
+      year,
+      month,
+      day,
+      hour,
+      minute,
+    );
+  }
+
+  double? _buildDistanceKm() {
+    final value = _selectedDistance;
+
+    if (value == null) {
+      return null;
+    }
+
+    return double.tryParse(
+      value.replaceAll('km', '').trim(),
+    );
+  }
+
+  int? _buildDurationMinutes() {
+    final value = _selectedDuration;
+
+    if (value == null) {
+      return null;
+    }
+
+    return int.tryParse(
+      value.replaceAll('分鐘', '').trim(),
+    );
   }
 
   Future<void> _pickDate() async {
@@ -3539,25 +3379,46 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
     });
   }
 
-  void _sendInvitation() {
-    if (_dateController.text.trim().isEmpty || _selectedTime == null) return;
+  Future<void> _sendInvitation() async {
+    if (_isSending) {
+      return;
+    }
 
-    final note = _notesController.text.trim();
-    widget.onSendInvitation(
-      _RunInvitation(
-        date: _dateController.text.trim(),
-        time: _selectedTime!,
-        targetDistance: _selectedDistance,
-        targetDuration: _selectedDuration,
-        notes: note,
-      ),
+    final scheduledAt = _buildScheduledAt();
+
+    if (scheduledAt == null) {
+      return;
+    }
+
+    setState(() {
+      _isSending = true;
+    });
+
+    final success = await widget.onSendInvitation(
+      scheduledAt: scheduledAt,
+      targetDistanceKm: _buildDistanceKm(),
+      targetDurationMinutes: _buildDurationMinutes(),
+      notes: _notesController.text.trim(),
     );
-    final summary = note.isEmpty
-        ? '已送出邀請給 ${widget.friend.name}'
-        : '已送出邀請給 ${widget.friend.name}：$note';
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _isSending = false;
+    });
+
+    if (!success) {
+      return;
+    }
 
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(summary)),
+      SnackBar(
+        content: Text(
+          '已送出跑步邀請給 ${widget.friend.name}',
+        ),
+      ),
     );
   }
 
@@ -3571,12 +3432,12 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
       children: [
         Container(
           padding: const EdgeInsets.all(14),
-          decoration: _friendCardDecoration,
+          decoration: communityCardDecoration(),
           child: Column(
             children: [
               Row(
                 children: [
-                  _DarkInitialAvatar(initial: widget.friend.initial),
+                  CommunityAvatar(initial: widget.friend.initial),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -3591,9 +3452,9 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
                           ),
                         ),
                         const SizedBox(height: 4),
-                        Text(
-                          '一起運動 ${widget.friend.runsTogether} 次',
-                          style: _friendMetaStyle,
+                        const Text(
+                          '一起運動 0 次',
+                          style: communityMetaStyle,
                         ),
                       ],
                     ),
@@ -3610,10 +3471,10 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: const Color(0xFFE2E8F0)),
                 ),
-                child: Text(
-                  '最近一次一起運動：${widget.friend.lastRun}',
+                child: const Text(
+                  '最近一次一起運動：尚無資料',
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
+                  style: TextStyle(
                     color: Color(0xFF4A5568),
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
@@ -3626,7 +3487,7 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
         const SizedBox(height: 16),
         Container(
           padding: const EdgeInsets.all(16),
-          decoration: _friendCardDecoration,
+          decoration: communityCardDecoration(),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -3639,7 +3500,7 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
                 ),
               ),
               const SizedBox(height: 18),
-              const _InviteFieldLabel(
+              const CommunityFieldLabel(
                 icon: Icons.calendar_today_outlined,
                 text: '選擇日期',
               ),
@@ -3667,7 +3528,7 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
                 ),
               ),
               const SizedBox(height: 18),
-              const _InviteFieldLabel(
+              const CommunityFieldLabel(
                 icon: Icons.access_time_outlined,
                 text: '選擇時間',
               ),
@@ -3727,7 +3588,7 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
                 ),
               ),
               const SizedBox(height: 18),
-              const _InviteFieldLabel(
+              const CommunityFieldLabel(
                 icon: Icons.straighten_outlined,
                 text: '跑多遠（選填）',
               ),
@@ -3761,7 +3622,7 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
                 }).toList(),
               ),
               const SizedBox(height: 18),
-              const _InviteFieldLabel(
+              const CommunityFieldLabel(
                 icon: Icons.hourglass_bottom_outlined,
                 text: '跑多久（選填）',
               ),
@@ -3795,7 +3656,7 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
                 }).toList(),
               ),
               const SizedBox(height: 18),
-              const _InviteFieldLabel(
+              const CommunityFieldLabel(
                 icon: Icons.edit_note_outlined,
                 text: '額外備註（選填）',
               ),
@@ -3821,7 +3682,7 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
-                  onPressed: canSend ? _sendInvitation : null,
+                  onPressed: canSend && !_isSending ? _sendInvitation : null,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF8A8A8A),
                     disabledBackgroundColor: const Color(0xFFBDBDBD),
@@ -3833,9 +3694,9 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
                     ),
                   ),
                   icon: const Icon(Icons.send_outlined, size: 18),
-                  label: const Text(
-                    '送出邀請',
-                    style: TextStyle(
+                  label: Text(
+                    _isSending ? '送出中...' : '送出邀請',
+                    style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w800,
                     ),
@@ -3851,17 +3712,30 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
 }
 
 class _FriendChatPanel extends StatefulWidget {
-  final _RunInviteFriend friend;
-  final List<_ChatEntry> messages;
-  final ValueChanged<String> onSendMessage;
-  final ValueChanged<int> onAcceptInvitation;
+  final CommunityFriend friend;
+  final List<_CommunityChatEntry> entries;
+  final int? firstUnreadMessageId;
+  final Future<void> Function(String) onSendMessage;
+  final Future<bool> Function(
+    CommunityRunInvitation invitation,
+    bool accept,
+  ) onRespondInvitation;
+  final Future<bool> Function(
+    CommunityRunInvitation invitation,
+  ) onCancelInvitation;
+  final bool isLoading;
+  final bool isSending;
 
   const _FriendChatPanel({
     super.key,
     required this.friend,
-    required this.messages,
+    required this.entries,
+    required this.firstUnreadMessageId,
     required this.onSendMessage,
-    required this.onAcceptInvitation,
+    required this.onRespondInvitation,
+    required this.onCancelInvitation,
+    required this.isLoading,
+    required this.isSending,
   });
 
   @override
@@ -3870,18 +3744,176 @@ class _FriendChatPanel extends StatefulWidget {
 
 class _FriendChatPanelState extends State<_FriendChatPanel> {
   final TextEditingController _controller = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
+  final Map<String, GlobalKey> _entryKeys = {};
+
+  @override
+  void initState() {
+    super.initState();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scheduleInitialScroll();
+    });
+  }
+
+  String _entryKey(_CommunityChatEntry entry) {
+    if (entry.type == _CommunityChatEntryType.message) {
+      return 'message-${entry.message!.id}';
+    }
+
+    return 'invitation-${entry.invitation!.id}';
+  }
+
+  void _scheduleInitialScroll() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+
+      _scrollToTarget();
+    });
+  }
+
+  @override
+  void didUpdateWidget(
+    covariant _FriendChatPanel oldWidget,
+  ) {
+    super.didUpdateWidget(oldWidget);
+
+    final entriesChanged = oldWidget.entries.length != widget.entries.length;
+
+    final firstUnreadChanged =
+        oldWidget.firstUnreadMessageId != widget.firstUnreadMessageId;
+
+    final loadingFinished = oldWidget.isLoading && !widget.isLoading;
+
+    if (entriesChanged || firstUnreadChanged || loadingFinished) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) {
+          return;
+        }
+
+        _scrollToTarget();
+      });
+    }
+  }
 
   @override
   void dispose() {
     _controller.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
-  void _send() {
+  void _scrollToTarget() {
+    if (widget.entries.isEmpty) {
+      return;
+    }
+
+    final firstUnreadMessageId = widget.firstUnreadMessageId;
+
+    // 沒有未讀訊息，就直接顯示最新內容
+    if (firstUnreadMessageId == null) {
+      _scrollToBottom();
+      return;
+    }
+
+    _CommunityChatEntry? target;
+
+    for (final entry in widget.entries) {
+      if (entry.type == _CommunityChatEntryType.message &&
+          entry.message?.id == firstUnreadMessageId) {
+        target = entry;
+        break;
+      }
+    }
+
+    // 找不到指定訊息，也直接到底
+    if (target == null) {
+      _scrollToBottom();
+      return;
+    }
+
+    final targetContext = _entryKeys[_entryKey(target)]?.currentContext;
+
+    if (targetContext != null) {
+      Scrollable.ensureVisible(
+        targetContext,
+        duration: const Duration(
+          milliseconds: 300,
+        ),
+        curve: Curves.easeOut,
+        alignment: 0.15,
+      );
+
+      return;
+    }
+
+    // 目標尚未 build 出來，先到底部讓 ListView 建立更多 widget
+    if (!_scrollController.hasClients) {
+      return;
+    }
+
+    _scrollController.jumpTo(
+      _scrollController.position.maxScrollExtent,
+    );
+
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) {
+        if (!mounted) {
+          return;
+        }
+
+        final retryContext = _entryKeys[_entryKey(target!)]?.currentContext;
+
+        if (retryContext == null) {
+          return;
+        }
+
+        Scrollable.ensureVisible(
+          retryContext,
+          duration: const Duration(
+            milliseconds: 300,
+          ),
+          curve: Curves.easeOut,
+          alignment: 0.15,
+        );
+      },
+    );
+  }
+
+  void _scrollToBottom() {
+    if (!_scrollController.hasClients) {
+      return;
+    }
+
+    _scrollController.animateTo(
+      _scrollController.position.maxScrollExtent,
+      duration: const Duration(
+        milliseconds: 300,
+      ),
+      curve: Curves.easeOut,
+    );
+  }
+
+  Future<void> _send() async {
     final text = _controller.text.trim();
-    if (text.isEmpty) return;
-    widget.onSendMessage(text);
+
+    if (text.isEmpty || widget.isSending) {
+      return;
+    }
+
     _controller.clear();
+
+    await widget.onSendMessage(text);
+
+    if (!mounted) {
+      return;
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToBottom();
+    });
   }
 
   @override
@@ -3890,14 +3922,15 @@ class _FriendChatPanelState extends State<_FriendChatPanel> {
       children: [
         Expanded(
           child: ListView(
+            controller: _scrollController,
             padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
             children: [
               Container(
                 padding: const EdgeInsets.all(14),
-                decoration: _friendCardDecoration,
+                decoration: communityCardDecoration(),
                 child: Row(
                   children: [
-                    _DarkInitialAvatar(initial: widget.friend.initial),
+                    CommunityAvatar(initial: widget.friend.initial),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Column(
@@ -3912,9 +3945,9 @@ class _FriendChatPanelState extends State<_FriendChatPanel> {
                             ),
                           ),
                           const SizedBox(height: 4),
-                          Text(
-                            '一起運動 ${widget.friend.runsTogether} 次',
-                            style: _friendMetaStyle,
+                          const Text(
+                            '運動好友',
+                            style: communityMetaStyle,
                           ),
                         ],
                       ),
@@ -3923,32 +3956,108 @@ class _FriendChatPanelState extends State<_FriendChatPanel> {
                 ),
               ),
               const SizedBox(height: 16),
-              ...widget.messages.asMap().entries.map(
-                    (entry) => Padding(
-                      padding: const EdgeInsets.only(bottom: 12),
+              if (widget.isLoading)
+                const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Center(
+                    child: CircularProgressIndicator(),
+                  ),
+                )
+              else if (widget.entries.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(24),
+                  child: Center(
+                    child: Text('目前還沒有訊息'),
+                  ),
+                )
+              else
+                ...widget.entries.map(
+                  (entry) {
+                    if (entry.type == _CommunityChatEntryType.message) {
+                      final message = entry.message!;
+                      final key = _entryKeys.putIfAbsent(
+                        _entryKey(entry),
+                        () => GlobalKey(),
+                      );
+                      final isFirstUnread =
+                          widget.firstUnreadMessageId != null &&
+                              message.id == widget.firstUnreadMessageId;
+
+                      return Column(
+                        key: key,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          if (isFirstUnread) ...[
+                            const _UnreadDivider(),
+                            const SizedBox(height: 12),
+                          ],
+                          Padding(
+                            padding: const EdgeInsets.only(
+                              bottom: 12,
+                            ),
+                            child: Align(
+                              alignment: message.isMine
+                                  ? Alignment.centerRight
+                                  : Alignment.centerLeft,
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                  maxWidth: 280,
+                                ),
+                                child: _TextMessageBubble(
+                                  text: message.content,
+                                  isMine: message.isMine,
+                                  timestamp: _formatChatTime(
+                                    message.createdAt,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    }
+
+                    final invitation = entry.invitation!;
+
+                    final isMine = invitation.inviterId == UserSession.memberId;
+                    final key = _entryKeys.putIfAbsent(
+                      _entryKey(entry),
+                      () => GlobalKey(),
+                    );
+
+                    return Padding(
+                      key: key,
+                      padding: const EdgeInsets.only(
+                        bottom: 12,
+                      ),
                       child: Align(
-                        alignment: entry.value.isMine
+                        alignment: isMine
                             ? Alignment.centerRight
                             : Alignment.centerLeft,
                         child: ConstrainedBox(
-                          constraints: const BoxConstraints(maxWidth: 280),
-                          child: entry.value.invitation != null
-                              ? _InvitationMessageBubble(
-                                  invitation: entry.value.invitation!,
-                                  isMine: entry.value.isMine,
-                                  timestamp: entry.value.timestamp,
-                                  onAccept: () =>
-                                      widget.onAcceptInvitation(entry.key),
-                                )
-                              : _TextMessageBubble(
-                                  text: entry.value.text ?? '',
-                                  isMine: entry.value.isMine,
-                                  timestamp: entry.value.timestamp,
-                                ),
+                          constraints: const BoxConstraints(
+                            maxWidth: 300,
+                          ),
+                          child: _BackendInvitationBubble(
+                            invitation: invitation,
+                            isMine: isMine,
+                            onAccept: () => widget.onRespondInvitation(
+                              invitation,
+                              true,
+                            ),
+                            onReject: () => widget.onRespondInvitation(
+                              invitation,
+                              false,
+                            ),
+                            onCancel: () => widget.onCancelInvitation(
+                              invitation,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
-                  ),
+                    );
+                  },
+                ),
             ],
           ),
         ),
@@ -3987,7 +4096,9 @@ class _FriendChatPanelState extends State<_FriendChatPanel> {
                   valueListenable: _controller,
                   builder: (context, value, child) {
                     return ElevatedButton(
-                      onPressed: value.text.trim().isEmpty ? null : _send,
+                      onPressed: value.text.trim().isEmpty || widget.isSending
+                          ? null
+                          : _send,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.black,
                         disabledBackgroundColor: const Color(0xFFD1D5DB),
@@ -4006,6 +4117,43 @@ class _FriendChatPanelState extends State<_FriendChatPanel> {
                 ),
               ],
             ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _UnreadDivider extends StatelessWidget {
+  const _UnreadDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Row(
+      children: [
+        Expanded(
+          child: Divider(
+            color: Color(0xFFCBD5E1),
+            thickness: 1,
+          ),
+        ),
+        Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: 10,
+          ),
+          child: Text(
+            '未讀訊息',
+            style: TextStyle(
+              color: Color(0xFF64748B),
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        Expanded(
+          child: Divider(
+            color: Color(0xFFCBD5E1),
+            thickness: 1,
           ),
         ),
       ],
@@ -4058,6 +4206,15 @@ class _TextMessageBubble extends StatelessWidget {
       ),
     );
   }
+}
+
+String _formatChatTime(DateTime dateTime) {
+  final local = dateTime.toLocal();
+
+  final hour = local.hour.toString().padLeft(2, '0');
+  final minute = local.minute.toString().padLeft(2, '0');
+
+  return '$hour:$minute';
 }
 
 class _InvitationMessageBubble extends StatelessWidget {
@@ -4216,34 +4373,6 @@ class _InvitationMessageBubble extends StatelessWidget {
   }
 }
 
-class _InviteFieldLabel extends StatelessWidget {
-  final IconData icon;
-  final String text;
-
-  const _InviteFieldLabel({
-    required this.icon,
-    required this.text,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, color: const Color(0xFF4A5568), size: 16),
-        const SizedBox(width: 8),
-        Text(
-          text,
-          style: const TextStyle(
-            color: Color(0xFF4A5568),
-            fontSize: 13,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 class _FriendRequestCard extends StatelessWidget {
   final CommunityFriendRequest request;
   final VoidCallback onAccept;
@@ -4259,10 +4388,10 @@ class _FriendRequestCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: _friendCardDecoration,
+      decoration: communityCardDecoration(),
       child: Row(
         children: [
-          _DarkInitialAvatar(initial: request.sender.initial),
+          CommunityAvatar(initial: request.sender.initial),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -4278,7 +4407,7 @@ class _FriendRequestCard extends StatelessWidget {
                 ),
                 const Text(
                   '想與你成為好友',
-                  style: _friendMetaStyle,
+                  style: communityMetaStyle,
                 ),
                 const SizedBox(height: 12),
                 Row(
@@ -4322,10 +4451,10 @@ class _PendingFriendCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: _friendCardDecoration,
+      decoration: communityCardDecoration(),
       child: Row(
         children: [
-          _DarkInitialAvatar(
+          CommunityAvatar(
             initial: request.receiver.initial,
           ),
           const SizedBox(width: 12),
@@ -4351,7 +4480,7 @@ class _PendingFriendCard extends StatelessWidget {
                     SizedBox(width: 4),
                     Text(
                       '請求待處理',
-                      style: _friendMetaStyle,
+                      style: communityMetaStyle,
                     ),
                   ],
                 ),
@@ -4385,10 +4514,10 @@ class _SuggestionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: _friendCardDecoration,
+      decoration: communityCardDecoration(),
       child: Row(
         children: [
-          _DarkInitialAvatar(initial: initial),
+          CommunityAvatar(initial: initial),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -4404,7 +4533,7 @@ class _SuggestionCard extends StatelessWidget {
                 ),
                 Text(
                   '$mutualFriends mutual friends',
-                  style: _friendMetaStyle,
+                  style: communityMetaStyle,
                 ),
               ],
             ),
@@ -4416,28 +4545,6 @@ class _SuggestionCard extends StatelessWidget {
             onTap: onAdd,
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _DarkInitialAvatar extends StatelessWidget {
-  final String initial;
-
-  const _DarkInitialAvatar({required this.initial});
-
-  @override
-  Widget build(BuildContext context) {
-    return CircleAvatar(
-      radius: 20,
-      backgroundColor: Colors.black,
-      child: Text(
-        initial,
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 15,
-          fontWeight: FontWeight.w900,
-        ),
       ),
     );
   }
@@ -4463,7 +4570,7 @@ class _SmallFriendButton extends StatelessWidget {
       height: 38,
       child: TextButton.icon(
         onPressed: onTap,
-        style: _friendButtonStyle(isPrimary),
+        style: communityButtonStyle(isPrimary),
         icon: Icon(icon, size: 13),
         label: Text(
           label,
@@ -4504,43 +4611,15 @@ class _WideFriendButton extends StatelessWidget {
       child: icon == null
           ? TextButton(
               onPressed: onTap,
-              style: _friendButtonStyle(isPrimary),
+              style: communityButtonStyle(isPrimary),
               child: text,
             )
           : TextButton.icon(
               onPressed: onTap,
-              style: _friendButtonStyle(isPrimary),
+              style: communityButtonStyle(isPrimary),
               icon: Icon(icon, size: 15),
               label: text,
             ),
-    );
-  }
-}
-
-class _IconSquareButton extends StatelessWidget {
-  final IconData icon;
-  final VoidCallback onTap;
-
-  const _IconSquareButton({
-    required this.icon,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 34,
-      height: 38,
-      child: TextButton(
-        onPressed: onTap,
-        style: TextButton.styleFrom(
-          backgroundColor: const Color(0xFFF1F5F9),
-          foregroundColor: const Color(0xFF4A5568),
-          padding: EdgeInsets.zero,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-        child: Icon(icon, size: 17),
-      ),
     );
   }
 }
@@ -4575,66 +4654,12 @@ class _GoalAdjustButton extends StatelessWidget {
   }
 }
 
-class _EmptyState extends StatelessWidget {
-  final String text;
-
-  const _EmptyState({required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: _friendCardDecoration,
-      child: Text(text, style: _friendMetaStyle),
-    );
-  }
-}
-
-ButtonStyle _friendButtonStyle(bool isPrimary) {
-  return TextButton.styleFrom(
-    backgroundColor: isPrimary ? Colors.black : const Color(0xFFF1F5F9),
-    foregroundColor: isPrimary ? Colors.white : const Color(0xFF4A5568),
-    padding: const EdgeInsets.symmetric(horizontal: 8),
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-  );
-}
-
-BoxDecoration get _friendCardDecoration {
-  return BoxDecoration(
-    color: Colors.white,
-    borderRadius: BorderRadius.circular(12),
-    border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
-  );
-}
-
-const TextStyle _friendMetaStyle = TextStyle(
-  color: Color(0xFF718096),
-  fontSize: 11,
-  fontWeight: FontWeight.w700,
-);
-
-String _groupMetricUnit(String exerciseType) {
-  switch (exerciseType) {
-    case 'mixed':
-      return '次活動';
-    case 'squat':
-      return '次深蹲';
-    case 'slow_jogging':
-    default:
-      return '次慢跑';
-  }
-}
-
-String _groupWeeklyGoalLabel(
-  String exerciseType,
-  int current,
-  int target,
-) {
-  return '$current/$target ${_groupMetricUnit(exerciseType)}';
-}
-
 class _GroupsPanel extends StatefulWidget {
   final VoidCallback onBack;
+  final GroupStore groupStore;
+  final FriendStore friendStore;
+  final GroupInvitationStore groupInvitationStore;
+  final ValueChanged<CommunityGroup> onGroupDetailTap;
   final ValueChanged<_RunInviteFriend> onMessageTap;
   final void Function(_RunInviteFriend friend, String message) onSystemMessage;
   final void Function(
@@ -4648,6 +4673,10 @@ class _GroupsPanel extends StatefulWidget {
   const _GroupsPanel({
     super.key,
     required this.onBack,
+    required this.groupStore,
+    required this.friendStore,
+    required this.groupInvitationStore,
+    required this.onGroupDetailTap,
     required this.onMessageTap,
     required this.onSystemMessage,
     required this.onScheduleEventReminder,
@@ -4657,128 +4686,178 @@ class _GroupsPanel extends StatefulWidget {
   State<_GroupsPanel> createState() => _GroupsPanelState();
 }
 
+class _BackendInvitationBubble extends StatelessWidget {
+  final CommunityRunInvitation invitation;
+  final bool isMine;
+  final Future<bool> Function()? onAccept;
+  final Future<bool> Function()? onReject;
+  final Future<bool> Function()? onCancel;
+
+  const _BackendInvitationBubble({
+    required this.invitation,
+    required this.isMine,
+    this.onAccept,
+    this.onReject,
+    this.onCancel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final scheduled = invitation.scheduledAt.toLocal();
+
+    final date =
+        '${scheduled.year}/${scheduled.month.toString().padLeft(2, '0')}/${scheduled.day.toString().padLeft(2, '0')}';
+
+    final time =
+        '${scheduled.hour.toString().padLeft(2, '0')}:${scheduled.minute.toString().padLeft(2, '0')}';
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: isMine ? const Color(0xFFF3F4F6) : Colors.white,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: const Color(0xFFE2E8F0),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Row(
+            children: [
+              Icon(
+                Icons.directions_run,
+                size: 17,
+              ),
+              SizedBox(width: 8),
+              Text(
+                '跑步邀請',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            '日期：$date',
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '時間：$time',
+          ),
+          if (invitation.targetDistanceKm != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              '距離：${invitation.targetDistanceKm} km',
+            ),
+          ],
+          if (invitation.targetDurationMinutes != null) ...[
+            const SizedBox(height: 4),
+            Text(
+              '時長：${invitation.targetDurationMinutes} 分鐘',
+            ),
+          ],
+          if (invitation.notes.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(invitation.notes),
+          ],
+          const SizedBox(height: 10),
+          if (!isMine && invitation.status == 'pending')
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () async {
+                      await onReject?.call();
+                    },
+                    child: const Text(
+                      '拒絕',
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      await onAccept?.call();
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.black,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text(
+                      '接受',
+                    ),
+                  ),
+                ),
+              ],
+            )
+          else if (isMine && invitation.status == 'pending')
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton(
+                onPressed: () async {
+                  await onCancel?.call();
+                },
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFFDC2626),
+                  side: const BorderSide(
+                    color: Color(0xFFFCA5A5),
+                  ),
+                ),
+                child: const Text(
+                  '取消邀請',
+                  style: TextStyle(
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+              ),
+            )
+          else
+            Text(
+              _runInvitationStatusText(
+                invitation.status,
+              ),
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+String _runInvitationStatusText(
+  String status,
+) {
+  switch (status) {
+    case 'accepted':
+      return '已接受';
+
+    case 'rejected':
+      return '已拒絕';
+
+    case 'cancelled':
+      return '已取消';
+
+    case 'pending':
+    default:
+      return '等待回覆';
+  }
+}
+
 class _GroupsPanelState extends State<_GroupsPanel> {
   static const String _currentUserName = 'Catherine';
-  static const int _maxGroupMembers = 30;
   int _selectedTab = 0;
   bool _isCreateGroupOpen = false;
   final TextEditingController _groupNameController = TextEditingController();
   final TextEditingController _groupDescriptionController =
       TextEditingController();
   bool _createPrivateGroup = false;
-  final List<_RunInviteFriend> _availableInviteFriends =
-      List<_RunInviteFriend>.from(_sharedFriendsSeed);
-  final List<_MyGroup> _myGroups = [
-    const _MyGroup(
-      ownerName: 'Lamei',
-      ownerInitial: 'L',
-      name: 'Morning Runners Club',
-      description: '喜歡日出慢跑的晨跑夥伴',
-      members: 24,
-      runs: 856,
-      weeklyGoalCurrent: 32,
-      weeklyGoalTarget: 50,
-      progressText: '32/50 次慢跑',
-      progress: 0.64,
-      isPrivate: false,
-      exerciseType: 'mixed',
-      showCrown: true,
-      showSettings: true,
-      memberPreview: [
-        _GroupMember(
-          initial: 'L',
-          name: 'Lamei',
-          badge: '👑',
-          totalRuns: 145,
-          runsThisWeek: 5,
-          totalSquats: 82,
-          squatsThisWeek: 3,
-          joinedDate: '2024/1/15',
-          canMessage: false,
-        ),
-        _GroupMember(
-          initial: 'A',
-          name: 'Sarah Chen',
-          totalRuns: 98,
-          runsThisWeek: 4,
-          totalSquats: 54,
-          squatsThisWeek: 2,
-          joinedDate: '2024/1/20',
-        ),
-        _GroupMember(
-          initial: 'M',
-          name: 'Mike Johnson',
-          totalRuns: 87,
-          runsThisWeek: 3,
-          totalSquats: 41,
-          squatsThisWeek: 1,
-          joinedDate: '2024/2/1',
-        ),
-        _GroupMember(
-          initial: 'E',
-          name: 'Emma Wilson',
-          totalRuns: 112,
-          runsThisWeek: 6,
-          totalSquats: 67,
-          squatsThisWeek: 4,
-          joinedDate: '2024/1/25',
-        ),
-      ],
-      activities: [
-        _GroupActivityEntry(
-          title: '日出跑步',
-          subtitle: '6名成員參加了今天的早晨活動',
-          timestamp: '今天',
-        ),
-        _GroupActivityEntry(
-          title: '每週目標更新',
-          subtitle: '本週群組達成32次跑步',
-          timestamp: '2h ago',
-        ),
-      ],
-    ),
-    const _MyGroup(
-      ownerName: 'Catherine',
-      ownerInitial: 'C',
-      name: 'City Park Joggers',
-      description: '每週固定相約一起運動',
-      members: 18,
-      runs: 432,
-      weeklyGoalCurrent: 32,
-      weeklyGoalTarget: 30,
-      progressText: '32/30 次慢跑',
-      progress: 1,
-      isPrivate: false,
-      exerciseType: 'mixed',
-      memberPreview: [
-        _GroupMember(
-          initial: 'C',
-          name: 'Catherine',
-          totalRuns: 67,
-          runsThisWeek: 4,
-          totalSquats: 36,
-          squatsThisWeek: 2,
-          joinedDate: '2024/2/12',
-        ),
-        _GroupMember(
-          initial: 'R',
-          name: 'Ryan',
-          totalRuns: 80,
-          runsThisWeek: 5,
-          totalSquats: 45,
-          squatsThisWeek: 3,
-          joinedDate: '2024/1/20',
-        ),
-      ],
-      activities: [
-        _GroupActivityEntry(
-          title: '中央公園集合',
-          subtitle: '週六跑步活動開放報名中',
-          timestamp: '昨天',
-        ),
-      ],
-    ),
-  ];
   final List<_DiscoverGroup> _discoverGroups = [
     const _DiscoverGroup(
       name: 'Weekend Warriors',
@@ -4794,11 +4873,27 @@ class _GroupsPanelState extends State<_GroupsPanel> {
     ),
   ];
 
+  String _groupSearchKeyword = '';
+
   @override
   void dispose() {
     _groupNameController.dispose();
     _groupDescriptionController.dispose();
     super.dispose();
+  }
+
+  void _searchGroups(String keyword) {
+    _groupSearchKeyword = keyword.trim();
+
+    if (_selectedTab == 0) {
+      widget.groupStore.loadGroups(
+        search: _groupSearchKeyword,
+      );
+    } else {
+      widget.groupStore.loadDiscoverGroups(
+        search: _groupSearchKeyword,
+      );
+    }
   }
 
   void openCreateGroup() {
@@ -4821,175 +4916,105 @@ class _GroupsPanelState extends State<_GroupsPanel> {
     });
   }
 
-  void _createGroup() {
+  Future<void> _createGroup() async {
     final name = _groupNameController.text.trim();
     final description = _groupDescriptionController.text.trim();
+
     if (name.isEmpty || description.isEmpty) {
       return;
     }
 
-    setState(() {
-      _myGroups.insert(
-        0,
-        _MyGroup(
-          ownerName: _currentUserName,
-          ownerInitial: 'C',
-          name: name,
-          description: description,
-          members: 1,
-          runs: 0,
-          weeklyGoalCurrent: 0,
-          weeklyGoalTarget: 20,
-          progressText: '0/20 次活動',
-          progress: 0,
-          isPrivate: _createPrivateGroup,
-          exerciseType: 'mixed',
-          memberPreview: const [
-            _GroupMember(
-              initial: 'C',
-              name: 'Catherine',
-              totalRuns: 0,
-              runsThisWeek: 0,
-              totalSquats: 0,
-              squatsThisWeek: 0,
-              joinedDate: '今天',
-              canMessage: false,
-            ),
-          ],
-          activities: const [
-            _GroupActivityEntry(
-              title: '群組已建立',
-              subtitle: '歡迎來到你的新運動群組',
-              timestamp: '剛剛',
-            ),
-          ],
-        ),
-      );
-      if (!_createPrivateGroup) {
-        _discoverGroups.insert(
-          0,
-          _DiscoverGroup(
-            name: name,
-            description: description,
-            members: 1,
-            isPrivate: false,
-            joined: true,
-            exerciseType: 'mixed',
-          ),
-        );
-      }
-      _selectedTab = 0;
-    });
-
-    _closeCreateGroup();
-    _showMessage('已建立群組「$name」');
-  }
-
-  void _viewGroup(_MyGroup group) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => _GroupDetailScreen(
-          group: group,
-          onGroupUpdated: _updateGroup,
-          onMessageTap: widget.onMessageTap,
-          inviteableFriends: _availableInviteFriends,
-          onInviteFriend: _inviteFriendToGroup,
-          onRequestInvite: _requestFriendForGroup,
-          onLeaveGroup: () => _leaveGroup(group),
-          onScheduleEventReminder: widget.onScheduleEventReminder,
-        ),
-      ),
+    final success = await widget.groupStore.createGroup(
+      name: name,
+      description: description,
+      isPrivate: _createPrivateGroup,
+      exerciseType: 'mixed',
+      weeklyGoalTarget: 20,
     );
-  }
 
-  void _updateGroup(_MyGroup updatedGroup) {
-    setState(() {
-      final index =
-          _myGroups.indexWhere((item) => item.name == updatedGroup.name);
-      if (index != -1) {
-        _myGroups[index] = updatedGroup;
-      }
-
-      final discoverIndex =
-          _discoverGroups.indexWhere((item) => item.name == updatedGroup.name);
-      if (discoverIndex != -1) {
-        _discoverGroups[discoverIndex] =
-            _discoverGroups[discoverIndex].copyWith(
-          exerciseType: updatedGroup.exerciseType,
-        );
-      }
-    });
-  }
-
-  void _leaveGroup(_MyGroup group) {
-    setState(() {
-      _myGroups.removeWhere((item) => item.name == group.name);
-
-      final discoverIndex =
-          _discoverGroups.indexWhere((item) => item.name == group.name);
-      if (discoverIndex != -1) {
-        final discoverGroup = _discoverGroups[discoverIndex];
-        _discoverGroups[discoverIndex] = discoverGroup.copyWith(
-          joined: false,
-          requestSent: false,
-          members: (discoverGroup.members - 1).clamp(0, _maxGroupMembers),
-        );
-      }
-    });
-
-    _showMessage('你已退出 ${group.name}');
-  }
-
-  _MyGroup _inviteFriendToGroup(_MyGroup group, _RunInviteFriend friend) {
-    if (group.members >= _maxGroupMembers) {
-      _showMessage('${group.name} 已達 30 人上限');
-      return group;
+    if (!mounted) {
+      return;
     }
 
-    final updatedGroup = group.copyWith(
-      activities: [
-        _GroupActivityEntry(
-          title: '已邀請 ${friend.name}',
-          subtitle: '等待對方接受群組邀請',
-          timestamp: '剛剛',
-        ),
-        ...group.activities,
-      ],
+    if (!success) {
+      _showMessage(
+        widget.groupStore.errorMessage ?? '建立群組失敗',
+      );
+      return;
+    }
+
+    _selectedTab = 0;
+
+    _closeCreateGroup();
+
+    _showMessage(
+      '已建立群組「$name」',
+    );
+  }
+
+  Future<void> _respondGroupInvitation(
+    CommunityGroupInvitation invitation,
+    bool accept,
+  ) async {
+    final success = await widget.groupInvitationStore.respondInvitation(
+      invitationId: invitation.id,
+      accept: accept,
     );
 
-    setState(() {
-      final index = _myGroups.indexWhere((item) => item.name == group.name);
-      if (index != -1) {
-        _myGroups[index] = updatedGroup;
+    if (!mounted) {
+      return;
+    }
+
+    if (!success) {
+      _showMessage(
+        widget.groupInvitationStore.errorMessage ?? '群組邀請處理失敗',
+      );
+      return;
+    }
+
+    if (accept) {
+      await widget.groupStore.loadGroups();
+
+      if (!mounted) {
+        return;
       }
-    });
 
-    widget.onSystemMessage(
-      friend,
-      '$_currentUserName 邀請你加入「${group.name}」，等待你接受邀請後才會正式加入。',
-    );
-    _showMessage('已送出邀請給 ${friend.name}，等待對方同意');
-    return updatedGroup;
+      _showMessage(
+        '已加入「${invitation.groupName}」',
+      );
+    } else {
+      _showMessage(
+        '已拒絕「${invitation.groupName}」的邀請',
+      );
+    }
   }
 
-  void _requestFriendForGroup(_MyGroup group, _RunInviteFriend friend) {
-    final ownerThread = _RunInviteFriend(
-      initial: group.ownerInitial,
-      name: group.ownerName,
-      runsTogether: 0,
-      streak: 0,
-      lastRun: '群組聊天',
+  Future<void> _viewBackendGroup(
+    CommunityGroup group,
+  ) async {
+    final success = await widget.groupStore.loadGroup(
+      group.id,
     );
 
-    widget.onSystemMessage(
-      ownerThread,
-      '$_currentUserName requested to add ${friend.name} to "${group.name}". Please review this member invite request.',
-    );
-    _showMessage('已送出邀請請求給 ${group.ownerName}');
-  }
+    if (!mounted) {
+      return;
+    }
 
-  void _openGroupSettings(String name) {
-    _showMessage('已開啟 $name 的設定');
+    if (!success) {
+      _showMessage(
+        widget.groupStore.errorMessage ?? '群組資料載入失敗',
+      );
+      return;
+    }
+
+    final detail = widget.groupStore.selectedGroup;
+
+    if (detail == null) {
+      _showMessage('群組資料載入失敗');
+      return;
+    }
+
+    widget.onGroupDetailTap(detail);
   }
 
   void _requestGroup(_DiscoverGroup group) {
@@ -5007,6 +5032,8 @@ class _GroupsPanelState extends State<_GroupsPanel> {
 
   @override
   Widget build(BuildContext context) {
+    final groupInvitations = widget.groupInvitationStore.pendingInvitations;
+
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 14, 18, 24),
       children: [
@@ -5048,11 +5075,49 @@ class _GroupsPanelState extends State<_GroupsPanel> {
             ),
           ],
         ),
+        if (groupInvitations.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          CommunitySectionLabel(
+            '待處理邀請 (${groupInvitations.length})',
+          ),
+          const SizedBox(height: 12),
+          ...List.generate(
+            groupInvitations.length,
+            (index) {
+              final invitation = groupInvitations[index];
+
+              return Padding(
+                padding: EdgeInsets.only(
+                  bottom: index == groupInvitations.length - 1 ? 0 : 12,
+                ),
+                child: GroupInvitationCard(
+                  invitation: invitation,
+                  isResponding: widget.groupInvitationStore.isResponding,
+                  onAccept: () {
+                    _respondGroupInvitation(
+                      invitation,
+                      true,
+                    );
+                  },
+                  onReject: () {
+                    _respondGroupInvitation(
+                      invitation,
+                      false,
+                    );
+                  },
+                ),
+              );
+            },
+          ),
+          const SizedBox(height: 8),
+        ],
         const SizedBox(height: 14),
-        const Row(
+        Row(
           children: [
             Expanded(
-              child: _GroupSearchField(),
+              child: _GroupSearchField(
+                onChanged: _searchGroups,
+              ),
             ),
           ],
         ),
@@ -5060,25 +5125,33 @@ class _GroupsPanelState extends State<_GroupsPanel> {
         Row(
           children: [
             Expanded(
-              child: _GroupTabButton(
-                label: '我的群組 (${_myGroups.length})',
+              child: GroupTabButton(
+                label: '我的群組 (${widget.groupStore.groups.length})',
                 isSelected: _selectedTab == 0,
                 onTap: () {
                   setState(() {
                     _selectedTab = 0;
                   });
+
+                  widget.groupStore.loadGroups(
+                    search: _groupSearchKeyword,
+                  );
                 },
               ),
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: _GroupTabButton(
+              child: GroupTabButton(
                 label: '探索',
                 isSelected: _selectedTab == 1,
                 onTap: () {
                   setState(() {
                     _selectedTab = 1;
                   });
+
+                  widget.groupStore.loadDiscoverGroups(
+                    search: _groupSearchKeyword,
+                  );
                 },
               ),
             ),
@@ -5101,103 +5174,194 @@ class _GroupsPanelState extends State<_GroupsPanel> {
           ),
         ],
         const SizedBox(height: 14),
-        _SectionLabel(
-            _selectedTab == 0 ? '我的群組 (${_myGroups.length})' : '推薦群組'),
+        CommunitySectionLabel(
+          _selectedTab == 0
+              ? '我的群組 (${widget.groupStore.groups.length})'
+              : '推薦群組',
+        ),
         const SizedBox(height: 12),
         if (_selectedTab == 0) ...[
-          if (_myGroups.isEmpty)
-            const _EmptyState(text: '目前還沒有群組。')
+          if (widget.groupStore.isLoading && widget.groupStore.groups.isEmpty)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else if (widget.groupStore.groups.isEmpty)
+            const CommunityEmptyState(
+              text: '目前還沒有群組。',
+            )
           else
-            ...List.generate(_myGroups.length, (index) {
-              final group = _myGroups[index];
-              return Padding(
-                padding: EdgeInsets.only(
-                    bottom: index == _myGroups.length - 1 ? 0 : 12),
-                child: _GroupCard(
-                  name: group.name,
-                  description: group.description,
-                  members: group.members,
-                  weeklyGoalCurrent: group.weeklyGoalCurrent,
-                  weeklyGoalTarget: group.weeklyGoalTarget,
-                  progress: group.progress,
-                  actionLabel: '查看群組',
-                  isPrivate: group.isPrivate,
-                  exerciseType: group.exerciseType,
-                  showCrown:
-                      group.ownerName == _GroupsPanelState._currentUserName,
-                  showSettings: group.showSettings,
-                  onActionTap: () => _viewGroup(group),
-                  onSettingsTap: group.showSettings
-                      ? () => _openGroupSettings(group.name)
-                      : null,
-                ),
-              );
-            }),
+            ...List.generate(
+              widget.groupStore.groups.length,
+              (index) {
+                final group = widget.groupStore.groups[index];
+
+                return Padding(
+                  padding: EdgeInsets.only(
+                    bottom:
+                        index == widget.groupStore.groups.length - 1 ? 0 : 12,
+                  ),
+                  child: _GroupCard(
+                    name: group.name,
+                    description: group.description,
+                    members: group.memberCount,
+
+                    // 目前尚未串 TrainingLog 群組統計
+                    weeklyGoalCurrent: 0,
+
+                    weeklyGoalTarget: group.weeklyGoalTarget,
+
+                    progress: 0,
+
+                    actionLabel: '查看群組',
+
+                    isPrivate: group.isPrivate,
+
+                    exerciseType: group.exerciseType,
+
+                    showCrown: group.owner.id == UserSession.memberId,
+
+                    showSettings: false,
+
+                    onActionTap: () {
+                      _viewBackendGroup(group);
+                    },
+                  ),
+                );
+              },
+            ),
         ] else ...[
-          if (_discoverGroups.isEmpty)
-            const _EmptyState(text: '目前沒有推薦群組。')
+          if (widget.groupStore.isLoading &&
+              widget.groupStore.discoverGroups.isEmpty)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else if (widget.groupStore.discoverGroups.isEmpty)
+            const CommunityEmptyState(
+              text: '目前沒有推薦群組。',
+            )
           else
-            ...List.generate(_discoverGroups.length, (index) {
-              final group = _discoverGroups[index];
-              return Padding(
-                padding: EdgeInsets.only(
-                    bottom: index == _discoverGroups.length - 1 ? 0 : 12),
-                child: _SuggestedGroupCard(
-                  name: group.name,
-                  description: group.description,
-                  members: group.members,
-                  actionLabel: group.joined
-                      ? '已加入'
-                      : group.requestSent
-                          ? '已申請'
-                          : '申請加入',
-                  isPrivate: group.isPrivate,
-                  isDisabled: group.joined || group.requestSent,
-                  onTap: group.joined || group.requestSent
-                      ? null
-                      : () => _requestGroup(group),
-                ),
-              );
-            }),
+            ...List.generate(
+              widget.groupStore.discoverGroups.length,
+              (index) {
+                final group = widget.groupStore.discoverGroups[index];
+
+                return Padding(
+                  padding: EdgeInsets.only(
+                    bottom: index == widget.groupStore.discoverGroups.length - 1
+                        ? 0
+                        : 12,
+                  ),
+                  child: _SuggestedGroupCard(
+                    name: group.name,
+                    description: group.description,
+                    members: group.memberCount,
+                    actionLabel: group.isPrivate ? '申請加入' : '加入群組',
+                    isPrivate: group.isPrivate,
+                    isDisabled: false,
+                    onTap: group.isPrivate
+                        ? () async {
+                            final success =
+                                await widget.groupStore.requestJoinGroup(
+                              group.id,
+                            );
+
+                            if (!mounted) {
+                              return;
+                            }
+
+                            if (!success) {
+                              _showMessage(
+                                widget.groupStore.errorMessage ?? '申請加入群組失敗',
+                              );
+                              return;
+                            }
+
+                            _showMessage(
+                              '已送出加入「${group.name}」的申請',
+                            );
+                          }
+                        : () async {
+                            final success = await widget.groupStore.joinGroup(
+                              group.id,
+                            );
+
+                            if (!mounted) {
+                              return;
+                            }
+
+                            if (!success) {
+                              _showMessage(
+                                widget.groupStore.errorMessage ?? '加入群組失敗',
+                              );
+                              return;
+                            }
+
+                            _showMessage(
+                              '已加入「${group.name}」',
+                            );
+                          },
+                  ),
+                );
+              },
+            ),
         ],
       ],
     );
   }
 }
 
-class _GroupTabButton extends StatelessWidget {
-  final String label;
-  final bool isSelected;
-  final VoidCallback onTap;
+class _GroupSearchField extends StatefulWidget {
+  final ValueChanged<String> onChanged;
 
-  const _GroupTabButton({
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
+  const _GroupSearchField({
+    required this.onChanged,
   });
 
   @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 40,
-      child: TextButton(
-        onPressed: onTap,
-        style: TextButton.styleFrom(
-          backgroundColor: isSelected ? Colors.black : const Color(0xFFF1F5F9),
-          foregroundColor: isSelected ? Colors.white : const Color(0xFF4A5568),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        ),
-        child: Text(
-          label,
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900),
-        ),
-      ),
-    );
-  }
+  State<_GroupSearchField> createState() => _GroupSearchFieldState();
 }
 
-class _GroupSearchField extends StatelessWidget {
-  const _GroupSearchField();
+class _GroupSearchFieldState extends State<_GroupSearchField> {
+  final TextEditingController _controller = TextEditingController();
+
+  Timer? _debounce;
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _handleChanged(String value) {
+    setState(() {});
+
+    _debounce?.cancel();
+
+    _debounce = Timer(
+      const Duration(milliseconds: 400),
+      () {
+        widget.onChanged(
+          value.trim(),
+        );
+      },
+    );
+  }
+
+  void _clear() {
+    _debounce?.cancel();
+    _controller.clear();
+
+    widget.onChanged('');
+
+    setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -5206,25 +5370,51 @@ class _GroupSearchField extends StatelessWidget {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+        border: Border.all(
+          color: const Color(0xFFE2E8F0),
+          width: 1.5,
+        ),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      child: const Row(
+      padding: const EdgeInsets.symmetric(
+        horizontal: 14,
+      ),
+      child: Row(
         children: [
-          Icon(Icons.search, color: Color(0xFFA0AEC0), size: 22),
-          SizedBox(width: 10),
+          const Icon(
+            Icons.search,
+            color: Color(0xFFA0AEC0),
+            size: 22,
+          ),
+          const SizedBox(width: 10),
           Expanded(
-            child: Text(
-              '搜尋群組...',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: Color(0xFF718096),
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
+            child: TextField(
+              controller: _controller,
+              onChanged: _handleChanged,
+              decoration: const InputDecoration(
+                hintText: '搜尋群組...',
+                hintStyle: TextStyle(
+                  color: Color(0xFF718096),
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+                border: InputBorder.none,
+                isCollapsed: true,
               ),
             ),
           ),
+          if (_controller.text.isNotEmpty)
+            InkWell(
+              onTap: _clear,
+              borderRadius: BorderRadius.circular(999),
+              child: const Padding(
+                padding: EdgeInsets.all(4),
+                child: Icon(
+                  Icons.close,
+                  color: Color(0xFFA0AEC0),
+                  size: 18,
+                ),
+              ),
+            ),
         ],
       ),
     );
@@ -5505,7 +5695,7 @@ class _SuggestedGroupCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: _friendCardDecoration,
+      decoration: communityCardDecoration(),
       child: Column(
         children: [
           Row(
@@ -5552,7 +5742,7 @@ class _SuggestedGroupCard extends StatelessWidget {
                       description,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: _friendMetaStyle,
+                      style: communityMetaStyle,
                     ),
                     const SizedBox(height: 8),
                     Row(
@@ -5560,7 +5750,7 @@ class _SuggestedGroupCard extends StatelessWidget {
                         const Icon(Icons.people_outline,
                             color: Color(0xFF718096), size: 14),
                         const SizedBox(width: 4),
-                        Text('$members/30 人', style: _friendMetaStyle),
+                        Text('$members/30 人', style: communityMetaStyle),
                       ],
                     ),
                   ],
@@ -5574,7 +5764,7 @@ class _SuggestedGroupCard extends StatelessWidget {
             height: 36,
             child: TextButton.icon(
               onPressed: isDisabled ? null : onTap,
-              style: _friendButtonStyle(true).copyWith(
+              style: communityButtonStyle(true).copyWith(
                 backgroundColor: WidgetStateProperty.resolveWith((states) {
                   if (states.contains(WidgetState.disabled)) {
                     return const Color(0xFF9CA3AF);
@@ -5632,7 +5822,7 @@ class _GroupCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: _friendCardDecoration,
+      decoration: communityCardDecoration(),
       child: Column(
         children: [
           Row(
@@ -5683,7 +5873,7 @@ class _GroupCard extends StatelessWidget {
                       description,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: _friendMetaStyle,
+                      style: communityMetaStyle,
                     ),
                     const SizedBox(height: 7),
                     Row(
@@ -5691,7 +5881,7 @@ class _GroupCard extends StatelessWidget {
                         const Icon(Icons.people_outline,
                             color: Color(0xFF718096), size: 14),
                         const SizedBox(width: 4),
-                        Text('$members/30 人', style: _friendMetaStyle),
+                        Text('$members/30 人', style: communityMetaStyle),
                       ],
                     ),
                   ],
@@ -5707,7 +5897,7 @@ class _GroupCard extends StatelessWidget {
                   height: 36,
                   child: TextButton(
                     onPressed: onActionTap,
-                    style: _friendButtonStyle(true),
+                    style: communityButtonStyle(true),
                     child: Text(
                       actionLabel,
                       style: const TextStyle(
@@ -5720,7 +5910,7 @@ class _GroupCard extends StatelessWidget {
               ),
               if (showSettings) ...[
                 const SizedBox(width: 10),
-                _IconSquareButton(
+                GroupCardIconButton(
                   icon: Icons.settings_outlined,
                   onTap: onSettingsTap ?? () {},
                 ),
@@ -5748,7 +5938,7 @@ class _GroupCard extends StatelessWidget {
                     ),
                     const Spacer(),
                     Text(
-                      _groupWeeklyGoalLabel(
+                      groupWeeklyGoalLabel(
                         exerciseType,
                         weeklyGoalCurrent,
                         weeklyGoalTarget,
@@ -5959,7 +6149,7 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '設定這個群組每週想完成的${_groupMetricUnit(_group.exerciseType)}。',
+                      '設定這個群組每週想完成的${groupMetricUnit(_group.exerciseType)}。',
                       style: const TextStyle(
                         color: Color(0xFF64748B),
                         fontSize: 13,
@@ -6002,7 +6192,7 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
                                 ),
                                 const SizedBox(height: 4),
                                 Text(
-                                  _groupMetricUnit(_group.exerciseType),
+                                  groupMetricUnit(_group.exerciseType),
                                   style: const TextStyle(
                                     color: Color(0xFF64748B),
                                     fontSize: 12,
@@ -6035,7 +6225,7 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
                               (current / selectedTarget).clamp(0.0, 1.0);
                           final updatedGroup = _group.copyWith(
                             weeklyGoalTarget: selectedTarget,
-                            progressText: _groupWeeklyGoalLabel(
+                            progressText: groupWeeklyGoalLabel(
                               _group.exerciseType,
                               current,
                               selectedTarget,
@@ -6173,7 +6363,7 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
 
                     return ListTile(
                       contentPadding: EdgeInsets.zero,
-                      leading: _DarkInitialAvatar(initial: friend.initial),
+                      leading: CommunityAvatar(initial: friend.initial),
                       title: Text(
                         friend.name,
                         style: TextStyle(
@@ -6291,7 +6481,7 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
           children: [
             Container(
               padding: const EdgeInsets.all(18),
-              decoration: _friendCardDecoration,
+              decoration: communityCardDecoration(),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -6359,7 +6549,7 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
                   Row(
                     children: [
                       Expanded(
-                        child: _GroupStatTile(
+                        child: GroupStatTile(
                           label: '成員',
                           value: '${group.members}',
                           icon: Icons.people_outline,
@@ -6422,7 +6612,7 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
                               const SizedBox(width: 6),
                             ],
                             Text(
-                              _groupWeeklyGoalLabel(
+                              groupWeeklyGoalLabel(
                                 group.exerciseType,
                                 group.weeklyGoalCurrent,
                                 group.weeklyGoalTarget,
@@ -6467,7 +6657,7 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
             Row(
               children: [
                 Expanded(
-                  child: _GroupTabButton(
+                  child: GroupTabButton(
                     label: '成員 (${group.memberPreview.length})',
                     isSelected: _selectedTab == 0,
                     onTap: () {
@@ -6479,7 +6669,7 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: _GroupTabButton(
+                  child: GroupTabButton(
                     label: '活動',
                     isSelected: _selectedTab == 1,
                     onTap: () {
@@ -6496,7 +6686,7 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
               height: 46,
               child: TextButton.icon(
                 onPressed: _toggleCreateEvent,
-                style: _friendButtonStyle(true),
+                style: communityButtonStyle(true),
                 icon: const Icon(Icons.play_arrow_rounded, size: 18),
                 label: Text(
                   _isCreateEventOpen ? '隱藏群組活動表單' : '建立群組活動',
@@ -6509,7 +6699,7 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
             ),
             if (_isCreateEventOpen) ...[
               const SizedBox(height: 12),
-              _CreateGroupRunEventForm(
+              GroupActivityForm(
                 titleController: _eventTitleController,
                 dateController: _eventDateController,
                 notesController: _eventNotesController,
@@ -6533,7 +6723,7 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
             const SizedBox(height: 14),
             if (_selectedTab == 0) ...[
               if (group.memberPreview.isEmpty)
-                const _EmptyState(text: '目前沒有成員可顯示。')
+                const CommunityEmptyState(text: '目前沒有成員可顯示。')
               else
                 ...group.memberPreview.map(
                   (member) => Padding(
@@ -6556,7 +6746,7 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
                 ),
             ] else ...[
               if (group.activities.isEmpty)
-                const _EmptyState(text: '目前沒有最近的活動。')
+                const CommunityEmptyState(text: '目前沒有最近的活動。')
               else
                 ...group.activities.map(
                   (activity) => Padding(
@@ -6567,59 +6757,6 @@ class _GroupDetailScreenState extends State<_GroupDetailScreen> {
             ],
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _GroupStatTile extends StatelessWidget {
-  final String label;
-  final String value;
-  final IconData icon;
-
-  const _GroupStatTile({
-    required this.label,
-    required this.value,
-    required this.icon,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(icon, size: 14, color: const Color(0xFF94A3B8)),
-              const SizedBox(width: 5),
-              Text(
-                label,
-                style: const TextStyle(
-                  color: Color(0xFF64748B),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: const TextStyle(
-              color: Colors.black,
-              fontSize: 31,
-              fontWeight: FontWeight.w900,
-              height: 1,
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -6740,7 +6877,7 @@ class _GroupMemberCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: _friendCardDecoration,
+      decoration: communityCardDecoration(),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -6789,14 +6926,14 @@ class _GroupMemberCard extends StatelessWidget {
                     const SizedBox(width: 4),
                     Text(
                       '累積慢跑 ${member.totalRuns} 次',
-                      style: _friendMetaStyle,
+                      style: communityMetaStyle,
                     ),
                     const SizedBox(width: 12),
                     const Icon(Icons.calendar_today_outlined,
                         size: 14, color: Color(0xFF718096)),
                     const SizedBox(width: 4),
                     Text('本週 ${member.runsThisWeek} 次',
-                        style: _friendMetaStyle),
+                        style: communityMetaStyle),
                   ],
                 ),
                 const SizedBox(height: 4),
@@ -6807,14 +6944,14 @@ class _GroupMemberCard extends StatelessWidget {
                     const SizedBox(width: 4),
                     Text(
                       '累積深蹲 ${member.totalSquats} 次',
-                      style: _friendMetaStyle,
+                      style: communityMetaStyle,
                     ),
                     const SizedBox(width: 12),
                     const Icon(Icons.calendar_today_outlined,
                         size: 14, color: Color(0xFF718096)),
                     const SizedBox(width: 4),
                     Text('本週 ${member.squatsThisWeek} 次',
-                        style: _friendMetaStyle),
+                        style: communityMetaStyle),
                   ],
                 ),
                 const SizedBox(height: 6),
@@ -6831,7 +6968,7 @@ class _GroupMemberCard extends StatelessWidget {
           ),
           if (onMessageTap != null) ...[
             const SizedBox(width: 10),
-            _IconSquareButton(
+            GroupCardIconButton(
               icon: Icons.chat_bubble_outline_rounded,
               onTap: onMessageTap!,
             ),
@@ -6851,7 +6988,7 @@ class _GroupActivityCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: const EdgeInsets.all(14),
-      decoration: _friendCardDecoration,
+      decoration: communityCardDecoration(),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -6897,241 +7034,6 @@ class _GroupActivityCard extends StatelessWidget {
               color: Color(0xFF94A3B8),
               fontSize: 11,
               fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _CreateGroupRunEventForm extends StatelessWidget {
-  final TextEditingController titleController;
-  final TextEditingController dateController;
-  final TextEditingController notesController;
-  final String selectedActivityType;
-  final String? selectedTime;
-  final List<String> timeOptions;
-  final VoidCallback onPickDate;
-  final ValueChanged<String> onActivityTypeSelected;
-  final ValueChanged<String> onTimeSelected;
-  final VoidCallback onCreate;
-
-  const _CreateGroupRunEventForm({
-    required this.titleController,
-    required this.dateController,
-    required this.notesController,
-    required this.selectedActivityType,
-    required this.selectedTime,
-    required this.timeOptions,
-    required this.onPickDate,
-    required this.onActivityTypeSelected,
-    required this.onTimeSelected,
-    required this.onCreate,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final canCreate = titleController.text.trim().isNotEmpty &&
-        dateController.text.trim().isNotEmpty &&
-        selectedTime != null;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: _friendCardDecoration,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            '建立團跑活動',
-            style: TextStyle(
-              color: Colors.black,
-              fontSize: 16,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 18),
-          const _InviteFieldLabel(
-            icon: Icons.flag_outlined,
-            text: '活動標題',
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: titleController,
-            decoration: InputDecoration(
-              hintText: '例如：早晨訓練',
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-              ),
-            ),
-            onChanged: (_) => (context as Element).markNeedsBuild(),
-          ),
-          const SizedBox(height: 18),
-          const _InviteFieldLabel(
-            icon: Icons.sports_gymnastics_outlined,
-            text: '活動類型',
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: _groupExerciseOptions
-                .where((option) => option.value != 'mixed')
-                .map((option) {
-              final isSelected = selectedActivityType == option.value;
-              return Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(
-                    right: option.value == 'slow_jogging' ? 10 : 0,
-                  ),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(14),
-                    onTap: () => onActivityTypeSelected(option.value),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 14,
-                      ),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                          color: isSelected
-                              ? Colors.black
-                              : const Color(0xFFE2E8F0),
-                          width: isSelected ? 2 : 1.2,
-                        ),
-                        color:
-                            isSelected ? const Color(0xFFF8FAFC) : Colors.white,
-                      ),
-                      child: Column(
-                        children: [
-                          Icon(option.icon, color: Colors.black, size: 20),
-                          const SizedBox(height: 6),
-                          Text(
-                            option.label,
-                            style: const TextStyle(
-                              color: Colors.black,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 18),
-          const _InviteFieldLabel(
-            icon: Icons.calendar_today_outlined,
-            text: '選擇日期',
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: dateController,
-            readOnly: true,
-            onTap: onPickDate,
-            decoration: InputDecoration(
-              hintText: '年 / 月 / 日',
-              suffixIcon: IconButton(
-                onPressed: onPickDate,
-                icon: const Icon(Icons.calendar_today_outlined, size: 20),
-              ),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-              ),
-            ),
-            onChanged: (_) => (context as Element).markNeedsBuild(),
-          ),
-          const SizedBox(height: 18),
-          const _InviteFieldLabel(
-            icon: Icons.access_time_outlined,
-            text: '選擇時間',
-          ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: timeOptions.map((time) {
-              final isSelected = selectedTime == time;
-              return ChoiceChip(
-                label: Text(time),
-                selected: isSelected,
-                onSelected: (_) => onTimeSelected(time),
-                labelStyle: TextStyle(
-                  color: isSelected ? Colors.white : const Color(0xFF4A5568),
-                  fontWeight: FontWeight.w800,
-                  fontSize: 12,
-                ),
-                selectedColor: Colors.black,
-                backgroundColor: const Color(0xFFF1F5F9),
-                side: BorderSide.none,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 18),
-          const _InviteFieldLabel(
-            icon: Icons.edit_note_outlined,
-            text: '額外備註（選填）',
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: notesController,
-            maxLines: 4,
-            decoration: InputDecoration(
-              hintText: '新增配速、距離或集合指示...',
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(14),
-                borderSide: const BorderSide(color: Color(0xFFE2E8F0)),
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: canCreate ? onCreate : null,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.black,
-                disabledBackgroundColor: const Color(0xFFBDBDBD),
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-              icon: const Icon(Icons.send_outlined, size: 18),
-              label: const Text(
-                '建立活動',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
             ),
           ),
         ],
@@ -7330,8 +7232,12 @@ class _GroupsButton extends StatelessWidget {
 
 class _FriendRequestsButton extends StatelessWidget {
   final VoidCallback onTap;
+  final int count;
 
-  const _FriendRequestsButton({required this.onTap});
+  const _FriendRequestsButton({
+    required this.onTap,
+    required this.count,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -7345,27 +7251,28 @@ class _FriendRequestsButton extends StatelessWidget {
           children: [
             const Icon(Icons.person_add_alt_1_outlined,
                 color: Color(0xFF4A5568), size: 24),
-            Positioned(
-              right: -2,
-              top: -5,
-              child: Container(
-                width: 17,
-                height: 17,
-                decoration: const BoxDecoration(
-                  color: Color(0xFFE53E3E),
-                  shape: BoxShape.circle,
-                ),
-                alignment: Alignment.center,
-                child: const Text(
-                  '2',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
+            if (count > 0)
+              Positioned(
+                right: -2,
+                top: -5,
+                child: Container(
+                  width: 17,
+                  height: 17,
+                  decoration: const BoxDecoration(
+                    color: Color(0xFFE53E3E),
+                    shape: BoxShape.circle,
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    '$count',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
               ),
-            ),
           ],
         ),
       ),
@@ -7802,11 +7709,11 @@ class _ProfilePostCard extends StatelessWidget {
           ),
           if (post.plan != null) ...[
             const SizedBox(height: 12),
-            _WorkoutPlanCard(plan: post.plan!),
+            WorkoutPlanCard(plan: post.plan!),
           ],
           if (post.recipe != null) ...[
             const SizedBox(height: 12),
-            _RecipeCard(recipe: post.recipe!),
+            RecipeCard(recipe: post.recipe!),
           ],
           if (post.tags.isNotEmpty) ...[
             const SizedBox(height: 12),
@@ -8190,7 +8097,7 @@ class _CommentsSheetState extends State<_CommentsSheet> {
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              _Avatar(
+                              CommunityAvatar(
                                 initial: initial.isEmpty ? 'U' : initial,
                               ),
                               const SizedBox(width: 10),

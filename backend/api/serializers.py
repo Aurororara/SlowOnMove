@@ -1,9 +1,14 @@
 from rest_framework import serializers
+from django.utils import timezone
+from django.db.models import Q
 from core.models import (
     Member, BodyRecord, BloodPressureRecord, BoardRanking, CommunityPost, Favorite, TrainingLog,
     PostLike, PostComment, PostReport, PoseAnalysis, PointTransaction,
     PostTag, PostWorkoutPlan, PostWorkoutPlanStep,
-    Task, MemberTask, Badge, MemberBadge, WorkoutMenu, WorkoutItem,FriendRequest,Friendship,
+    Task, MemberTask, Badge, MemberBadge, WorkoutMenu, WorkoutItem,FriendRequest,Friendship, ChatMessage, RunInvitation,
+    CommunityGroup, CommunityGroupMember, CommunityGroupInvitation,
+    CommunityGroupActivity,
+    CommunityGroupJoinRequest,
 )
 
 class MemberSerializer(serializers.ModelSerializer):
@@ -188,7 +193,6 @@ class CommunityPostSerializer(serializers.ModelSerializer):
 
 
     def get_time_ago(self, obj):
-        from django.utils import timezone
 
         now = timezone.now()
         diff = now - obj.created_at
@@ -307,6 +311,52 @@ class FriendMemberSerializer(serializers.ModelSerializer):
 
         return name[0].upper()
 
+class FriendSearchSerializer(FriendMemberSerializer):
+    relationship = serializers.SerializerMethodField()
+
+    class Meta(FriendMemberSerializer.Meta):
+        fields = FriendMemberSerializer.Meta.fields + [
+            "relationship",
+        ]
+
+    def get_relationship(self, obj):
+        request = self.context.get("request")
+
+        if request is None:
+            return "none"
+
+        user = request.user
+
+        # 已經是好友
+        is_friend = Friendship.objects.filter(
+            Q(member1=user, member2=obj)
+            | Q(member1=obj, member2=user)
+        ).exists()
+
+        if is_friend:
+            return "friend"
+
+        # 我已送出邀請
+        sent = FriendRequest.objects.filter(
+            sender=user,
+            receiver=obj,
+            status=FriendRequest.STATUS_PENDING,
+        ).exists()
+
+        if sent:
+            return "sent"
+
+        # 對方已邀請我
+        received = FriendRequest.objects.filter(
+            sender=obj,
+            receiver=user,
+            status=FriendRequest.STATUS_PENDING,
+        ).exists()
+
+        if received:
+            return "received"
+
+        return "none"
 
 class FriendRequestSerializer(serializers.ModelSerializer):
     sender = FriendMemberSerializer(read_only=True)
@@ -321,3 +371,268 @@ class FriendRequestSerializer(serializers.ModelSerializer):
             "status",
             "created_at",
         ]
+
+class ChatMessageSerializer(serializers.ModelSerializer):
+    is_mine = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ChatMessage
+        fields = [
+            "id",
+            "sender_id",
+            "receiver_id",
+            "content",
+            "is_mine",
+            "is_read",
+            "created_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "sender_id",
+            "receiver_id",
+            "is_mine",
+            "is_read",
+            "created_at",
+        ]
+
+    def get_is_mine(self, obj):
+        request = self.context.get("request")
+
+        return (
+            request is not None
+            and obj.sender_id == request.user.id
+        )
+
+class RunInvitationSerializer(serializers.ModelSerializer):
+    inviter = FriendMemberSerializer(
+        read_only=True,
+    )
+
+    invitee = FriendMemberSerializer(
+        read_only=True,
+    )
+
+    class Meta:
+        model = RunInvitation
+
+        fields = [
+            "id",
+            "inviter",
+            "invitee",
+            "scheduled_at",
+            "target_distance_km",
+            "target_duration_minutes",
+            "notes",
+            "status",
+            "created_at",
+            "updated_at",
+            "responded_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "inviter",
+            "invitee",
+            "status",
+            "created_at",
+            "updated_at",
+            "responded_at",
+        ]
+
+class CommunityGroupMemberSerializer(serializers.ModelSerializer):
+    member = FriendMemberSerializer(
+        read_only=True,
+    )
+
+    class Meta:
+        model = CommunityGroupMember
+
+        fields = [
+            "id",
+            "member",
+            "joined_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "member",
+            "joined_at",
+        ]
+
+
+class CommunityGroupSerializer(serializers.ModelSerializer):
+    owner = FriendMemberSerializer(
+        read_only=True,
+    )
+
+    member_count = serializers.SerializerMethodField()
+
+    members = CommunityGroupMemberSerializer(
+        source="group_members",
+        many=True,
+        read_only=True,
+    )
+
+    class Meta:
+        model = CommunityGroup
+
+        fields = [
+            "id",
+            "owner",
+            "name",
+            "description",
+            "is_private",
+            "exercise_type",
+            "weekly_goal_target",
+            "member_count",
+            "members",
+            "created_at",
+            "updated_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "owner",
+            "member_count",
+            "members",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_member_count(self, obj):
+        return obj.group_members.count()
+
+class CommunityGroupJoinRequestSerializer(
+    serializers.ModelSerializer
+):
+    requester = FriendMemberSerializer(
+        read_only=True,
+    )
+
+    group_id = serializers.IntegerField(
+        source="group.id",
+        read_only=True,
+    )
+
+    group_name = serializers.CharField(
+        source="group.name",
+        read_only=True,
+    )
+
+    class Meta:
+        model = CommunityGroupJoinRequest
+
+        fields = [
+            "id",
+            "group_id",
+            "group_name",
+            "requester",
+            "status",
+            "created_at",
+            "updated_at",
+            "responded_at",
+        ]
+
+        read_only_fields = fields
+
+
+class CommunityGroupInvitationSerializer(serializers.ModelSerializer):
+    inviter = FriendMemberSerializer(
+        read_only=True,
+    )
+
+    invitee = FriendMemberSerializer(
+        read_only=True,
+    )
+
+    group_id = serializers.IntegerField(
+        source="group.id",
+        read_only=True,
+    )
+
+    group_name = serializers.CharField(
+        source="group.name",
+        read_only=True,
+    )
+
+    class Meta:
+        model = CommunityGroupInvitation
+
+        fields = [
+            "id",
+            "group_id",
+            "group_name",
+            "inviter",
+            "invitee",
+            "status",
+            "created_at",
+            "updated_at",
+            "responded_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "group_id",
+            "group_name",
+            "inviter",
+            "invitee",
+            "status",
+            "created_at",
+            "updated_at",
+            "responded_at",
+        ]
+
+class CommunityGroupActivitySerializer(serializers.ModelSerializer):
+    creator = FriendMemberSerializer(
+        read_only=True,
+    )
+
+    group_id = serializers.IntegerField(
+        source="group.id",
+        read_only=True,
+    )
+
+    participant_count = serializers.SerializerMethodField()
+
+    is_joined = serializers.SerializerMethodField()
+
+    class Meta:
+        model = CommunityGroupActivity
+
+        fields = [
+            "id",
+            "group_id",
+            "creator",
+            "title",
+            "exercise_type",
+            "scheduled_at",
+            "notes",
+            "participant_count",
+            "is_joined",
+            "created_at",
+            "updated_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "group_id",
+            "creator",
+            "participant_count",
+            "is_joined",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_participant_count(self, obj):
+        return obj.participants.count()
+
+    def get_is_joined(self, obj):
+        request = self.context.get("request")
+
+        if request is None or not request.user.is_authenticated:
+            return False
+
+        return obj.participants.filter(
+            member=request.user,
+        ).exists()

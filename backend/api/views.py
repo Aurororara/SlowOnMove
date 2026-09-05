@@ -3,8 +3,9 @@ from rest_framework.permissions import IsAuthenticated,AllowAny
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from django.utils import timezone
 from django.db import transaction
-from django.db.models import Avg, Sum, Q
+from django.db.models import Count, Sum, Q
 from api.leaderboard_service import get_leaderboard
 
 from core.models import (
@@ -13,7 +14,11 @@ from core.models import (
     Task, MemberTask, Badge, MemberBadge, WorkoutMenu, WorkoutItem, PostTag,
     PostWorkoutPlan,
     PostWorkoutPlanStep,FriendRequest,
-    Friendship,
+    Friendship, ChatMessage, RunInvitation,
+    CommunityGroup, CommunityGroupMember, CommunityGroupInvitation,
+    CommunityGroupActivity,
+    CommunityGroupActivityParticipant,
+    CommunityGroupJoinRequest,
 )
 from .serializers import (
     MemberSerializer, BodyRecordSerializer, BloodPressureRecordSerializer, BoardRankingSerializer,
@@ -21,6 +26,13 @@ from .serializers import (
     PostLikeSerializer, PostCommentSerializer, PostReportSerializer, PoseAnalysisSerializer, PointTransactionSerializer,
     TaskSerializer, MemberTaskSerializer, BadgeSerializer, MemberBadgeSerializer, WorkoutMenuSerializer, WorkoutItemSerializer,FriendMemberSerializer,
     FriendRequestSerializer,
+    FriendSearchSerializer,
+    ChatMessageSerializer,
+    RunInvitationSerializer,
+    CommunityGroupSerializer,
+    CommunityGroupInvitationSerializer,
+    CommunityGroupActivitySerializer,
+    CommunityGroupJoinRequestSerializer,
 )
 
 
@@ -954,6 +966,46 @@ class FriendViewSet(viewsets.ViewSet):
         return Response(serializer.data)
 
     # =========================
+    # 搜尋使用者
+    # =========================
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="search",
+    )
+    def search(self, request):
+        keyword = request.query_params.get(
+            "keyword",
+            "",
+        ).strip()
+
+        if not keyword:
+            return Response([])
+
+        users = (
+            Member.objects
+            .exclude(id=request.user.id)
+            .filter(
+                Q(username__icontains=keyword)
+                | Q(first_name__icontains=keyword)
+                | Q(last_name__icontains=keyword)
+                | Q(email__icontains=keyword)
+            )
+            .order_by("first_name", "username")[:20]
+        )
+
+        serializer = FriendSearchSerializer(
+            users,
+            many=True,
+            context={
+                "request": request,
+            },
+        )
+
+        return Response(serializer.data)
+
+    # =========================
     # 送出好友邀請
     # =========================
 
@@ -1155,4 +1207,1367 @@ class FriendViewSet(viewsets.ViewSet):
 
         return Response(
             status=status.HTTP_204_NO_CONTENT
+        )
+
+class ChatViewSet(viewsets.ViewSet):
+    permission_classes = [IsAuthenticated]
+
+    def _is_friend(self, user, friend):
+        return Friendship.objects.filter(
+            Q(member1=user, member2=friend)
+            | Q(member1=friend, member2=user)
+        ).exists()
+
+    @action(
+        detail=True,
+        methods=["get", "post"],
+        url_path="messages",
+    )
+    def messages(self, request, pk=None):
+        try:
+            friend = Member.objects.get(pk=pk)
+        except Member.DoesNotExist:
+            return Response(
+                {
+                    "error": "找不到使用者",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if friend.id == request.user.id:
+            return Response(
+                {
+                    "error": "不能與自己聊天",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not self._is_friend(
+            request.user,
+            friend,
+        ):
+            return Response(
+                {
+                    "error": "只有好友可以傳送訊息",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if request.method == "GET":
+            messages = (
+                ChatMessage.objects
+                .filter(
+                    Q(
+                        sender=request.user,
+                        receiver=friend,
+                    )
+                    | Q(
+                        sender=friend,
+                        receiver=request.user,
+                    )
+                )
+                .select_related(
+                    "sender",
+                    "receiver",
+                )
+                .order_by("created_at")
+            )
+
+            unread_messages = ChatMessage.objects.filter(
+                sender=friend,
+                receiver=request.user,
+                is_read=False,
+            ).order_by(
+                "created_at",
+            )
+
+            first_unread_message = unread_messages.first()
+
+            first_unread_message_id = (
+                first_unread_message.id
+                if first_unread_message is not None
+                else None
+            )
+
+            serializer = ChatMessageSerializer(
+                messages,
+                many=True,
+                context={
+                    "request": request,
+                },
+            )
+
+            response_data = {
+                "first_unread_message_id": first_unread_message_id,
+                "messages": serializer.data,
+            }
+
+            unread_messages.update(
+                is_read=True,
+            )
+
+            return Response(response_data)
+
+        content = str(
+            request.data.get(
+                "content",
+                "",
+            )
+        ).strip()
+
+        if not content:
+            return Response(
+                {
+                    "error": "訊息不可為空",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        message = ChatMessage.objects.create(
+            sender=request.user,
+            receiver=friend,
+            content=content,
+        )
+
+        serializer = ChatMessageSerializer(
+            message,
+            context={
+                "request": request,
+            },
+        )
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="unread",
+    )
+    def unread(self, request):
+        unread_messages = (
+            ChatMessage.objects
+            .filter(
+                receiver=request.user,
+                is_read=False,
+            )
+            .values("sender_id")
+            .annotate(unread_count=Count("id"))
+            .order_by()
+        )
+
+        friends = [
+            {
+                "friend_id": item["sender_id"],
+                "unread_count": item["unread_count"],
+            }
+            for item in unread_messages
+        ]
+
+        total = sum(
+            item["unread_count"]
+            for item in unread_messages
+        )
+
+        return Response({
+            "total": total,
+            "friends": friends,
+        })
+
+class RunInvitationViewSet(viewsets.ViewSet):
+    permission_classes = [IsAuthenticated]
+
+    def _is_friend(self, user, friend):
+        return Friendship.objects.filter(
+            Q(member1=user, member2=friend)
+            | Q(member1=friend, member2=user)
+        ).exists()
+
+    def create(self, request):
+        invitee_id = request.data.get(
+            "invitee_id",
+        )
+
+        if not invitee_id:
+            return Response(
+                {
+                    "error": "缺少 invitee_id",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            invitee = Member.objects.get(
+                id=invitee_id,
+            )
+        except Member.DoesNotExist:
+            return Response(
+                {
+                    "error": "找不到使用者",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if invitee.id == request.user.id:
+            return Response(
+                {
+                    "error": "不能邀請自己跑步",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not self._is_friend(
+            request.user,
+            invitee,
+        ):
+            return Response(
+                {
+                    "error": "只能邀請好友一起跑步",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        serializer = RunInvitationSerializer(
+            data=request.data,
+        )
+
+        serializer.is_valid(
+            raise_exception=True,
+        )
+
+        invitation = serializer.save(
+            inviter=request.user,
+            invitee=invitee,
+        )
+
+        response_serializer = RunInvitationSerializer(
+            invitation,
+        )
+
+        return Response(
+            response_serializer.data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path=r"with/(?P<friend_id>[^/.]+)",
+    )
+    def with_friend(self, request, friend_id=None):
+        try:
+            friend = Member.objects.get(id=friend_id)
+        except Member.DoesNotExist:
+            return Response(
+                {
+                    "error": "找不到使用者",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if friend.id == request.user.id:
+            return Response(
+                {
+                    "error": "不能查詢自己",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not self._is_friend(
+            request.user,
+            friend,
+        ):
+            return Response(
+                {
+                    "error": "只能查看好友之間的跑步邀請",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        invitations = (
+            RunInvitation.objects
+            .filter(
+                Q(
+                    inviter=request.user,
+                    invitee=friend,
+                )
+                | Q(
+                    inviter=friend,
+                    invitee=request.user,
+                )
+            )
+            .select_related(
+                "inviter",
+                "invitee",
+            )
+            .order_by("created_at")
+        )
+
+        serializer = RunInvitationSerializer(
+            invitations,
+            many=True,
+        )
+
+        return Response(serializer.data)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="accept",
+    )
+    def accept(self, request, pk=None):
+        invitation = (
+            RunInvitation.objects
+            .filter(
+                id=pk,
+                invitee=request.user,
+                status=RunInvitation.STATUS_PENDING,
+            )
+            .first()
+        )
+
+        if invitation is None:
+            return Response(
+                {
+                    "error": "找不到待處理的跑步邀請",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        invitation.status = RunInvitation.STATUS_ACCEPTED
+        invitation.responded_at = timezone.now()
+
+        invitation.save(
+            update_fields=[
+                "status",
+                "responded_at",
+                "updated_at",
+            ]
+        )
+
+        serializer = RunInvitationSerializer(
+            invitation,
+        )
+
+        return Response(serializer.data)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="reject",
+    )
+    def reject(self, request, pk=None):
+        invitation = (
+            RunInvitation.objects
+            .filter(
+                id=pk,
+                invitee=request.user,
+                status=RunInvitation.STATUS_PENDING,
+            )
+            .first()
+        )
+
+        if invitation is None:
+            return Response(
+                {
+                "error": "找不到待處理的跑步邀請",
+            },
+            status=status.HTTP_404_NOT_FOUND,
+        )
+
+        invitation.status = RunInvitation.STATUS_REJECTED
+        invitation.responded_at = timezone.now()
+
+        invitation.save(
+            update_fields=[
+                "status",
+                "responded_at",
+                "updated_at",
+            ]
+        )
+
+        serializer = RunInvitationSerializer(
+            invitation,
+        )
+
+        return Response(serializer.data)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="cancel",
+    )
+    def cancel(self, request, pk=None):
+        invitation = (
+            RunInvitation.objects
+            .filter(
+                id=pk,
+                inviter=request.user,
+                status=RunInvitation.STATUS_PENDING,
+            )
+            .first()
+        )
+
+        if invitation is None:
+            return Response(
+                {
+                    "error": "找不到可取消的跑步邀請",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        invitation.status = RunInvitation.STATUS_CANCELLED
+
+        invitation.save(
+            update_fields=[
+                "status",
+                "updated_at",
+            ]
+        )
+
+        serializer = RunInvitationSerializer(
+            invitation,
+        )
+
+        return Response(serializer.data)
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="pending",
+    )
+    def pending(self, request):
+        invitations = (
+            RunInvitation.objects
+            .filter(
+                invitee=request.user,
+                status=RunInvitation.STATUS_PENDING,
+            )
+            .values("inviter_id")
+            .annotate(
+                pending_count=Count("id"),
+            )
+            .order_by()
+        )
+
+        friends = [
+            {
+                "friend_id": item["inviter_id"],
+                "pending_count": item["pending_count"],
+            }
+            for item in invitations
+        ]
+
+        total = sum(
+            item["pending_count"]
+            for item in friends
+        )
+
+        return Response(
+            {
+                "total": total,
+                "friends": friends,
+            }
+        )
+
+class CommunityGroupViewSet(viewsets.ModelViewSet):
+    serializer_class = CommunityGroupSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = (
+            CommunityGroup.objects
+            .filter(
+                group_members__member=self.request.user,
+            )
+            .select_related(
+                "owner",
+            )
+            .prefetch_related(
+                "group_members__member",
+            )
+            .distinct()
+        )
+
+        search = self.request.query_params.get(
+            "search",
+            "",
+        ).strip()
+
+        if search:
+            queryset = queryset.filter(
+                Q(name__icontains=search)
+                | Q(description__icontains=search)
+            )
+
+        return queryset.order_by("-created_at")
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="discover",
+    )
+    def discover(self, request):
+        groups = (
+            CommunityGroup.objects
+            .exclude(
+                group_members__member=request.user,
+            )
+            .select_related(
+                "owner",
+            )
+            .prefetch_related(
+                "group_members__member",
+            )
+            .distinct()
+        )
+
+        search = request.query_params.get(
+            "search",
+            "",
+        ).strip()
+
+        if search:
+            groups = groups.filter(
+                Q(name__icontains=search)
+                | Q(description__icontains=search)
+            )
+
+        groups = groups.order_by("-created_at")
+
+        serializer = CommunityGroupSerializer(
+            groups,
+            many=True,
+            context={
+                "request": request,
+            },
+        )
+
+        return Response(
+            serializer.data,
+        )
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="join",
+    )
+    @transaction.atomic
+    def join(self, request, pk=None):
+        group = CommunityGroup.objects.filter(
+            id=pk,
+        ).first()
+
+        if group is None:
+            return Response(
+                {"error": "找不到群組"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if group.is_private:
+            return Response(
+                {"error": "私人群組需要申請加入"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if CommunityGroupMember.objects.filter(
+            group=group,
+            member=request.user,
+        ).exists():
+            return Response(
+                {"error": "你已經是群組成員"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        CommunityGroupMember.objects.create(
+            group=group,
+            member=request.user,
+        )
+
+        serializer = CommunityGroupSerializer(
+            group,
+            context={
+                "request": request,
+            },
+        )
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_200_OK,
+        )
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="request-join",
+    )
+    @transaction.atomic
+    def request_join(self, request, pk=None):
+        group = (
+            CommunityGroup.objects
+            .select_for_update()
+            .filter(
+                id=pk,
+            )
+            .first()
+        )
+
+        if group is None:
+            return Response(
+                {
+                    "error": "找不到群組",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if not group.is_private:
+            return Response(
+                {
+                    "error": "公開群組不需要申請加入",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if CommunityGroupMember.objects.filter(
+            group=group,
+            member=request.user,
+        ).exists():
+            return Response(
+                {
+                    "error": "你已經是群組成員",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if group.group_members.count() >= 30:
+            return Response(
+                {
+                    "error": "群組已達 30 人上限",
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        pending_exists = (
+            CommunityGroupJoinRequest.objects
+            .filter(
+                group=group,
+                requester=request.user,
+                status=CommunityGroupJoinRequest.STATUS_PENDING,
+            )
+            .exists()
+        )
+
+        if pending_exists:
+            return Response(
+                {
+                    "error": "你已經申請加入此群組",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        join_request = (
+            CommunityGroupJoinRequest.objects.create(
+                group=group,
+                requester=request.user,
+            )
+        )
+
+        serializer = CommunityGroupJoinRequestSerializer(
+            join_request,
+        )
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(
+        detail=True,
+        methods=["get"],
+        url_path="join-requests",
+    )
+    def join_requests(self, request, pk=None):
+        group = self.get_object()
+
+        if group.owner_id != request.user.id:
+            return Response(
+                {
+                    "error": "只有群組創立者可以查看加入申請",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        requests = (
+            CommunityGroupJoinRequest.objects
+            .filter(
+                group=group,
+                status=CommunityGroupJoinRequest.STATUS_PENDING,
+            )
+            .select_related(
+                "group",
+                "requester",
+            )
+            .order_by("-created_at")
+        )
+
+        serializer = CommunityGroupJoinRequestSerializer(
+            requests,
+            many=True,
+        )
+
+        return Response(serializer.data)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path=r"join-requests/(?P<request_id>\d+)/respond",
+    )
+    @transaction.atomic
+    def respond_join_request(
+        self,
+        request,
+        pk=None,
+        request_id=None,
+    ):
+        group = (
+            CommunityGroup.objects
+            .select_for_update()
+            .filter(id=pk)
+            .first()
+        )
+
+        if group is None:
+            return Response(
+                {
+                    "error": "找不到群組",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if group.owner_id != request.user.id:
+            return Response(
+                {
+                    "error": "只有群組創立者可以處理加入申請",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        join_request = (
+            CommunityGroupJoinRequest.objects
+            .select_for_update()
+            .select_related(
+                "requester",
+                "group",
+            )
+            .filter(
+                id=request_id,
+                group=group,
+                status=CommunityGroupJoinRequest.STATUS_PENDING,
+            )
+            .first()
+        )
+
+        if join_request is None:
+            return Response(
+                {
+                    "error": "找不到待處理的加入申請",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        action_value = str(
+            request.data.get(
+                "action",
+                "",
+            )
+        ).strip().lower()
+
+        if action_value not in [
+            "accept",
+            "reject",
+        ]:
+            return Response(
+                {
+                    "error": "action 必須為 accept 或 reject",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if action_value == "reject":
+            join_request.status = (
+                CommunityGroupJoinRequest.STATUS_REJECTED
+            )
+            join_request.responded_at = timezone.now()
+
+            join_request.save(
+                update_fields=[
+                    "status",
+                    "responded_at",
+                    "updated_at",
+                ]
+            )
+
+            return Response(
+                CommunityGroupJoinRequestSerializer(
+                    join_request,
+                ).data,
+            )
+
+        already_member = CommunityGroupMember.objects.filter(
+            group=group,
+            member=join_request.requester,
+        ).exists()
+
+        if not already_member:
+            if group.group_members.count() >= 30:
+                return Response(
+                    {
+                        "error": "群組已達 30 人上限",
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+
+            CommunityGroupMember.objects.create(
+                group=group,
+                member=join_request.requester,
+            )
+
+        join_request.status = (
+            CommunityGroupJoinRequest.STATUS_ACCEPTED
+        )
+        join_request.responded_at = timezone.now()
+
+        join_request.save(
+            update_fields=[
+                "status",
+                "responded_at",
+                "updated_at",
+            ]
+        )
+
+        return Response(
+            CommunityGroupJoinRequestSerializer(
+                join_request,
+            ).data,
+        )
+
+
+    @transaction.atomic
+    def perform_create(self, serializer):
+        group = serializer.save(
+            owner=self.request.user,
+        )
+
+        CommunityGroupMember.objects.create(
+            group=group,
+            member=self.request.user,
+        )
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="invite",
+    )
+    def invite(self, request, pk=None):
+        group = self.get_object()
+
+        if group.owner_id != request.user.id:
+            return Response(
+                {
+                    "error": "只有群組創立者可以邀請成員",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        invitee_id = request.data.get(
+            "invitee_id",
+        )
+
+        if not invitee_id:
+            return Response(
+                {
+                    "error": "缺少 invitee_id",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            invitee = Member.objects.get(
+                id=invitee_id,
+            )
+        except Member.DoesNotExist:
+            return Response(
+                {
+                    "error": "找不到使用者",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if invitee.id == request.user.id:
+            return Response(
+                {
+                    "error": "不能邀請自己加入群組",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if not self._is_friend(
+            request.user,
+            invitee,
+        ):
+            return Response(
+                {
+                    "error": "只能邀請好友加入群組",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if self._is_group_member(
+            group,
+            invitee,
+        ):
+            return Response(
+                {
+                    "error": "此好友已經在群組中",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if group.group_members.count() >= 30:
+            return Response(
+                {
+                    "error": "群組已達 30 人上限",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        pending_exists = CommunityGroupInvitation.objects.filter(
+            group=group,
+            invitee=invitee,
+            status=CommunityGroupInvitation.STATUS_PENDING,
+        ).exists()
+
+        if pending_exists:
+            return Response(
+                {
+                    "error": "已經送出群組邀請",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        invitation = CommunityGroupInvitation.objects.create(
+            group=group,
+            inviter=request.user,
+            invitee=invitee,
+        )
+
+        serializer = CommunityGroupInvitationSerializer(
+            invitation,
+        )
+
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(
+        detail=True,
+        methods=["get", "post"],
+        url_path="activities",
+    )
+    def activities(self, request, pk=None):
+        group = self.get_object()
+
+        is_member = CommunityGroupMember.objects.filter(
+            group=group,
+            member=request.user,
+        ).exists()
+
+        if not is_member:
+            return Response(
+                {
+                    "error": "只有群組成員可以存取群組活動",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        if request.method == "GET":
+            activities = (
+                CommunityGroupActivity.objects
+                .filter(
+                    group=group,
+                )
+                .select_related(
+                    "creator",
+                    "group",
+                )
+                .order_by(
+                    "scheduled_at",
+                    "created_at",
+                )
+            )
+
+            serializer = CommunityGroupActivitySerializer(
+                activities,
+                many=True,
+                context={
+                    "request": request,
+                },
+            )
+
+            return Response(
+                serializer.data,
+            )
+
+        serializer = CommunityGroupActivitySerializer(
+            data=request.data,
+        )
+
+        serializer.is_valid(
+            raise_exception=True,
+        )
+
+        activity = serializer.save(
+            group=group,
+            creator=request.user,
+        )
+
+        return Response(
+            CommunityGroupActivitySerializer(
+                activity,
+                context={
+                    "request": request,
+                },
+            ).data,
+            status=status.HTTP_201_CREATED,
+        )
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path=r"activities/(?P<activity_id>\d+)/join",
+    )
+    def join_activity(
+        self,
+        request,
+        pk=None,
+        activity_id=None,
+    ):
+        group = self.get_object()
+
+        is_member = CommunityGroupMember.objects.filter(
+            group=group,
+            member=request.user,
+        ).exists()
+
+        if not is_member:
+            return Response(
+                {
+                    "error": "只有群組成員可以參加群組活動",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        activity = CommunityGroupActivity.objects.filter(
+            id=activity_id,
+            group=group,
+        ).first()
+
+        if activity is None:
+            return Response(
+                {
+                    "error": "找不到群組活動",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        _, created = (
+            CommunityGroupActivityParticipant.objects
+            .get_or_create(
+                activity=activity,
+                member=request.user,
+            )
+        )
+
+        if not created:
+            return Response(
+                {
+                    "error": "你已經參加此活動",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        return Response(
+            CommunityGroupActivitySerializer(
+                activity,
+                context={
+                    "request": request,
+                },
+            ).data,
+            status=status.HTTP_200_OK,
+        )
+
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path=r"activities/(?P<activity_id>\d+)/leave",
+    )
+    def leave_activity(
+        self,
+        request,
+        pk=None,
+        activity_id=None,
+    ):
+        group = self.get_object()
+
+        is_member = CommunityGroupMember.objects.filter(
+            group=group,
+            member=request.user,
+        ).exists()
+
+        if not is_member:
+            return Response(
+                {
+                    "error": "只有群組成員可以操作群組活動",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        activity = CommunityGroupActivity.objects.filter(
+            id=activity_id,
+            group=group,
+        ).first()
+
+        if activity is None:
+            return Response(
+                {
+                    "error": "找不到群組活動",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        participation = (
+            CommunityGroupActivityParticipant.objects
+            .filter(
+                activity=activity,
+                member=request.user,
+            )
+            .first()
+        )
+
+        if participation is None:
+            return Response(
+                {
+                    "error": "你尚未參加此活動",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        participation.delete()
+
+        return Response(
+            CommunityGroupActivitySerializer(
+                activity,
+                context={
+                    "request": request,
+                },
+            ).data,
+            status=status.HTTP_200_OK,
+        )
+
+    def _is_friend(self, user, other):
+        return Friendship.objects.filter(
+            Q(member1=user, member2=other)
+            | Q(member1=other, member2=user)
+        ).exists()
+
+
+    def _is_group_member(self, group, member):
+        return CommunityGroupMember.objects.filter(
+            group=group,
+            member=member,
+        ).exists()
+
+class CommunityGroupInvitationViewSet(viewsets.ViewSet):
+    permission_classes = [IsAuthenticated]
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="pending",
+    )
+    def pending(self, request):
+        invitations = (
+            CommunityGroupInvitation.objects
+            .filter(
+                invitee=request.user,
+                status=CommunityGroupInvitation.STATUS_PENDING,
+            )
+            .select_related(
+                "group",
+                "inviter",
+                "invitee",
+            )
+            .order_by("-created_at")
+        )
+
+        serializer = CommunityGroupInvitationSerializer(
+            invitations,
+            many=True,
+        )
+
+        return Response(
+            serializer.data,
+        )
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="respond",
+    )
+    @transaction.atomic
+    def respond(self, request, pk=None):
+        try:
+            invitation = (
+                CommunityGroupInvitation.objects
+                .select_for_update()
+                .select_related(
+                    "group",
+                    "inviter",
+                    "invitee",
+                )
+                .get(
+                    id=pk,
+                    invitee=request.user,
+                )
+            )
+        except CommunityGroupInvitation.DoesNotExist:
+            return Response(
+                {
+                    "error": "找不到群組邀請",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if invitation.status != CommunityGroupInvitation.STATUS_PENDING:
+            return Response(
+                {
+                    "error": "此群組邀請已處理",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        action_value = str(
+            request.data.get(
+                "action",
+                "",
+            )
+        ).strip().lower()
+
+        if action_value not in [
+            "accept",
+            "reject",
+        ]:
+            return Response(
+                {
+                    "error": "action 必須為 accept 或 reject",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        if action_value == "reject":
+            invitation.status = (
+                CommunityGroupInvitation.STATUS_REJECTED
+            )
+
+            invitation.responded_at = timezone.now()
+
+            invitation.save(
+                update_fields=[
+                    "status",
+                    "responded_at",
+                    "updated_at",
+                ]
+            )
+
+            serializer = CommunityGroupInvitationSerializer(
+                invitation,
+            )
+
+            return Response(
+                serializer.data,
+            )
+
+        group = (
+            CommunityGroup.objects
+            .select_for_update()
+            .get(
+                id=invitation.group_id,
+            )
+        )
+
+        already_member = CommunityGroupMember.objects.filter(
+            group=group,
+            member=request.user,
+        ).exists()
+
+        if already_member:
+            invitation.status = (
+                CommunityGroupInvitation.STATUS_ACCEPTED
+            )
+
+            invitation.responded_at = timezone.now()
+
+            invitation.save(
+                update_fields=[
+                    "status",
+                    "responded_at",
+                    "updated_at",
+                ]
+            )
+
+            serializer = CommunityGroupInvitationSerializer(
+                invitation,
+            )
+
+            return Response(
+                serializer.data,
+            )
+
+        if group.group_members.count() >= 30:
+            return Response(
+                {
+                    "error": "群組已達 30 人上限",
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+
+        CommunityGroupMember.objects.create(
+            group=group,
+            member=request.user,
+        )
+
+        invitation.status = (
+            CommunityGroupInvitation.STATUS_ACCEPTED
+        )
+
+        invitation.responded_at = timezone.now()
+
+        invitation.save(
+            update_fields=[
+                "status",
+                "responded_at",
+                "updated_at",
+            ]
+        )
+
+        serializer = CommunityGroupInvitationSerializer(
+            invitation,
+        )
+
+        return Response(
+            serializer.data,
         )

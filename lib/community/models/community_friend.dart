@@ -3,13 +3,31 @@ class CommunityFriend {
   final String name;
   final String initial;
   final String? avatar;
+  final String relationship;
 
   const CommunityFriend({
     required this.id,
     required this.name,
     required this.initial,
     this.avatar,
+    this.relationship = 'none',
   });
+
+  CommunityFriend copyWith({
+    int? id,
+    String? name,
+    String? initial,
+    String? avatar,
+    String? relationship,
+  }) {
+    return CommunityFriend(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      initial: initial ?? this.initial,
+      avatar: avatar ?? this.avatar,
+      relationship: relationship ?? this.relationship,
+    );
+  }
 
   factory CommunityFriend.fromJson(
     Map<String, dynamic> json,
@@ -19,6 +37,7 @@ class CommunityFriend {
       name: (json['name'] ?? '').toString(),
       initial: (json['initial'] ?? 'U').toString(),
       avatar: json['avatar']?.toString(),
+      relationship: (json['relationship'] ?? 'none').toString(),
     );
   }
 
@@ -27,10 +46,7 @@ class CommunityFriend {
       return value;
     }
 
-    return int.tryParse(
-          value?.toString() ?? '',
-        ) ??
-        0;
+    return int.tryParse(value?.toString() ?? '') ?? 0;
   }
 }
 

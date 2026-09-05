@@ -11,6 +11,7 @@ class FriendStore extends ChangeNotifier {
   final List<CommunityFriendRequest> _requests = [];
   final List<CommunityFriendRequest> _pendingRequests = [];
   final List<CommunityFriend> _suggestions = [];
+  final List<CommunityFriend> _searchResults = [];
 
   bool _isLoading = false;
   String? _errorMessage;
@@ -23,6 +24,8 @@ class FriendStore extends ChangeNotifier {
       List.unmodifiable(_pendingRequests);
 
   List<CommunityFriend> get suggestions => List.unmodifiable(_suggestions);
+
+  List<CommunityFriend> get searchResults => List.unmodifiable(_searchResults);
 
   bool get isLoading => _isLoading;
 
@@ -44,6 +47,44 @@ class FriendStore extends ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     }
+  }
+
+  Future<void> searchMembers(String keyword) async {
+    final value = keyword.trim();
+
+    if (value.isEmpty) {
+      _searchResults.clear();
+      notifyListeners();
+      return;
+    }
+
+    try {
+      final response = await _api.dio.get(
+        'friends/search/',
+        queryParameters: {
+          'keyword': value,
+        },
+      );
+
+      _searchResults
+        ..clear()
+        ..addAll(_parseFriends(response.data));
+
+      _errorMessage = null;
+    } catch (e) {
+      _setError(e);
+    }
+
+    notifyListeners();
+  }
+
+  void clearSearch() {
+    if (_searchResults.isEmpty) {
+      return;
+    }
+
+    _searchResults.clear();
+    notifyListeners();
   }
 
   Future<void> loadFriends({
@@ -144,6 +185,16 @@ class FriendStore extends ChangeNotifier {
           'member_id': memberId,
         },
       );
+
+      final index = _searchResults.indexWhere(
+        (friend) => friend.id == memberId,
+      );
+
+      if (index != -1) {
+        _searchResults[index] = _searchResults[index].copyWith(
+          relationship: 'sent',
+        );
+      }
 
       await loadAll();
 

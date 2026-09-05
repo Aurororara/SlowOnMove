@@ -1,5 +1,6 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
+from django.db.models import Q
 
 class Member(AbstractUser):
     avatar = models.URLField(max_length=500, blank=True, null=True)
@@ -79,6 +80,431 @@ class Friendship(models.Model):
 
     def __str__(self):
         return f"{self.member1_id} <-> {self.member2_id}"
+
+class ChatMessage(models.Model):
+    sender = models.ForeignKey(
+        Member,
+        on_delete=models.CASCADE,
+        related_name="sent_chat_messages",
+    )
+
+    receiver = models.ForeignKey(
+        Member,
+        on_delete=models.CASCADE,
+        related_name="received_chat_messages",
+    )
+
+    content = models.TextField()
+
+    is_read = models.BooleanField(
+        default=False,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    class Meta:
+        ordering = ["created_at"]
+        indexes = [
+            models.Index(
+                fields=["sender", "receiver", "created_at"],
+            ),
+            models.Index(
+                fields=["receiver", "is_read"],
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.sender_id} -> "
+            f"{self.receiver_id}: "
+            f"{self.content[:30]}"
+        )
+
+class RunInvitation(models.Model):
+    STATUS_PENDING = "pending"
+    STATUS_ACCEPTED = "accepted"
+    STATUS_REJECTED = "rejected"
+    STATUS_CANCELLED = "cancelled"
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "待回覆"),
+        (STATUS_ACCEPTED, "已接受"),
+        (STATUS_REJECTED, "已拒絕"),
+        (STATUS_CANCELLED, "已取消"),
+    ]
+
+    inviter = models.ForeignKey(
+        Member,
+        on_delete=models.CASCADE,
+        related_name="sent_run_invitations",
+    )
+
+    invitee = models.ForeignKey(
+        Member,
+        on_delete=models.CASCADE,
+        related_name="received_run_invitations",
+    )
+
+    scheduled_at = models.DateTimeField()
+
+    target_distance_km = models.DecimalField(
+        max_digits=5,
+        decimal_places=2,
+        null=True,
+        blank=True,
+    )
+
+    target_duration_minutes = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+    )
+
+    notes = models.TextField(
+        blank=True,
+        default="",
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_PENDING,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    responded_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        ordering = ["created_at"]
+
+        indexes = [
+            models.Index(
+                fields=["inviter", "created_at"],
+            ),
+            models.Index(
+                fields=["invitee", "status", "created_at"],
+            ),
+        ]
+
+        constraints = [
+            models.CheckConstraint(
+                check=~models.Q(
+                    inviter=models.F("invitee"),
+                ),
+                name="run_invitation_not_self",
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.inviter_id} -> "
+            f"{self.invitee_id} "
+            f"({self.status})"
+        )
+
+class CommunityGroup(models.Model):
+    owner = models.ForeignKey(
+        Member,
+        on_delete=models.CASCADE,
+        related_name="owned_community_groups",
+    )
+
+    name = models.CharField(
+        max_length=100,
+    )
+
+    description = models.TextField(
+        blank=True,
+        default="",
+    )
+
+    is_private = models.BooleanField(
+        default=False,
+    )
+
+    exercise_type = models.CharField(
+        max_length=20,
+        choices=[
+            ("mixed", "超慢跑＋深蹲"),
+            ("slow_jogging", "超慢跑"),
+            ("squat", "深蹲"),
+        ],
+        default="mixed",
+    )
+
+    weekly_goal_target = models.PositiveIntegerField(
+        default=20,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.name
+
+
+class CommunityGroupMember(models.Model):
+    group = models.ForeignKey(
+        CommunityGroup,
+        on_delete=models.CASCADE,
+        related_name="group_members",
+    )
+
+    member = models.ForeignKey(
+        Member,
+        on_delete=models.CASCADE,
+        related_name="community_group_memberships",
+    )
+
+    joined_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["group", "member"],
+                name="unique_community_group_member",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.group_id} - {self.member_id}"
+
+class CommunityGroupActivity(models.Model):
+    group = models.ForeignKey(
+        CommunityGroup,
+        on_delete=models.CASCADE,
+        related_name="activities",
+    )
+
+    creator = models.ForeignKey(
+        Member,
+        on_delete=models.CASCADE,
+        related_name="created_group_activities",
+    )
+
+    title = models.CharField(
+        max_length=100,
+    )
+
+    exercise_type = models.CharField(
+        max_length=20,
+        choices=[
+            ("slow_jogging", "超慢跑"),
+            ("squat", "深蹲"),
+        ],
+    )
+
+    scheduled_at = models.DateTimeField()
+
+    notes = models.TextField(
+        blank=True,
+        default="",
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    class Meta:
+        ordering = [
+            "scheduled_at",
+            "created_at",
+        ]
+
+    def __str__(self):
+        return f"{self.group.name} - {self.title}"
+
+class CommunityGroupActivityParticipant(models.Model):
+    activity = models.ForeignKey(
+        CommunityGroupActivity,
+        on_delete=models.CASCADE,
+        related_name="participants",
+    )
+
+    member = models.ForeignKey(
+        Member,
+        on_delete=models.CASCADE,
+        related_name="community_group_activity_participations",
+    )
+
+    joined_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    class Meta:
+        ordering = [
+            "joined_at",
+        ]
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "activity",
+                    "member",
+                ],
+                name="unique_group_activity_participant",
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.activity_id} - "
+            f"{self.member_id}"
+        )
+
+class CommunityGroupJoinRequest(models.Model):
+    STATUS_PENDING = "pending"
+    STATUS_ACCEPTED = "accepted"
+    STATUS_REJECTED = "rejected"
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_ACCEPTED, "Accepted"),
+        (STATUS_REJECTED, "Rejected"),
+    ]
+
+    group = models.ForeignKey(
+        CommunityGroup,
+        on_delete=models.CASCADE,
+        related_name="join_requests",
+    )
+
+    requester = models.ForeignKey(
+        Member,
+        on_delete=models.CASCADE,
+        related_name="community_group_join_requests",
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_PENDING,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    responded_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "group",
+                    "requester",
+                ],
+                condition=Q(status="pending"),
+                name="unique_pending_group_join_request",
+            ),
+        ]
+
+class CommunityGroupInvitation(models.Model):
+    STATUS_PENDING = "pending"
+    STATUS_ACCEPTED = "accepted"
+    STATUS_REJECTED = "rejected"
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "待回覆"),
+        (STATUS_ACCEPTED, "已接受"),
+        (STATUS_REJECTED, "已拒絕"),
+    ]
+
+    group = models.ForeignKey(
+        CommunityGroup,
+        on_delete=models.CASCADE,
+        related_name="invitations",
+    )
+
+    inviter = models.ForeignKey(
+        Member,
+        on_delete=models.CASCADE,
+        related_name="sent_group_invitations",
+    )
+
+    invitee = models.ForeignKey(
+        Member,
+        on_delete=models.CASCADE,
+        related_name="received_group_invitations",
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_PENDING,
+    )
+
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    updated_at = models.DateTimeField(
+        auto_now=True,
+    )
+
+    responded_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    class Meta:
+        ordering = ["-created_at"]
+
+        indexes = [
+            models.Index(
+                fields=["invitee", "status", "created_at"],
+            ),
+            models.Index(
+                fields=["group", "status", "created_at"],
+            ),
+        ]
+
+        constraints = [
+            models.UniqueConstraint(
+                fields=["group", "invitee"],
+                condition=models.Q(status="pending"),
+                name="unique_pending_group_invitation",
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"group={self.group_id}, "
+            f"{self.inviter_id} -> {self.invitee_id} "
+            f"({self.status})"
+        )
 
 class BodyRecord(models.Model):
 

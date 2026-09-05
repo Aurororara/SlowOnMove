@@ -4,7 +4,7 @@ from .views import (
     MemberViewSet, BodyRecordViewSet, BloodPressureRecordViewSet, BoardRankingViewSet,
     CommunityPostViewSet, FavoriteViewSet, TrainingLogViewSet,
     PostLikeViewSet, PostCommentViewSet, PostReportViewSet, PoseAnalysisViewSet, PointTransactionViewSet,
-    TaskViewSet, MemberTaskViewSet, BadgeViewSet, MemberBadgeViewSet, WorkoutMenuViewSet, WorkoutItemViewSet,FriendViewSet
+    TaskViewSet, MemberTaskViewSet, BadgeViewSet, MemberBadgeViewSet, WorkoutMenuViewSet, WorkoutItemViewSet, FriendViewSet, ChatViewSet, RunInvitationViewSet, CommunityGroupViewSet, CommunityGroupInvitationViewSet,
 )
 from .auth_views import GoogleLoginView, FacebookLoginView, RegisterView, LoginView
 
@@ -15,6 +15,10 @@ router.register(r'blood-pressure-records', BloodPressureRecordViewSet)
 router.register(r'board-rankings', BoardRankingViewSet)
 router.register(r'community-posts', CommunityPostViewSet, basename='community-post')
 router.register(r'friends', FriendViewSet, basename='friend')
+router.register(r'chats', ChatViewSet, basename='chat')
+router.register(r'run-invitations', RunInvitationViewSet, basename='run-invitation')
+router.register(r'groups', CommunityGroupViewSet, basename='community-group')
+router.register(r'group-invitations', CommunityGroupInvitationViewSet, basename='group-invitation')
 router.register(r'favorites', FavoriteViewSet)
 router.register(r'training-logs', TrainingLogViewSet)
 router.register(r'post-likes', PostLikeViewSet)
