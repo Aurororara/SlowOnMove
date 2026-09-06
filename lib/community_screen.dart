@@ -15,9 +15,7 @@ import 'community/models/community_group.dart';
 import 'community/group_invitation_store.dart';
 import 'community/models/community_group_invitation.dart';
 import 'community/group_activity_store.dart';
-import 'community/models/community_group_activity.dart';
 import 'community/utils/group_formatters.dart';
-import 'community/widgets/groups/group_activity_card.dart';
 import 'community/widgets/common/community_avatar.dart';
 import 'community/widgets/groups/group_tab_button.dart';
 import 'community/widgets/common/community_card_styles.dart';
@@ -34,6 +32,9 @@ import 'community/widgets/posts/recipe_card.dart';
 import 'community/widgets/common/community_tag_pill.dart';
 import 'community/widgets/posts/post_composer.dart';
 import 'community/widgets/common/community_input.dart';
+import 'community/widgets/navigation/community_navigation.dart';
+import 'community/widgets/friends/friend_tabs.dart';
+import 'community/widgets/friends/friend_search_field.dart';
 
 enum _CommunityChatEntryType {
   message,
@@ -125,6 +126,18 @@ class _CommunityScreenState extends State<CommunityScreen> {
   final GroupInvitationStore _groupInvitationStore = GroupInvitationStore();
   final GroupActivityStore _groupActivityStore = GroupActivityStore();
 
+  int get _friendRequestCount => _friendStore.requests.length;
+
+  int get _friendNotificationCount =>
+      _friendStore.requests.length +
+      _chatStore.unreadTotal +
+      _runInvitationStore.pendingTotal;
+
+  int get _groupNotificationCount => _groupInvitationStore.pendingTotal;
+
+  int get _communityNotificationCount =>
+      _friendNotificationCount + _groupNotificationCount;
+
   Timer? _chatPollingTimer;
   Timer? _notificationPollingTimer;
 
@@ -151,13 +164,14 @@ class _CommunityScreenState extends State<CommunityScreen> {
     'Jordan Lee': const [],
   };
   bool _isComposerOpen = false;
-  bool _isFriendsOpen = false;
-  bool _isGroupsOpen = false;
+  CommunitySection _section = CommunitySection.feed;
   CommunityFriend? _inviteFriend;
   CommunityFriend? _chatFriend;
   CommunityGroup? _groupDetail;
 
   List<CommunityPost> get _posts => widget.store.posts;
+  bool get _isSecondaryPage =>
+      _chatFriend != null || _inviteFriend != null || _groupDetail != null;
   String get _searchQuery => _searchController.text.trim().toLowerCase();
 
   List<({int index, CommunityPost post})> get _filteredPosts {
@@ -483,11 +497,12 @@ class _CommunityScreenState extends State<CommunityScreen> {
 
     FocusScope.of(context).unfocus();
     setState(() {
+      _section = CommunitySection.friends;
+
       _isComposerOpen = false;
-      _isGroupsOpen = false;
       _inviteFriend = null;
       _chatFriend = null;
-      _isFriendsOpen = true;
+      _groupDetail = null;
     });
 
     _friendStore.loadAll();
@@ -501,9 +516,9 @@ class _CommunityScreenState extends State<CommunityScreen> {
 
     FocusScope.of(context).unfocus();
     setState(() {
+      _section = CommunitySection.groups;
+
       _isComposerOpen = false;
-      _isFriendsOpen = false;
-      _isGroupsOpen = true;
       _chatFriend = null;
       _inviteFriend = null;
       _groupDetail = null;
@@ -511,6 +526,22 @@ class _CommunityScreenState extends State<CommunityScreen> {
 
     _groupStore.loadGroups();
     _groupInvitationStore.loadPending();
+  }
+
+  void _openFeed() {
+    _stopChatPolling();
+
+    FocusScope.of(context).unfocus();
+
+    setState(() {
+      _section = CommunitySection.feed;
+
+      _inviteFriend = null;
+      _chatFriend = null;
+      _groupDetail = null;
+    });
+
+    widget.store.loadPosts();
   }
 
   void _openGroupDetail(
@@ -522,12 +553,8 @@ class _CommunityScreenState extends State<CommunityScreen> {
 
     setState(() {
       _isComposerOpen = false;
-      _isFriendsOpen = false;
-      _isGroupsOpen = false;
-
       _inviteFriend = null;
       _chatFriend = null;
-
       _groupDetail = group;
     });
 
@@ -566,48 +593,34 @@ class _CommunityScreenState extends State<CommunityScreen> {
 
     final chatFriendId = _chatFriend?.id;
 
-    final returningToFriends = _chatFriend != null || _inviteFriend != null;
-
-    final returningToGroups = _groupDetail != null;
-
     if (chatFriendId != null) {
-      _chatStore.clearFirstUnreadMessageId(
-        chatFriendId,
-      );
+      _chatStore.clearFirstUnreadMessageId(chatFriendId);
     }
 
+    final returnToFriends = _chatFriend != null || _inviteFriend != null;
+
+    final returnToGroups = _groupDetail != null;
+
     setState(() {
-      if (returningToFriends) {
-        _isFriendsOpen = true;
-        _isGroupsOpen = false;
+      _chatFriend = null;
+      _inviteFriend = null;
+      _groupDetail = null;
 
-        _inviteFriend = null;
-        _chatFriend = null;
-        _groupDetail = null;
-      } else if (returningToGroups) {
-        _isFriendsOpen = false;
-        _isGroupsOpen = true;
-
-        _inviteFriend = null;
-        _chatFriend = null;
-        _groupDetail = null;
-      } else {
-        _isFriendsOpen = false;
-        _isGroupsOpen = false;
-
-        _inviteFriend = null;
-        _chatFriend = null;
-        _groupDetail = null;
+      if (returnToFriends) {
+        _section = CommunitySection.friends;
+      } else if (returnToGroups) {
+        _section = CommunitySection.groups;
       }
     });
 
-    if (returningToFriends) {
+    if (returnToFriends) {
+      _friendStore.loadAll();
       _chatStore.loadUnread();
       _runInvitationStore.loadPending();
       _groupInvitationStore.loadPending();
     }
 
-    if (returningToGroups) {
+    if (returnToGroups) {
       _groupStore.loadGroups();
       _groupInvitationStore.loadPending();
     }
@@ -619,10 +632,9 @@ class _CommunityScreenState extends State<CommunityScreen> {
     FocusScope.of(context).unfocus();
     setState(() {
       _isComposerOpen = false;
-      _isFriendsOpen = false;
-      _isGroupsOpen = false;
       _inviteFriend = friend;
       _chatFriend = null;
+      _groupDetail = null;
     });
   }
 
@@ -633,10 +645,9 @@ class _CommunityScreenState extends State<CommunityScreen> {
 
     setState(() {
       _isComposerOpen = false;
-      _isFriendsOpen = false;
-      _isGroupsOpen = false;
       _inviteFriend = null;
       _chatFriend = friend;
+      _groupDetail = null;
     });
 
     await Future.wait([
@@ -1067,127 +1078,54 @@ class _CommunityScreenState extends State<CommunityScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC),
-      appBar: _isGroupsOpen ? null : _buildAppBar(context),
+      appBar: _buildAppBar(),
       body: SafeArea(
-        top: !_isGroupsOpen,
-        child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 200),
-            child: _chatFriend != null
-                ? _FriendChatPanel(
-                    key: ValueKey('chat-${_chatFriend!.id}'),
-                    friend: _chatFriend!,
-                    entries: _chatEntriesFor(_chatFriend!.id),
-                    firstUnreadMessageId: _chatStore.firstUnreadMessageIdFor(
-                      _chatFriend!.id,
-                    ),
-                    isLoading: _chatStore.isLoading,
-                    isSending: _chatStore.isSending,
-                    onCancelInvitation: (
-                      invitation,
-                    ) async {
-                      final friend = _chatFriend;
-
-                      if (friend == null) {
-                        return false;
-                      }
-
-                      final success =
-                          await _runInvitationStore.cancelInvitation(
-                        friendId: friend.id,
-                        invitationId: invitation.id,
-                      );
-
-                      if (!mounted) {
-                        return success;
-                      }
-
-                      if (!success) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              _runInvitationStore.errorMessage ?? '取消跑步邀請失敗',
-                            ),
-                          ),
-                        );
-                      }
-
-                      return success;
-                    },
-                    onRespondInvitation: (
-                      invitation,
-                      accept,
-                    ) async {
-                      final friend = _chatFriend;
-
-                      if (friend == null) {
-                        return false;
-                      }
-
-                      final success =
-                          await _runInvitationStore.respondInvitation(
-                        friendId: friend.id,
-                        invitationId: invitation.id,
-                        accept: accept,
-                      );
-
-                      if (!mounted) {
-                        return success;
-                      }
-
-                      if (!success) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              _runInvitationStore.errorMessage ?? '跑步邀請處理失敗',
-                            ),
-                          ),
-                        );
-                      }
-
-                      return success;
-                    },
-                    onSendMessage: (message) async {
-                      final success = await _chatStore.sendMessage(
-                        _chatFriend!.id,
-                        message,
-                      );
-
-                      if (!mounted || success) {
-                        return;
-                      }
-
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text(
-                            _chatStore.errorMessage ?? '訊息傳送失敗',
-                          ),
+        child: Column(
+          children: [
+            if (!_isSecondaryPage)
+              CommunityNavigation(
+                selected: _section,
+                friendBadge: _friendNotificationCount,
+                groupBadge: _groupNotificationCount,
+                onChanged: (section) {
+                  switch (section) {
+                    case CommunitySection.feed:
+                      _openFeed();
+                      break;
+                    case CommunitySection.friends:
+                      _openFriends();
+                      break;
+                    case CommunitySection.groups:
+                      _openGroups();
+                      break;
+                  }
+                },
+              ),
+            Expanded(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 200),
+                child: _chatFriend != null
+                    ? _FriendChatPanel(
+                        key: ValueKey('chat-${_chatFriend!.id}'),
+                        friend: _chatFriend!,
+                        entries: _chatEntriesFor(_chatFriend!.id),
+                        firstUnreadMessageId:
+                            _chatStore.firstUnreadMessageIdFor(
+                          _chatFriend!.id,
                         ),
-                      );
-                    },
-                  )
-                : _inviteFriend != null
-                    ? _InviteToRunPanel(
-                        key: ValueKey('invite-${_inviteFriend!.id}'),
-                        friend: _inviteFriend!,
-                        onSendInvitation: ({
-                          required scheduledAt,
-                          targetDistanceKm,
-                          targetDurationMinutes,
-                          required notes,
-                        }) async {
-                          final friend = _inviteFriend;
+                        isLoading: _chatStore.isLoading,
+                        isSending: _chatStore.isSending,
+                        onCancelInvitation: (invitation) async {
+                          final friend = _chatFriend;
 
                           if (friend == null) {
                             return false;
                           }
 
                           final success =
-                              await _runInvitationStore.sendInvitation(
-                            inviteeId: friend.id,
-                            scheduledAt: scheduledAt,
-                            targetDistanceKm: targetDistanceKm,
-                            targetDurationMinutes: targetDurationMinutes,
-                            notes: notes,
+                              await _runInvitationStore.cancelInvitation(
+                            friendId: friend.id,
+                            invitationId: invitation.id,
                           );
 
                           if (!mounted) {
@@ -1199,222 +1137,311 @@ class _CommunityScreenState extends State<CommunityScreen> {
                               SnackBar(
                                 content: Text(
                                   _runInvitationStore.errorMessage ??
-                                      '跑步邀請送出失敗',
+                                      '取消跑步邀請失敗',
                                 ),
                               ),
                             );
+                          }
 
+                          return success;
+                        },
+                        onRespondInvitation: (
+                          invitation,
+                          accept,
+                        ) async {
+                          final friend = _chatFriend;
+
+                          if (friend == null) {
                             return false;
                           }
 
-                          setState(() {
-                            _inviteFriend = null;
-                            _isFriendsOpen = true;
-                          });
+                          final success =
+                              await _runInvitationStore.respondInvitation(
+                            friendId: friend.id,
+                            invitationId: invitation.id,
+                            accept: accept,
+                          );
 
-                          return true;
+                          if (!mounted) {
+                            return success;
+                          }
+
+                          if (!success) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  _runInvitationStore.errorMessage ??
+                                      '跑步邀請處理失敗',
+                                ),
+                              ),
+                            );
+                          }
+
+                          return success;
+                        },
+                        onSendMessage: (message) async {
+                          final success = await _chatStore.sendMessage(
+                            _chatFriend!.id,
+                            message,
+                          );
+
+                          if (!mounted || success) {
+                            return;
+                          }
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text(
+                                _chatStore.errorMessage ?? '訊息傳送失敗',
+                              ),
+                            ),
+                          );
                         },
                       )
-                    : _groupDetail != null
-                        ? GroupDetailPanel(
+                    : _inviteFriend != null
+                        ? _InviteToRunPanel(
                             key: ValueKey(
-                              'group-detail-${_groupDetail!.id}',
+                              'invite-${_inviteFriend!.id}',
                             ),
-                            group: _groupDetail!,
-                            friends: _friendStore.friends,
-                            groupStore: _groupStore,
-                            groupInvitationStore: _groupInvitationStore,
-                            groupActivityStore: _groupActivityStore,
-                            onBack: _closeSecondaryPage,
-                          )
-                        : _isFriendsOpen
-                            ? _FriendsPanel(
-                                key: const ValueKey('friends'),
-                                store: _friendStore,
-                                chatStore: _chatStore,
-                                runInvitationStore: _runInvitationStore,
-                                onInviteTap: _openInviteToRun,
-                                onMessageTap: _openChat,
-                              )
-                            : _isGroupsOpen
-                                ? SafeArea(
-                                    top: true,
-                                    bottom: false,
-                                    child: _GroupsPanel(
-                                      key: _groupsPanelKey,
-                                      groupStore: _groupStore,
-                                      friendStore: _friendStore,
-                                      groupInvitationStore:
-                                          _groupInvitationStore,
-                                      onGroupDetailTap: _openGroupDetail,
-                                      onBack: _closeSecondaryPage,
-                                      onMessageTap: _openLegacyChat,
-                                      onSystemMessage: _appendSystemChatMessage,
-                                      onScheduleEventReminder:
-                                          _scheduleGroupEventReminder,
+                            friend: _inviteFriend!,
+                            onSendInvitation: ({
+                              required scheduledAt,
+                              targetDistanceKm,
+                              targetDurationMinutes,
+                              required notes,
+                            }) async {
+                              final friend = _inviteFriend;
+
+                              if (friend == null) {
+                                return false;
+                              }
+
+                              final success =
+                                  await _runInvitationStore.sendInvitation(
+                                inviteeId: friend.id,
+                                scheduledAt: scheduledAt,
+                                targetDistanceKm: targetDistanceKm,
+                                targetDurationMinutes: targetDurationMinutes,
+                                notes: notes,
+                              );
+
+                              if (!mounted) {
+                                return success;
+                              }
+
+                              if (!success) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      _runInvitationStore.errorMessage ??
+                                          '跑步邀請送出失敗',
                                     ),
+                                  ),
+                                );
+
+                                return false;
+                              }
+
+                              setState(() {
+                                _inviteFriend = null;
+                                _section = CommunitySection.friends;
+                              });
+
+                              return true;
+                            },
+                          )
+                        : _groupDetail != null
+                            ? GroupDetailPanel(
+                                key: ValueKey(
+                                  'group-detail-${_groupDetail!.id}',
+                                ),
+                                group: _groupDetail!,
+                                friends: _friendStore.friends,
+                                groupStore: _groupStore,
+                                groupInvitationStore: _groupInvitationStore,
+                                groupActivityStore: _groupActivityStore,
+                                onBack: _closeSecondaryPage,
+                              )
+                            : _section == CommunitySection.friends
+                                ? _FriendsPanel(
+                                    key: const ValueKey('friends'),
+                                    store: _friendStore,
+                                    chatStore: _chatStore,
+                                    runInvitationStore: _runInvitationStore,
+                                    requestBadge: _friendStore.requests.length,
+                                    onInviteTap: _openInviteToRun,
+                                    onMessageTap: _openChat,
                                   )
-                                : ListView(
-                                    key: const ValueKey('community-feed'),
-                                    padding: const EdgeInsets.fromLTRB(
-                                        18, 14, 18, 24),
-                                    children: [
-                                      _SearchField(
-                                        controller: _searchController,
-                                        onClear: _searchQuery.isEmpty
-                                            ? null
-                                            : () => _searchController.clear(),
-                                      ),
-                                      const SizedBox(height: 14),
-                                      AnimatedSwitcher(
-                                        duration:
-                                            const Duration(milliseconds: 220),
-                                        switchInCurve: Curves.easeOutCubic,
-                                        switchOutCurve: Curves.easeInCubic,
-                                        child: _isComposerOpen
-                                            ? PostComposer(
-                                                key: const ValueKey(
-                                                    'composer-open'),
-                                                onPost: _submitPost,
-                                                onClose: _closeComposer,
-                                              )
-                                            : _CreatePostCard(
-                                                key: const ValueKey(
-                                                    'composer-closed'),
-                                                onTap: _openComposer,
-                                                onProfileTap:
-                                                    _openMyCommunityProfile,
-                                              ),
-                                      ),
-                                      const SizedBox(height: 18),
-                                      const CommunitySectionLabel('社群動態'),
-                                      const SizedBox(height: 12),
-                                      if (_filteredPosts.isEmpty)
-                                        const CommunityEmptyState(
-                                          text: '找不到符合關鍵字的貼文。',
-                                        )
-                                      else
-                                        ...List.generate(_filteredPosts.length,
-                                            (visibleIndex) {
-                                          final matched =
-                                              _filteredPosts[visibleIndex];
-                                          final index = matched.index;
-                                          final post = matched.post;
-                                          return Padding(
-                                            padding: EdgeInsets.only(
-                                              bottom: visibleIndex ==
-                                                      _filteredPosts.length - 1
-                                                  ? 0
-                                                  : 14,
+                                : _section == CommunitySection.groups
+                                    ? _GroupsPanel(
+                                        key: _groupsPanelKey,
+                                        groupStore: _groupStore,
+                                        friendStore: _friendStore,
+                                        groupInvitationStore:
+                                            _groupInvitationStore,
+                                        onGroupDetailTap: _openGroupDetail,
+                                        onMessageTap: _openLegacyChat,
+                                        onSystemMessage:
+                                            _appendSystemChatMessage,
+                                        onScheduleEventReminder:
+                                            _scheduleGroupEventReminder,
+                                      )
+                                    : ListView(
+                                        key: const ValueKey(
+                                          'community-feed',
+                                        ),
+                                        padding: const EdgeInsets.fromLTRB(
+                                          18,
+                                          14,
+                                          18,
+                                          24,
+                                        ),
+                                        children: [
+                                          _SearchField(
+                                            controller: _searchController,
+                                            onClear: _searchQuery.isEmpty
+                                                ? null
+                                                : () =>
+                                                    _searchController.clear(),
+                                          ),
+                                          const SizedBox(height: 14),
+                                          AnimatedSwitcher(
+                                            duration: const Duration(
+                                              milliseconds: 220,
                                             ),
-                                            child: PostCard(
-                                              onMoreTap: () =>
-                                                  _showPostMenu(index),
-                                              onLikeTap: () =>
-                                                  _toggleLike(index),
-                                              onCommentTap: () =>
-                                                  _openComments(index),
-                                              onSaveTap: () =>
-                                                  _toggleSave(index),
-                                              onShareTap: () =>
-                                                  _showShareSheet(index),
-                                              onProfileTap: () =>
-                                                  _openAuthorCommunityProfile(
-                                                initial: post.initial,
-                                                name: post.name,
-                                              ),
-                                              initial: post.initial,
-                                              name: post.name,
-                                              timeAgo: post.timeAgo,
-                                              content: post.content,
-                                              tags: post.tags,
-                                              type: post.type,
-                                              plan: post.plan,
-                                              recipe: post.recipe,
-                                              likes: post.likes,
-                                              comments: post.commentCount,
-                                              isLiked: post.isLiked,
-                                              isSaved: post.isSaved,
+                                            switchInCurve: Curves.easeOutCubic,
+                                            switchOutCurve: Curves.easeInCubic,
+                                            child: _isComposerOpen
+                                                ? PostComposer(
+                                                    key: const ValueKey(
+                                                      'composer-open',
+                                                    ),
+                                                    onPost: _submitPost,
+                                                    onClose: _closeComposer,
+                                                  )
+                                                : _CreatePostCard(
+                                                    key: const ValueKey(
+                                                      'composer-closed',
+                                                    ),
+                                                    onTap: _openComposer,
+                                                    onProfileTap:
+                                                        _openMyCommunityProfile,
+                                                  ),
+                                          ),
+                                          const SizedBox(height: 18),
+                                          const CommunitySectionLabel(
+                                            '社群動態',
+                                          ),
+                                          const SizedBox(height: 12),
+                                          if (_filteredPosts.isEmpty)
+                                            const CommunityEmptyState(
+                                              text: '找不到符合關鍵字的貼文。',
+                                            )
+                                          else
+                                            ...List.generate(
+                                              _filteredPosts.length,
+                                              (
+                                                visibleIndex,
+                                              ) {
+                                                final matched = _filteredPosts[
+                                                    visibleIndex];
+                                                final index = matched.index;
+                                                final post = matched.post;
+
+                                                return Padding(
+                                                  padding: EdgeInsets.only(
+                                                    bottom: visibleIndex ==
+                                                            _filteredPosts
+                                                                    .length -
+                                                                1
+                                                        ? 0
+                                                        : 14,
+                                                  ),
+                                                  child: PostCard(
+                                                    onMoreTap: () =>
+                                                        _showPostMenu(
+                                                      index,
+                                                    ),
+                                                    onLikeTap: () =>
+                                                        _toggleLike(
+                                                      index,
+                                                    ),
+                                                    onCommentTap: () =>
+                                                        _openComments(
+                                                      index,
+                                                    ),
+                                                    onSaveTap: () =>
+                                                        _toggleSave(
+                                                      index,
+                                                    ),
+                                                    onShareTap: () =>
+                                                        _showShareSheet(
+                                                      index,
+                                                    ),
+                                                    onProfileTap: () =>
+                                                        _openAuthorCommunityProfile(
+                                                      initial: post.initial,
+                                                      name: post.name,
+                                                    ),
+                                                    initial: post.initial,
+                                                    name: post.name,
+                                                    timeAgo: post.timeAgo,
+                                                    content: post.content,
+                                                    tags: post.tags,
+                                                    type: post.type,
+                                                    plan: post.plan,
+                                                    recipe: post.recipe,
+                                                    likes: post.likes,
+                                                    comments: post.commentCount,
+                                                    isLiked: post.isLiked,
+                                                    isSaved: post.isSaved,
+                                                  ),
+                                                );
+                                              },
                                             ),
-                                          );
-                                        }),
-                                    ],
-                                  )),
+                                        ],
+                                      ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  PreferredSizeWidget _buildAppBar(BuildContext context) {
+  PreferredSizeWidget? _buildAppBar() {
+    if (!_isSecondaryPage) {
+      return null;
+    }
+
+    String title = '';
+
+    if (_chatFriend != null) {
+      title = _chatFriend!.name;
+    } else if (_inviteFriend != null) {
+      title = '邀請跑步';
+    } else if (_groupDetail != null) {
+      title = _groupDetail!.name;
+    }
+
     return AppBar(
       backgroundColor: const Color(0xFFF8FAFC),
       elevation: 0,
-      automaticallyImplyLeading: false,
-      titleSpacing: 16,
-      title: Row(
-        children: [
-          InkWell(
-            borderRadius: BorderRadius.circular(18),
-            onTap: (_chatFriend != null ||
-                    _inviteFriend != null ||
-                    _groupDetail != null ||
-                    _isFriendsOpen ||
-                    _isGroupsOpen)
-                ? _closeSecondaryPage
-                : () => Navigator.maybePop(context),
-            child: const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.chevron_left, size: 24, color: Color(0xFF4A5568)),
-                  SizedBox(width: 2),
-                  Text(
-                    '返回',
-                    style: TextStyle(
-                      color: Color(0xFF4A5568),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const Spacer(),
-          const Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CircleAvatar(
-                radius: 12,
-                backgroundColor: Color(0xFFE2E8F0),
-                child: Icon(Icons.directions_run,
-                    size: 14, color: Color(0xFF4A5568)),
-              ),
-            ],
-          ),
-          const Spacer(),
-          if (_chatFriend != null ||
-              _inviteFriend != null ||
-              _groupDetail != null)
-            const SizedBox(width: 56)
-          else if (_isGroupsOpen)
-            _CreateGroupButton(
-              onTap: () {
-                _groupsPanelKey.currentState?.openCreateGroup();
-              },
-            )
-          else ...[
-            _FriendRequestsButton(
-              onTap: _openFriends,
-              count: _friendStore.requests.length +
-                  _chatStore.unreadTotal +
-                  _runInvitationStore.pendingTotal +
-                  _groupInvitationStore.pendingTotal,
-            ),
-            const SizedBox(width: 8),
-            _GroupsButton(onTap: _openGroups),
-          ],
-        ],
+      centerTitle: true,
+      leading: IconButton(
+        onPressed: _closeSecondaryPage,
+        icon: const Icon(
+          Icons.chevron_left,
+          color: Color(0xFF475569),
+        ),
+      ),
+      title: Text(
+        title,
+        style: const TextStyle(
+          color: Color(0xFF111827),
+          fontSize: 17,
+          fontWeight: FontWeight.w900,
+        ),
       ),
     );
   }
@@ -2439,6 +2466,7 @@ class _FriendsPanel extends StatefulWidget {
   final FriendStore store;
   final ChatStore chatStore;
   final RunInvitationStore runInvitationStore;
+  final int requestBadge;
 
   const _FriendsPanel({
     super.key,
@@ -2447,6 +2475,7 @@ class _FriendsPanel extends StatefulWidget {
     required this.runInvitationStore,
     required this.onInviteTap,
     required this.onMessageTap,
+    required this.requestBadge,
   });
 
   @override
@@ -2571,7 +2600,7 @@ class _FriendsPanelState extends State<_FriendsPanel> {
     return ListView(
       padding: const EdgeInsets.fromLTRB(18, 14, 18, 24),
       children: [
-        _FriendTabs(
+        FriendTabs(
           friendsCount: friends.length,
           requestsCount: requests.length + pendingRequests.length,
           selectedIndex: _selectedTab,
@@ -2583,7 +2612,7 @@ class _FriendsPanelState extends State<_FriendsPanel> {
         ),
         const SizedBox(height: 20),
         if (_selectedTab == 0) ...[
-          _FriendSearchField(
+          FriendSearchField(
             onChanged: widget.store.searchMembers,
           ),
           if (searchResults.isNotEmpty) ...[
@@ -2765,194 +2794,6 @@ class _FriendsPanelState extends State<_FriendsPanel> {
           ),
         ],
       ],
-    );
-  }
-}
-
-class _FriendTabs extends StatelessWidget {
-  final int friendsCount;
-  final int requestsCount;
-  final int selectedIndex;
-  final ValueChanged<int> onChanged;
-
-  const _FriendTabs({
-    required this.friendsCount,
-    required this.requestsCount,
-    required this.selectedIndex,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: _FriendTabButton(
-            label: '好友\n($friendsCount)',
-            isSelected: selectedIndex == 0,
-            onTap: () => onChanged(0),
-          ),
-        ),
-        const SizedBox(width: 7),
-        Expanded(
-          child: _FriendTabButton(
-            label: '請求',
-            badge: requestsCount > 0 ? '$requestsCount' : null,
-            isSelected: selectedIndex == 1,
-            onTap: () => onChanged(1),
-          ),
-        ),
-        const SizedBox(width: 7),
-        Expanded(
-          child: _FriendTabButton(
-            label: '建議',
-            isSelected: selectedIndex == 2,
-            onTap: () => onChanged(2),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _FriendTabButton extends StatelessWidget {
-  final String label;
-  final String? badge;
-  final bool isSelected;
-  final VoidCallback onTap;
-
-  const _FriendTabButton({
-    required this.label,
-    required this.isSelected,
-    required this.onTap,
-    this.badge,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      clipBehavior: Clip.none,
-      children: [
-        SizedBox(
-          width: double.infinity,
-          height: 48,
-          child: TextButton(
-            onPressed: onTap,
-            style: TextButton.styleFrom(
-              backgroundColor:
-                  isSelected ? Colors.black : const Color(0xFFF1F5F9),
-              foregroundColor:
-                  isSelected ? Colors.white : const Color(0xFF4A5568),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(8),
-              ),
-              padding: EdgeInsets.zero,
-            ),
-            child: Text(
-              label,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 12,
-                height: 1.25,
-                fontWeight: FontWeight.w800,
-              ),
-            ),
-          ),
-        ),
-        if (badge != null)
-          Positioned(
-            right: -3,
-            top: -6,
-            child: Container(
-              width: 18,
-              height: 18,
-              alignment: Alignment.center,
-              decoration: const BoxDecoration(
-                color: Color(0xFFE53E3E),
-                shape: BoxShape.circle,
-              ),
-              child: Text(
-                badge!,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-class _FriendSearchField extends StatefulWidget {
-  final ValueChanged<String> onChanged;
-
-  const _FriendSearchField({
-    required this.onChanged,
-  });
-
-  @override
-  State<_FriendSearchField> createState() => _FriendSearchFieldState();
-}
-
-class _FriendSearchFieldState extends State<_FriendSearchField> {
-  final TextEditingController _controller = TextEditingController();
-  Timer? _debounce;
-
-  @override
-  void dispose() {
-    _debounce?.cancel();
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _handleChanged(String value) {
-    setState(() {});
-
-    _debounce?.cancel();
-
-    _debounce = Timer(
-      const Duration(milliseconds: 400),
-      () {
-        widget.onChanged(value);
-      },
-    );
-  }
-
-  void _clear() {
-    _controller.clear();
-    _debounce?.cancel();
-    widget.onChanged('');
-    setState(() {});
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return TextField(
-      controller: _controller,
-      onChanged: _handleChanged,
-      decoration: InputDecoration(
-        hintText: '搜尋姓名、帳號或 Email',
-        prefixIcon: const Icon(Icons.search),
-        suffixIcon: _controller.text.isNotEmpty
-            ? IconButton(
-                onPressed: _clear,
-                icon: const Icon(Icons.close),
-              )
-            : null,
-        filled: true,
-        fillColor: const Color(0xFFF7F8FA),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide.none,
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 14,
-        ),
-      ),
     );
   }
 }
@@ -4655,7 +4496,6 @@ class _GoalAdjustButton extends StatelessWidget {
 }
 
 class _GroupsPanel extends StatefulWidget {
-  final VoidCallback onBack;
   final GroupStore groupStore;
   final FriendStore friendStore;
   final GroupInvitationStore groupInvitationStore;
@@ -4672,7 +4512,6 @@ class _GroupsPanel extends StatefulWidget {
 
   const _GroupsPanel({
     super.key,
-    required this.onBack,
     required this.groupStore,
     required this.friendStore,
     required this.groupInvitationStore,
@@ -4858,20 +4697,6 @@ class _GroupsPanelState extends State<_GroupsPanel> {
   final TextEditingController _groupDescriptionController =
       TextEditingController();
   bool _createPrivateGroup = false;
-  final List<_DiscoverGroup> _discoverGroups = [
-    const _DiscoverGroup(
-      name: 'Weekend Warriors',
-      description: '週末一起運動的活力夥伴',
-      members: 20,
-      isPrivate: false,
-    ),
-    const _DiscoverGroup(
-      name: 'Post-Work Runners',
-      description: '下班後一起動一動的夜跑群',
-      members: 22,
-      isPrivate: true,
-    ),
-  ];
 
   String _groupSearchKeyword = '';
 
@@ -5017,149 +4842,19 @@ class _GroupsPanelState extends State<_GroupsPanel> {
     widget.onGroupDetailTap(detail);
   }
 
-  void _requestGroup(_DiscoverGroup group) {
-    setState(() {
-      final index =
-          _discoverGroups.indexWhere((item) => item.name == group.name);
-      if (index != -1) {
-        _discoverGroups[index] = _discoverGroups[index].copyWith(
-          requestSent: true,
-        );
-      }
-    });
-    _showMessage('已送出加入 ${group.name} 的申請，等待群組邀請通過');
-  }
-
   @override
   Widget build(BuildContext context) {
     final groupInvitations = widget.groupInvitationStore.pendingInvitations;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(18, 14, 18, 24),
+      padding: const EdgeInsets.fromLTRB(
+        18,
+        14,
+        18,
+        24,
+      ),
       children: [
-        Row(
-          children: [
-            InkWell(
-              borderRadius: BorderRadius.circular(18),
-              onTap: widget.onBack,
-              child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 4, vertical: 8),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.chevron_left,
-                        size: 24, color: Color(0xFF4A5568)),
-                    SizedBox(width: 2),
-                    Text(
-                      '返回',
-                      style: TextStyle(
-                        color: Color(0xFF4A5568),
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const Spacer(),
-            const CircleAvatar(
-              radius: 12,
-              backgroundColor: Color(0xFFE2E8F0),
-              child: Icon(Icons.directions_run,
-                  size: 14, color: Color(0xFF4A5568)),
-            ),
-            const Spacer(),
-            _CreateGroupButton(
-              onTap: openCreateGroup,
-            ),
-          ],
-        ),
-        if (groupInvitations.isNotEmpty) ...[
-          const SizedBox(height: 14),
-          CommunitySectionLabel(
-            '待處理邀請 (${groupInvitations.length})',
-          ),
-          const SizedBox(height: 12),
-          ...List.generate(
-            groupInvitations.length,
-            (index) {
-              final invitation = groupInvitations[index];
-
-              return Padding(
-                padding: EdgeInsets.only(
-                  bottom: index == groupInvitations.length - 1 ? 0 : 12,
-                ),
-                child: GroupInvitationCard(
-                  invitation: invitation,
-                  isResponding: widget.groupInvitationStore.isResponding,
-                  onAccept: () {
-                    _respondGroupInvitation(
-                      invitation,
-                      true,
-                    );
-                  },
-                  onReject: () {
-                    _respondGroupInvitation(
-                      invitation,
-                      false,
-                    );
-                  },
-                ),
-              );
-            },
-          ),
-          const SizedBox(height: 8),
-        ],
-        const SizedBox(height: 14),
-        Row(
-          children: [
-            Expanded(
-              child: _GroupSearchField(
-                onChanged: _searchGroups,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 14),
-        Row(
-          children: [
-            Expanded(
-              child: GroupTabButton(
-                label: '我的群組 (${widget.groupStore.groups.length})',
-                isSelected: _selectedTab == 0,
-                onTap: () {
-                  setState(() {
-                    _selectedTab = 0;
-                  });
-
-                  widget.groupStore.loadGroups(
-                    search: _groupSearchKeyword,
-                  );
-                },
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: GroupTabButton(
-                label: '探索',
-                isSelected: _selectedTab == 1,
-                onTap: () {
-                  setState(() {
-                    _selectedTab = 1;
-                  });
-
-                  widget.groupStore.loadDiscoverGroups(
-                    search: _groupSearchKeyword,
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 22),
         if (_isCreateGroupOpen) ...[
-          const SizedBox(height: 14),
           _CreateGroupForm(
             nameController: _groupNameController,
             descriptionController: _groupDescriptionController,
@@ -5172,144 +4867,220 @@ class _GroupsPanelState extends State<_GroupsPanel> {
             onClose: _closeCreateGroup,
             onCreate: _createGroup,
           ),
-        ],
-        const SizedBox(height: 14),
-        CommunitySectionLabel(
-          _selectedTab == 0
-              ? '我的群組 (${widget.groupStore.groups.length})'
-              : '推薦群組',
-        ),
-        const SizedBox(height: 12),
-        if (_selectedTab == 0) ...[
-          if (widget.groupStore.isLoading && widget.groupStore.groups.isEmpty)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: CircularProgressIndicator(),
-              ),
-            )
-          else if (widget.groupStore.groups.isEmpty)
-            const CommunityEmptyState(
-              text: '目前還沒有群組。',
-            )
-          else
+        ] else ...[
+          if (groupInvitations.isNotEmpty) ...[
+            CommunitySectionLabel(
+              '待處理邀請 (${groupInvitations.length})',
+            ),
+            const SizedBox(height: 12),
             ...List.generate(
-              widget.groupStore.groups.length,
+              groupInvitations.length,
               (index) {
-                final group = widget.groupStore.groups[index];
+                final invitation = groupInvitations[index];
 
                 return Padding(
                   padding: EdgeInsets.only(
-                    bottom:
-                        index == widget.groupStore.groups.length - 1 ? 0 : 12,
+                    bottom: index == groupInvitations.length - 1 ? 0 : 12,
                   ),
-                  child: _GroupCard(
-                    name: group.name,
-                    description: group.description,
-                    members: group.memberCount,
-
-                    // 目前尚未串 TrainingLog 群組統計
-                    weeklyGoalCurrent: 0,
-
-                    weeklyGoalTarget: group.weeklyGoalTarget,
-
-                    progress: 0,
-
-                    actionLabel: '查看群組',
-
-                    isPrivate: group.isPrivate,
-
-                    exerciseType: group.exerciseType,
-
-                    showCrown: group.owner.id == UserSession.memberId,
-
-                    showSettings: false,
-
-                    onActionTap: () {
-                      _viewBackendGroup(group);
+                  child: GroupInvitationCard(
+                    invitation: invitation,
+                    isResponding: widget.groupInvitationStore.isResponding,
+                    onAccept: () {
+                      _respondGroupInvitation(
+                        invitation,
+                        true,
+                      );
+                    },
+                    onReject: () {
+                      _respondGroupInvitation(
+                        invitation,
+                        false,
+                      );
                     },
                   ),
                 );
               },
             ),
-        ] else ...[
-          if (widget.groupStore.isLoading &&
-              widget.groupStore.discoverGroups.isEmpty)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: CircularProgressIndicator(),
+            const SizedBox(height: 20),
+          ],
+          Row(
+            children: [
+              Expanded(
+                child: _GroupSearchField(
+                  onChanged: _searchGroups,
+                ),
               ),
-            )
-          else if (widget.groupStore.discoverGroups.isEmpty)
-            const CommunityEmptyState(
-              text: '目前沒有推薦群組。',
-            )
-          else
-            ...List.generate(
-              widget.groupStore.discoverGroups.length,
-              (index) {
-                final group = widget.groupStore.discoverGroups[index];
+              const SizedBox(width: 10),
+              _CreateGroupButton(
+                onTap: openCreateGroup,
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: GroupTabButton(
+                  label: '我的群組 (${widget.groupStore.groups.length})',
+                  isSelected: _selectedTab == 0,
+                  onTap: () {
+                    setState(() {
+                      _selectedTab = 0;
+                    });
 
-                return Padding(
-                  padding: EdgeInsets.only(
-                    bottom: index == widget.groupStore.discoverGroups.length - 1
-                        ? 0
-                        : 12,
-                  ),
-                  child: _SuggestedGroupCard(
-                    name: group.name,
-                    description: group.description,
-                    members: group.memberCount,
-                    actionLabel: group.isPrivate ? '申請加入' : '加入群組',
-                    isPrivate: group.isPrivate,
-                    isDisabled: false,
-                    onTap: group.isPrivate
-                        ? () async {
-                            final success =
-                                await widget.groupStore.requestJoinGroup(
-                              group.id,
-                            );
+                    widget.groupStore.loadGroups(
+                      search: _groupSearchKeyword,
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: GroupTabButton(
+                  label: '探索',
+                  isSelected: _selectedTab == 1,
+                  onTap: () {
+                    setState(() {
+                      _selectedTab = 1;
+                    });
 
-                            if (!mounted) {
-                              return;
-                            }
+                    widget.groupStore.loadDiscoverGroups(
+                      search: _groupSearchKeyword,
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 22),
+          CommunitySectionLabel(
+            _selectedTab == 0
+                ? '我的群組 (${widget.groupStore.groups.length})'
+                : '推薦群組',
+          ),
+          const SizedBox(height: 12),
+          if (_selectedTab == 0) ...[
+            if (widget.groupStore.isLoading && widget.groupStore.groups.isEmpty)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: CircularProgressIndicator(),
+                ),
+              )
+            else if (widget.groupStore.groups.isEmpty)
+              const CommunityEmptyState(
+                text: '目前還沒有群組。',
+              )
+            else
+              ...List.generate(
+                widget.groupStore.groups.length,
+                (index) {
+                  final group = widget.groupStore.groups[index];
 
-                            if (!success) {
-                              _showMessage(
-                                widget.groupStore.errorMessage ?? '申請加入群組失敗',
+                  return Padding(
+                    padding: EdgeInsets.only(
+                      bottom:
+                          index == widget.groupStore.groups.length - 1 ? 0 : 12,
+                    ),
+                    child: _GroupCard(
+                      name: group.name,
+                      description: group.description,
+                      members: group.memberCount,
+                      weeklyGoalCurrent: 0,
+                      weeklyGoalTarget: group.weeklyGoalTarget,
+                      progress: 0,
+                      actionLabel: '查看群組',
+                      isPrivate: group.isPrivate,
+                      exerciseType: group.exerciseType,
+                      showCrown: group.owner.id == UserSession.memberId,
+                      showSettings: false,
+                      onActionTap: () {
+                        _viewBackendGroup(group);
+                      },
+                    ),
+                  );
+                },
+              ),
+          ] else ...[
+            if (widget.groupStore.isLoading &&
+                widget.groupStore.discoverGroups.isEmpty)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: CircularProgressIndicator(),
+                ),
+              )
+            else if (widget.groupStore.discoverGroups.isEmpty)
+              const CommunityEmptyState(
+                text: '目前沒有推薦群組。',
+              )
+            else
+              ...List.generate(
+                widget.groupStore.discoverGroups.length,
+                (index) {
+                  final group = widget.groupStore.discoverGroups[index];
+
+                  return Padding(
+                    padding: EdgeInsets.only(
+                      bottom:
+                          index == widget.groupStore.discoverGroups.length - 1
+                              ? 0
+                              : 12,
+                    ),
+                    child: _SuggestedGroupCard(
+                      name: group.name,
+                      description: group.description,
+                      members: group.memberCount,
+                      actionLabel: group.isPrivate ? '申請加入' : '加入群組',
+                      isPrivate: group.isPrivate,
+                      isDisabled: false,
+                      onTap: group.isPrivate
+                          ? () async {
+                              final success =
+                                  await widget.groupStore.requestJoinGroup(
+                                group.id,
                               );
-                              return;
-                            }
 
-                            _showMessage(
-                              '已送出加入「${group.name}」的申請',
-                            );
-                          }
-                        : () async {
-                            final success = await widget.groupStore.joinGroup(
-                              group.id,
-                            );
+                              if (!mounted) {
+                                return;
+                              }
 
-                            if (!mounted) {
-                              return;
-                            }
+                              if (!success) {
+                                _showMessage(
+                                  widget.groupStore.errorMessage ?? '申請加入群組失敗',
+                                );
+                                return;
+                              }
 
-                            if (!success) {
                               _showMessage(
-                                widget.groupStore.errorMessage ?? '加入群組失敗',
+                                '已送出加入「${group.name}」的申請',
                               );
-                              return;
                             }
+                          : () async {
+                              final success = await widget.groupStore.joinGroup(
+                                group.id,
+                              );
 
-                            _showMessage(
-                              '已加入「${group.name}」',
-                            );
-                          },
-                  ),
-                );
-              },
-            ),
+                              if (!mounted) {
+                                return;
+                              }
+
+                              if (!success) {
+                                _showMessage(
+                                  widget.groupStore.errorMessage ?? '加入群組失敗',
+                                );
+                                return;
+                              }
+
+                              _showMessage(
+                                '已加入「${group.name}」',
+                              );
+                            },
+                    ),
+                  );
+                },
+              ),
+          ],
         ],
       ],
     );
