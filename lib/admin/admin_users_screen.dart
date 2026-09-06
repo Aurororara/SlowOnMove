@@ -10,6 +10,8 @@ class AdminUsersScreen extends StatefulWidget {
   State<AdminUsersScreen> createState() => _AdminUsersScreenState();
 }
 
+enum UserFilterStatus { all, active, banned }
+
 class _AdminUsersScreenState extends State<AdminUsersScreen> {
   final TextEditingController _searchController = TextEditingController();
 
@@ -17,6 +19,9 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
   String? _errorMessage;
   List<Map<String, dynamic>> _users = [];
   List<Map<String, dynamic>> _filteredUsers = [];
+
+  // 當前選取的分類標籤
+  UserFilterStatus _selectedFilter = UserFilterStatus.all;
 
   @override
   void initState() {
@@ -46,7 +51,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
         final List<dynamic> data = json.decode(utf8.decode(response.bodyBytes));
         setState(() {
           _users = List<Map<String, dynamic>>.from(data);
-          _filteredUsers = _users;
+          _applyFilters();
           _isLoading = false;
         });
       } else {
@@ -64,51 +69,136 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     }
   }
 
+  // 統一過濾邏輯：同時結合「狀態分類」與「搜尋關鍵字」
+  void _applyFilters() {
+    final query = _searchController.text.trim().toLowerCase();
+
+    setState(() {
+      _filteredUsers = _users.where((user) {
+        final bool isActive = user['isActive'] == true;
+
+        // 1. 狀態篩選
+        if (_selectedFilter == UserFilterStatus.active && !isActive)
+          return false;
+        if (_selectedFilter == UserFilterStatus.banned && isActive)
+          return false;
+
+        // 2. 關鍵字搜尋
+        if (query.isNotEmpty) {
+          final name = (user['name'] ?? '').toString().toLowerCase();
+          final email = (user['email'] ?? '').toString().toLowerCase();
+          return name.contains(query) || email.contains(query);
+        }
+
+        return true;
+      }).toList();
+    });
+  }
+
+  // 搜尋字串變更
+  void _onSearchChanged(String query) {
+    _applyFilters();
+  }
+
+  // 切換分類標籤
+  void _onFilterChanged(UserFilterStatus status) {
+    setState(() {
+      _selectedFilter = status;
+    });
+    _applyFilters();
+  }
+
   // 呼叫後端 API 切換用戶啟用/停權
   Future<void> _toggleUserStatus(
       int userId, int index, String userName, bool currentActive) async {
     final String actionText = currentActive ? '停用' : '啟用';
+    String selectedReason = '多次違反社群規範';
+    final List<String> banReasons = [
+      '多次違反社群規範',
+      '發布不當或騷擾言論',
+      '惡意檢舉與刷屏行為',
+      '涉及商業廣告或詐騙',
+      '其他違規事項',
+    ];
 
-    // 搜尋過濾
-    void _onSearchChanged(String query) {
-      setState(() {
-        if (query.trim().isEmpty) {
-          _filteredUsers = _users;
-        } else {
-          final lowerQuery = query.toLowerCase();
-          _filteredUsers = _users.where((user) {
-            final name = (user['name'] ?? '').toString().toLowerCase();
-            final email = (user['email'] ?? '').toString().toLowerCase();
-            return name.contains(lowerQuery) || email.contains(lowerQuery);
-          }).toList();
-        }
-      });
-    }
-
-    // 跳出確認對話框避免誤觸
+    // 跳出確認對話框（停用時可選取停權原因）
     final bool? confirmed = await showDialog<bool>(
       context: context,
-      builder: (dialogCtx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text('確認$actionText？',
-            style: const TextStyle(fontWeight: FontWeight.bold)),
-        content: Text('您確定要將用戶「$userName」變更為【$actionText】狀態嗎？'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogCtx, false),
-            child: const Text('取消', style: TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(dialogCtx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor:
-                  currentActive ? Colors.redAccent : const Color(0xFF0FB862),
-              foregroundColor: Colors.white,
-            ),
-            child: Text('確定$actionText'),
-          ),
-        ],
-      ),
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16)),
+              title: Text('確認$actionText？',
+                  style: const TextStyle(fontWeight: FontWeight.bold)),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('您確定要將用戶「$userName」變更為【$actionText】狀態嗎？'),
+                  if (currentActive) ...[
+                    const SizedBox(height: 16),
+                    const Text(
+                      '停用原因：',
+                      style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87),
+                    ),
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF9FAFB),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.grey.shade300),
+                      ),
+                      child: DropdownButtonHideUnderline(
+                        child: DropdownButton<String>(
+                          value: selectedReason,
+                          isExpanded: true,
+                          style: const TextStyle(
+                              fontSize: 13, color: Colors.black87),
+                          items: banReasons.map((reason) {
+                            return DropdownMenuItem(
+                              value: reason,
+                              child: Text(reason),
+                            );
+                          }).toList(),
+                          onChanged: (val) {
+                            if (val != null) {
+                              setDialogState(() {
+                                selectedReason = val;
+                              });
+                            }
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogCtx, false),
+                  child: const Text('取消', style: TextStyle(color: Colors.grey)),
+                ),
+                ElevatedButton(
+                  onPressed: () => Navigator.pop(dialogCtx, true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: currentActive
+                        ? Colors.redAccent
+                        : const Color(0xFF0FB862),
+                    foregroundColor: Colors.white,
+                  ),
+                  child: Text('確定$actionText'),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
 
     if (confirmed != true) return;
@@ -122,17 +212,17 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
         final data = json.decode(utf8.decode(response.bodyBytes));
         final bool newActive = data['isActive'];
 
-        setState(() {
-          _filteredUsers[index]['isActive'] = newActive;
-          // 同步更新原始 _users 清單中的該筆資料
-          final userInOriginal = _users.firstWhere(
-            (u) => u['id'] == userId,
-            orElse: () => {},
-          );
-          if (userInOriginal.isNotEmpty) {
-            userInOriginal['isActive'] = newActive;
-          }
-        });
+        // 更新資料庫回傳的真實狀態
+        final userInOriginal = _users.firstWhere(
+          (u) => u['id'] == userId,
+          orElse: () => {},
+        );
+        if (userInOriginal.isNotEmpty) {
+          userInOriginal['isActive'] = newActive;
+        }
+
+        // 重新套用過濾
+        _applyFilters();
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -161,22 +251,6 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     }
   }
 
-  // 搜尋過濾
-  void _onSearchChanged(String query) {
-    setState(() {
-      if (query.trim().isEmpty) {
-        _filteredUsers = _users;
-      } else {
-        final lowerQuery = query.toLowerCase();
-        _filteredUsers = _users.where((user) {
-          final name = (user['name'] ?? '').toString().toLowerCase();
-          final email = (user['email'] ?? '').toString().toLowerCase();
-          return name.contains(lowerQuery) || email.contains(lowerQuery);
-        }).toList();
-      }
-    });
-  }
-
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
@@ -188,6 +262,11 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
             child: _buildSearchBarCard(),
           ),
+          const SizedBox(height: 12),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: _buildFilterChips(),
+          ),
           const SizedBox(height: 16),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16.0),
@@ -195,6 +274,66 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
           ),
           const SizedBox(height: 24),
         ],
+      ),
+    );
+  }
+
+  // 狀態分類按鈕區
+  Widget _buildFilterChips() {
+    final int totalCount = _users.length;
+    final int activeCount = _users.where((u) => u['isActive'] == true).length;
+    final int bannedCount = _users.where((u) => u['isActive'] == false).length;
+
+    return Row(
+      children: [
+        _buildChipItem(
+          label: '全部 ($totalCount)',
+          status: UserFilterStatus.all,
+        ),
+        const SizedBox(width: 8),
+        _buildChipItem(
+          label: '正常啟用 ($activeCount)',
+          status: UserFilterStatus.active,
+          activeColor: const Color(0xFF0FB862),
+        ),
+        const SizedBox(width: 8),
+        _buildChipItem(
+          label: '已停權 ($bannedCount)',
+          status: UserFilterStatus.banned,
+          activeColor: Colors.redAccent,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildChipItem({
+    required String label,
+    required UserFilterStatus status,
+    Color activeColor = Colors.black,
+  }) {
+    final bool isSelected = _selectedFilter == status;
+
+    return GestureDetector(
+      onTap: () => _onFilterChanged(status),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? activeColor : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: isSelected ? activeColor : Colors.grey.shade300,
+            width: 1.2,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            color: isSelected ? Colors.white : const Color(0xFF4B5563),
+          ),
+        ),
       ),
     );
   }
@@ -318,7 +457,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
               padding: EdgeInsets.all(24.0),
               child: Center(
                 child: Text(
-                  '查無用戶資料',
+                  '查無符合條件的用戶資料',
                   style: TextStyle(color: Colors.grey, fontSize: 14),
                 ),
               ),
@@ -371,8 +510,6 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
                           ],
                         ),
                       ),
-
-                      // 點擊膠囊標籤觸發切換狀態
                       GestureDetector(
                         onTap: () =>
                             _toggleUserStatus(userId, index, name, isActive),
@@ -428,7 +565,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
             Icon(Icons.cancel_outlined, size: 14, color: Color(0xFF6B7280)),
             SizedBox(width: 4),
             Text(
-              '已停用',
+              '已停權',
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,

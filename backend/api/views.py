@@ -21,7 +21,7 @@ from core.models import (
     CommunityGroupJoinRequest,
 )
 from .serializers import (
-    MemberSerializer, AdminMemberListSerializer, BodyRecordSerializer, BloodPressureRecordSerializer, BoardRankingSerializer,
+    MemberSerializer, AdminMemberListSerializer,AdminPostReportSerializer, BodyRecordSerializer, BloodPressureRecordSerializer, BoardRankingSerializer,
     CommunityPostSerializer, FavoriteSerializer, TrainingLogSerializer,
     PostLikeSerializer, PostCommentSerializer, PostReportSerializer, PoseAnalysisSerializer, PointTransactionSerializer,
     TaskSerializer, MemberTaskSerializer, BadgeSerializer, MemberBadgeSerializer, WorkoutMenuSerializer, WorkoutItemSerializer,FriendMemberSerializer,
@@ -808,6 +808,47 @@ class PostReportViewSet(viewsets.ModelViewSet):
     queryset = PostReport.objects.all()
     serializer_class = PostReportSerializer
     permission_classes = [AllowAny]
+
+    # 後台取得所有被檢舉貼文清單
+    @action(detail=False, methods=["get"], url_path="admin-reports")
+    def admin_reports(self, request):
+        reports = (
+            PostReport.objects
+            .select_related("member", "post", "post__member")
+            .order_by("-created_at")
+        )
+        serializer = AdminPostReportSerializer(reports, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    # 後台處理檢舉：下架貼文或駁回檢舉
+    @action(detail=True, methods=["post"], url_path="resolve")
+    @transaction.atomic
+    def resolve_report(self, request, pk=None):
+        report = self.get_object()
+        action_type = request.data.get("action", "dismiss")
+
+        if action_type == "take_down":
+            report.status = "removed"
+            # 標記貼文為不公開/下架，而不是物理刪除
+            if report.post:
+                # 如果你的 CommunityPost 有 is_active 欄位：
+                if hasattr(report.post, "is_active"):
+                    report.post.is_active = False
+                    report.post.save(update_fields=["is_active"])
+                # 如果沒有 is_active，先用文字標記避免級聯刪除
+                elif hasattr(report.post, "content"):
+                    report.post.content = "[該貼文因違反社群規範已被下架]"
+                    report.post.save(update_fields=["content"])
+        else:
+            report.status = "reviewed"
+
+        report.save(update_fields=["status"])
+
+        return Response({
+            "message": "處理完成",
+            "report_id": report.id,
+            "status": report.status,
+        }, status=status.HTTP_200_OK)
 
 class PoseAnalysisViewSet(viewsets.ModelViewSet):
     queryset = PoseAnalysis.objects.all()

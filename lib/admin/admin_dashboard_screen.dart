@@ -10,7 +10,7 @@ class AdminDashboardScreen extends StatefulWidget {
 }
 
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
-  // 0: 總覽, 1: 用戶管理, 2: 內容管理
+  // 0: 總覽, 1: 用戶管理, 2:貼文管理
   int _currentIndex = 0;
 
   @override
@@ -123,7 +123,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
           const SizedBox(width: 24),
           _buildTabItem(
             icon: Icons.chat_bubble_outline,
-            title: '內容管理',
+            title: '貼文管理',
             index: 2,
           ),
         ],

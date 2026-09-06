@@ -1,5 +1,6 @@
 import os
 import requests as http_requests
+from django.db.models import Q
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -157,6 +158,13 @@ class GoogleLoginView(APIView):
             if updated:
                 user.save()
 
+            # 檢查停權狀態
+            if not user.is_active:
+                return Response(
+                    {"error": "您的帳號已被管理員停權，無法登入系統！"},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
+
             return create_jwt_response(user, created, "Google login successful")
 
         except ValueError as e:
@@ -184,7 +192,6 @@ class FacebookLoginView(APIView):
     def post(self, request):
         access_token = request.data.get("access_token")
 
-        # Flutter 也可以直接傳這些資料
         request_facebook_id = request.data.get("facebook_id")
         request_name = request.data.get("name")
         request_email = request.data.get("email")
@@ -202,7 +209,6 @@ class FacebookLoginView(APIView):
             email = None
             picture = None
 
-            # 優先嘗試用 access_token 查 Facebook Graph API
             if access_token:
                 fb_response = http_requests.get(
                     "https://graph.facebook.com/me",
@@ -225,7 +231,6 @@ class FacebookLoginView(APIView):
                 else:
                     print("Facebook Graph API failed:", fb_response.text)
 
-            # 如果 Graph API 失敗，就改用 Flutter 傳來的資料
             provider_id = provider_id or request_facebook_id
             name = name or request_name or "Facebook User"
             email = email or request_email
@@ -257,7 +262,7 @@ class FacebookLoginView(APIView):
                 user.first_name = name
                 updated = True
 
-            if email and user.email != email:
+            if user.email != email:
                 user.email = email
                 updated = True
 
@@ -275,6 +280,13 @@ class FacebookLoginView(APIView):
 
             if updated:
                 user.save()
+
+            # 檢查停權狀態
+            if not user.is_active:
+                return Response(
+                    {"error": "您的帳號已被管理員停權，無法登入系統！"},
+                    status=status.HTTP_403_FORBIDDEN,
+                )
 
             return create_jwt_response(
                 user,
@@ -343,8 +355,8 @@ class LoginView(APIView):
     permission_classes = [AllowAny]
 
     def post(self, request):
-        username_or_email = request.data.get("username")
-        password = request.data.get("password")
+        username_or_email = request.data.get("username", "").strip()
+        password = request.data.get("password", "")
 
         if not username_or_email or not password:
             return Response(
@@ -352,19 +364,24 @@ class LoginView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # 支援同時使用 username 或 email 登入
-        user = authenticate(username=username_or_email, password=password)
-        if not user:
-            try:
-                member = Member.objects.get(email=username_or_email)
-                user = authenticate(username=member.username, password=password)
-            except Member.DoesNotExist:
-                user = None
+        # 1. 支援用 username 或 email 找出該使用者 (不管是不是 active 都先找出來)
+        user = Member.objects.filter(
+            Q(username=username_or_email) | Q(email=username_or_email)
+        ).first()
 
-        if not user:
+        # 2. 找不到使用者，或密碼比對失敗
+        if not user or not user.check_password(password):
             return Response(
                 {"error": "帳號或密碼錯誤"},
                 status=status.HTTP_401_UNAUTHORIZED,
             )
 
+        # 3. 密碼正確，但帳號已被管理員停權
+        if not user.is_active:
+            return Response(
+                {"error": "您的帳號已被管理員停權，無法登入系統！"},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        # 4. 驗證通過，發放 JWT
         return create_jwt_response(user, False, "登入成功")

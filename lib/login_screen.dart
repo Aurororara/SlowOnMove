@@ -149,17 +149,20 @@ class _LoginScreenState extends State<LoginScreen> {
     } catch (e) {
       if (!context.mounted) return;
 
+      final rawErr = e.toString().replaceAll('Exception: ', '').trim();
       String errorMessage = _isSignUp ? '註冊失敗' : '登入失敗，請檢查帳號與密碼';
 
-      if (e.toString().contains('該用戶帳號已存在')) {
+      // 優先比對後端停權或其他特定訊息
+      if (rawErr.contains('停權')) {
+        errorMessage = rawErr;
+      } else if (rawErr.contains('該用戶帳號已存在')) {
         errorMessage = '註冊失敗：該用戶帳號已存在';
-      } else if (e.toString().contains('該電子信箱已被註冊')) {
+      } else if (rawErr.contains('該電子信箱已被註冊')) {
         errorMessage = '註冊失敗：該電子信箱已被註冊';
-      } else if (e.toString().contains('帳號或密碼錯誤') ||
-          e.toString().contains('401')) {
+      } else if (rawErr.contains('帳號或密碼錯誤') || rawErr.contains('401')) {
         errorMessage = '帳號或密碼錯誤';
-      } else {
-        errorMessage = e.toString().replaceAll('Exception: ', '');
+      } else if (rawErr.isNotEmpty) {
+        errorMessage = rawErr;
       }
 
       _showAlert(errorMessage);
@@ -419,7 +422,8 @@ class _LoginScreenState extends State<LoginScreen> {
       }
     } catch (e) {
       if (!context.mounted) return;
-      _showAlert('$loginType 登入失敗：$e');
+      final rawErr = e.toString().replaceAll('Exception: ', '').trim();
+      _showAlert(rawErr);
     } finally {
       if (mounted) {
         setState(() {

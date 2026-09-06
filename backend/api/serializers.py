@@ -12,6 +12,8 @@ from core.models import (
 )
 from rest_framework import serializers
 from core.models import Member
+from core.models import PostReport
+
 
 class AdminMemberListSerializer(serializers.ModelSerializer):
     # 將 username 映射成前端要顯示的 name
@@ -28,6 +30,31 @@ class MemberSerializer(serializers.ModelSerializer):
         fields = ['id', 'username', 'email', 'date_joined',]
         read_only_fields = ['id', 'date_joined']
 
+
+class AdminPostReportSerializer(serializers.ModelSerializer):
+    # 檢舉人名稱
+    reporter_name = serializers.CharField(source='member.username', read_only=True)
+    # 被檢舉貼文的作者名稱
+    author_name = serializers.CharField(source='post.member.username', read_only=True)
+    # 被檢舉貼文的文字內容
+    post_content = serializers.CharField(source='post.content', read_only=True)
+    post_image = serializers.CharField(source='post.image', read_only=True)
+    created_at = serializers.DateTimeField(format="%Y-%m-%d %H:%M", read_only=True)
+
+    class Meta:
+        model = PostReport
+        fields = [
+            'id',
+            'post_id',
+            'reporter_name',
+            'author_name',
+            'post_content',
+            'post_image',
+            'reason',
+            'status',
+            'created_at',
+        ]
+        
 class BodyRecordSerializer(serializers.ModelSerializer):
     class Meta:
         model = BodyRecord
