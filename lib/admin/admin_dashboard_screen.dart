@@ -1,92 +1,43 @@
 import 'package:flutter/material.dart';
+import 'admin_users_screen.dart';
+import 'admin_content_screen.dart';
 
-class AdminDashboardScreen extends StatelessWidget {
+class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
+
+  @override
+  State<AdminDashboardScreen> createState() => _AdminDashboardScreenState();
+}
+
+class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
+  // 0: 總覽, 1: 用戶管理, 2: 內容管理
+  int _currentIndex = 0;
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF8F9FA),
       body: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 1. 頂部黑底 Header
-              _buildHeader(context),
+        child: Column(
+          children: [
+            // 1. 頂部黑底 Header（固定不動）
+            _buildHeader(context),
 
-              // 2. 導覽頁籤 TabBar
-              _buildTabBar(),
+            // 2. 導覽頁籤 TabBar（點擊更新 _currentIndex）
+            _buildTabBar(),
 
-              const SizedBox(height: 16),
-
-              // 3. 2x2 數據統計卡片區
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: Column(
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildStatCard(
-                            icon: Icons.people_outline,
-                            trend: '+12.5%',
-                            isPositive: true,
-                            value: '50,234',
-                            title: '總用戶數',
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _buildStatCard(
-                            icon: Icons.show_chart,
-                            trend: '+8.2%',
-                            isPositive: true,
-                            value: '8,432',
-                            title: '今日活躍用戶',
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildStatCard(
-                            icon: Icons.local_fire_department_outlined,
-                            trend: '+15.3%',
-                            isPositive: true,
-                            value: '2.1M',
-                            title: '總跑步次數',
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: _buildStatCard(
-                            icon: Icons.emoji_events_outlined,
-                            trend: '-2.1%',
-                            isPositive: false,
-                            value: '4.2 天',
-                            title: '平均連續天數',
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
+            // 3. 下方動態內容切換區
+            Expanded(
+              child: IndexedStack(
+                index: _currentIndex,
+                children: [
+                  _buildOverviewContent(), // Index 0: 總覽內容
+                  const AdminUsersScreen(), // Index 1: 用戶管理畫面
+                  const AdminContentScreen(), // Index 2: 內容管理畫面
+                ],
               ),
-
-              const SizedBox(height: 16),
-
-              // 4. 近期動態區塊
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: _buildRecentActivitySection(),
-              ),
-
-              const SizedBox(height: 24),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -151,48 +102,153 @@ class AdminDashboardScreen extends StatelessWidget {
     );
   }
 
-  // 頁籤導覽
+  // 頁籤導覽（加入 onTap 事件）
   Widget _buildTabBar() {
     return Container(
       color: Colors.white,
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
       child: Row(
         children: [
-          _buildTabItem(Icons.bar_chart, '總覽', isSelected: true),
+          _buildTabItem(
+            icon: Icons.bar_chart,
+            title: '總覽',
+            index: 0,
+          ),
           const SizedBox(width: 24),
-          _buildTabItem(Icons.people_outline, '用戶管理', isSelected: false),
+          _buildTabItem(
+            icon: Icons.people_outline,
+            title: '用戶管理',
+            index: 1,
+          ),
           const SizedBox(width: 24),
-          _buildTabItem(Icons.chat_bubble_outline, '內容管理', isSelected: false),
+          _buildTabItem(
+            icon: Icons.chat_bubble_outline,
+            title: '內容管理',
+            index: 2,
+          ),
         ],
       ),
     );
   }
 
-  Widget _buildTabItem(IconData icon, String title,
-      {required bool isSelected}) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          children: [
-            Icon(icon,
-                size: 18, color: isSelected ? Colors.black : Colors.grey),
-            const SizedBox(width: 6),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+  // 具備點擊功能的 Tab 項目
+  Widget _buildTabItem({
+    required IconData icon,
+    required String title,
+    required int index,
+  }) {
+    final bool isSelected = _currentIndex == index;
+
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        setState(() {
+          _currentIndex = index;
+        });
+      },
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(
+                icon,
+                size: 18,
                 color: isSelected ? Colors.black : Colors.grey,
               ),
-            ),
-          ],
-        ),
-        if (isSelected) ...[
+              const SizedBox(width: 6),
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                  color: isSelected ? Colors.black : Colors.grey,
+                ),
+              ),
+            ],
+          ),
           const SizedBox(height: 6),
-          Container(height: 2, width: 45, color: Colors.black),
+          Container(
+            height: 2,
+            width: 45,
+            color: isSelected ? Colors.black : Colors.transparent,
+          ),
         ],
-      ],
+      ),
+    );
+  }
+
+  // 總覽 Tab 的內容 (原來的 Dashboard 內容)
+  Widget _buildOverviewContent() {
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 16),
+          // 數據統計卡片區
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildStatCard(
+                        icon: Icons.people_outline,
+                        trend: '+12.5%',
+                        isPositive: true,
+                        value: '50,234',
+                        title: '總用戶數',
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildStatCard(
+                        icon: Icons.show_chart,
+                        trend: '+8.2%',
+                        isPositive: true,
+                        value: '8,432',
+                        title: '今日活躍用戶',
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildStatCard(
+                        icon: Icons.local_fire_department_outlined,
+                        trend: '+15.3%',
+                        isPositive: true,
+                        value: '2.1M',
+                        title: '總跑步次數',
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildStatCard(
+                        icon: Icons.emoji_events_outlined,
+                        trend: '-2.1%',
+                        isPositive: false,
+                        value: '4.2 天',
+                        title: '平均連續天數',
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          // 近期動態區塊
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: _buildRecentActivitySection(),
+          ),
+          const SizedBox(height: 24),
+        ],
+      ),
     );
   }
 
@@ -282,7 +338,7 @@ class AdminDashboardScreen extends StatelessWidget {
           const Row(
             children: [
               Icon(Icons.access_time, size: 20, color: Colors.black87),
-              const SizedBox(width: 8),
+              SizedBox(width: 8),
               Text(
                 '近期動態',
                 style: TextStyle(

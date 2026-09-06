@@ -27,144 +27,29 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 1. 頂部黑底 Header
-              _buildHeader(context),
-
-              // 2. 導覽頁籤 TabBar (切換在「用戶管理」)
-              _buildTabBar(),
-
-              const SizedBox(height: 16),
-
-              // 3. 搜尋欄外框卡片
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: _buildSearchBarCard(),
-              ),
-
-              const SizedBox(height: 16),
-
-              // 4. 用戶管理清單卡片
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                child: _buildUserListCard(),
-              ),
-
-              const SizedBox(height: 24),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  // 頂部導覽列
-  Widget _buildHeader(BuildContext context) {
-    return Container(
-      color: Colors.black,
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 18.0),
-      child: Row(
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(8.0),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Icon(Icons.shield_outlined,
-                color: Colors.black, size: 24),
+          const SizedBox(height: 16),
+
+          // 1. 搜尋欄外框卡片
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: _buildSearchBarCard(),
           ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '管理後台',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(
-                  'Slow On Move 後台管理系統',
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
+
+          const SizedBox(height: 16),
+
+          // 2. 用戶管理清單卡片
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0),
+            child: _buildUserListCard(),
           ),
-          OutlinedButton.icon(
-            onPressed: () {
-              Navigator.pop(context);
-            },
-            icon: const Icon(Icons.logout, size: 16, color: Colors.white),
-            label: const Text('登出',
-                style: TextStyle(color: Colors.white, fontSize: 13)),
-            style: OutlinedButton.styleFrom(
-              side: BorderSide(color: Colors.grey.shade800),
-              backgroundColor: Colors.white12,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8)),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            ),
-          ),
+
+          const SizedBox(height: 24),
         ],
       ),
-    );
-  }
-
-  // 頁籤導覽 (選中：用戶管理)
-  Widget _buildTabBar() {
-    return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-      child: Row(
-        children: [
-          _buildTabItem(Icons.bar_chart, '總覽', isSelected: false),
-          const SizedBox(width: 24),
-          _buildTabItem(Icons.people_outline, '用戶管理', isSelected: true),
-          const SizedBox(width: 24),
-          _buildTabItem(Icons.chat_bubble_outline, '內容管理', isSelected: false),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTabItem(IconData icon, String title,
-      {required bool isSelected}) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Row(
-          children: [
-            Icon(icon,
-                size: 18, color: isSelected ? Colors.black : Colors.grey),
-            const SizedBox(width: 6),
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                color: isSelected ? Colors.black : Colors.grey,
-              ),
-            ),
-          ],
-        ),
-        if (isSelected) ...[
-          const SizedBox(height: 6),
-          Container(height: 2, width: 65, color: Colors.black),
-        ],
-      ],
     );
   }
 
@@ -311,7 +196,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
     );
   }
 
-  // 狀態膠囊按鈕/標籤
+  // 狀態標籤
   Widget _buildStatusBadge(bool isActive) {
     if (isActive) {
       return Container(

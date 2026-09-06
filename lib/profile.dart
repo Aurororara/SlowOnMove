@@ -3,7 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
-
+import 'package:show_on_move/admin/admin_dashboard_screen.dart';
 import 'community_screen.dart';
 import 'community/community_store.dart';
 import 'community/models/community_post.dart';
@@ -99,7 +99,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             : RefreshIndicator(
                 onRefresh: _fetchProfileData,
                 child: SingleChildScrollView(
-                  physics: const AlwaysScrollableScrollPhysics(),
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 20.0),
                     child: Column(
@@ -196,6 +195,23 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           label: 'Email',
                           value: _email,
                         ),
+                        const SizedBox(height: 24),
+
+                        // 管理後台入口按鈕
+                        _buildMenuButton(
+                          icon: Icons.admin_panel_settings,
+                          title: '管理後台',
+                          subtitle: 'Slow On Move 系統監控與管理',
+                          iconColor: Colors.black,
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  const AdminDashboardScreen(),
+                            ),
+                          ),
+                        ),
+
                         const SizedBox(height: 32),
                         _buildLogOutButton(context),
                         const SizedBox(height: 40),
@@ -488,14 +504,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             ElevatedButton(
               onPressed: () async {
-                Navigator.pop(dialogContext); // 關閉 dialog
-                // 清除 session 和 token
+                Navigator.pop(dialogContext);
                 UserSession.clearSession();
                 await ApiService().clearToken();
 
                 if (!context.mounted) return;
 
-                // 導向登入畫面，並清空路由堆疊以防返回
                 Navigator.pushAndRemoveUntil(
                   context,
                   MaterialPageRoute(builder: (context) => const LoginScreen()),
@@ -623,9 +637,9 @@ class _SavedPostCard extends StatelessWidget {
                     ),
                     Text(
                       post.timeAgo,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
-                        color: Color(0xFF718096),
+                        color: const Color(0xFF718096),
                         fontWeight: FontWeight.w600,
                       ),
                     ),
