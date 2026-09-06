@@ -21,7 +21,7 @@ from core.models import (
     CommunityGroupJoinRequest,
 )
 from .serializers import (
-    MemberSerializer, BodyRecordSerializer, BloodPressureRecordSerializer, BoardRankingSerializer,
+    MemberSerializer, AdminMemberListSerializer, BodyRecordSerializer, BloodPressureRecordSerializer, BoardRankingSerializer,
     CommunityPostSerializer, FavoriteSerializer, TrainingLogSerializer,
     PostLikeSerializer, PostCommentSerializer, PostReportSerializer, PoseAnalysisSerializer, PointTransactionSerializer,
     TaskSerializer, MemberTaskSerializer, BadgeSerializer, MemberBadgeSerializer, WorkoutMenuSerializer, WorkoutItemSerializer,FriendMemberSerializer,
@@ -71,6 +71,30 @@ class MemberViewSet(viewsets.ModelViewSet):
             "period": period,
             "data": data,
         })
+
+    @action(detail=False, methods=["get"], url_path="admin-users")
+    def admin_users(self, request):
+        # 撈出所有使用者，依照加入時間排序
+        members = Member.objects.all().order_by("-date_joined")
+        
+        # 使用我們剛才寫好的專用 Serializer
+        serializer = AdminMemberListSerializer(members, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    # 切換用戶啟用 / 停權狀態
+    @action(detail=True, methods=["post"], url_path="toggle-status")
+    def toggle_status(self, request, pk=None):
+        member = self.get_object()
+        # 反轉狀態：True 變 False，False 變 True
+        member.is_active = not member.is_active
+        member.save(update_fields=["is_active"])
+        
+        return Response({
+            "message": f"用戶狀態已更新為 {'啟用' if member.is_active else '停用'}",
+            "id": member.id,
+            "isActive": member.is_active,
+        }, status=status.HTTP_200_OK)
+    
 
 class BodyRecordViewSet(viewsets.ModelViewSet):
     queryset = BodyRecord.objects.all()

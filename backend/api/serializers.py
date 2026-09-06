@@ -10,6 +10,17 @@ from core.models import (
     CommunityGroupActivity,
     CommunityGroupJoinRequest,
 )
+from rest_framework import serializers
+from core.models import Member
+
+class AdminMemberListSerializer(serializers.ModelSerializer):
+    # 將 username 映射成前端要顯示的 name
+    name = serializers.CharField(source='username', read_only=True)
+    isActive = serializers.BooleanField(source='is_active', read_only=True)
+
+    class Meta:
+        model = Member
+        fields = ['id', 'name', 'email', 'isActive', 'date_joined']
 
 class MemberSerializer(serializers.ModelSerializer):
     class Meta:
