@@ -5,11 +5,13 @@ from .views import (
     CommunityPostViewSet, FavoriteViewSet, TrainingLogViewSet,
     PostLikeViewSet, PostCommentViewSet, PostReportViewSet, PoseAnalysisViewSet, PointTransactionViewSet,
     TaskViewSet, MemberTaskViewSet, BadgeViewSet, MemberBadgeViewSet, WorkoutMenuViewSet, WorkoutItemViewSet, FriendViewSet, ChatViewSet, RunInvitationViewSet, CommunityGroupViewSet, CommunityGroupInvitationViewSet,
+    PointsViewSet,
 )
 from .auth_views import GoogleLoginView, FacebookLoginView, RegisterView, LoginView
 
 router = DefaultRouter()
 router.register(r'members', MemberViewSet)
+router.register(r'points', PointsViewSet, basename='points')
 router.register(r'body-records', BodyRecordViewSet)
 router.register(r'blood-pressure-records', BloodPressureRecordViewSet)
 router.register(r'board-rankings', BoardRankingViewSet)

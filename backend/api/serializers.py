@@ -27,7 +27,7 @@ class AdminMemberListSerializer(serializers.ModelSerializer):
 class MemberSerializer(serializers.ModelSerializer):
     class Meta:
         model = Member
-        fields = ['id', 'username', 'email', 'date_joined',]
+        fields = ['id', 'username', 'email', 'points', 'date_joined',]
         read_only_fields = ['id', 'date_joined']
 
 
@@ -674,3 +674,20 @@ class CommunityGroupActivitySerializer(serializers.ModelSerializer):
         return obj.participants.filter(
             member=request.user,
         ).exists()
+
+
+class PointTransactionSerializer(serializers.ModelSerializer):
+    created_at = serializers.DateTimeField(format="%Y-%m-%d %H:%M", read_only=True)
+
+    class Meta:
+        model = PointTransaction
+        fields = [
+            'id',
+            'points_changed',
+            'tran_type',
+            'description',
+            'order_number',
+            'status',
+            'created_at',
+        ]
+        read_only_fields = ['id', 'created_at']

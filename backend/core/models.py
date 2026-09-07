@@ -6,6 +6,7 @@ class Member(AbstractUser):
     avatar = models.URLField(max_length=500, blank=True, null=True)
     login_provider = models.CharField(max_length=50, blank=True, null=True)
     provider_id = models.CharField(max_length=100, blank=True, null=True)
+    points = models.IntegerField(default=0)
 
 class FriendRequest(models.Model):
     STATUS_PENDING = "pending"
@@ -720,7 +721,10 @@ class PoseAnalysis(models.Model):
 class PointTransaction(models.Model):
     member = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='point_transactions')
     points_changed = models.IntegerField()
-    tran_type = models.CharField(max_length=50)
+    tran_type = models.CharField(max_length=50) # 'top_up', 'spend', 'reward'
+    description = models.CharField(max_length=255, blank=True, default='')
+    order_number = models.CharField(max_length=100, blank=True, null=True)
+    status = models.CharField(max_length=20, default='completed') # 'pending', 'completed', 'failed'
     created_at = models.DateTimeField(auto_now_add=True)
 
 class Task(models.Model):

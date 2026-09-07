@@ -19,7 +19,9 @@ class PoseAnalyzer {
   
   // Track continuous bad posture
   int _leanForwardFrames = 0;
-  final int _lowKneeFrames = 0;
+  int _kneeValgusFrames = 0;
+  int _tooDeepFrames = 0;
+  int _badStanceFrames = 0;
   
   // To avoid redundant feedback
   final Set<String> _currentFeedback = {};
@@ -120,57 +122,109 @@ class PoseAnalyzer {
     // ==========================================
     if (exerciseType == '深蹲') {
       
-      // 1. 深蹲軀幹前傾 (20分)
+      // 1. 膝蓋深度與關節角度 (40分)
+      double activeKneeAngle = isSideFacing
+          ? (((leftKnee?.likelihood ?? 0) > (rightKnee?.likelihood ?? 0)) ? leftKneeAngle : rightKneeAngle)
+          : (leftKneeAngle + rightKneeAngle) / 2;
+
+      double kneeScore = 40.0;
+      if (activeKneeAngle < 60) {
+        kneeScore -= (60 - activeKneeAngle) * 2.0; // 蹲太深，超過膝關節健康負擔
+        _tooDeepFrames++;
+        if (_tooDeepFrames > 10) {
+          _currentFeedback.add('蹲太深了，小心傷膝蓋！');
+        }
+      } else {
+        _tooDeepFrames = 0;
+        if (activeKneeAngle > 175 && _isSquattingDown) {
+          kneeScore -= (activeKneeAngle - 175) * 1.5;
+        }
+      }
+      currentAccuracy += math.max(0.0, kneeScore);
+
+      // 2. 軀幹姿勢與脊椎角度 (30分)
       if (leftShoulder != null && leftHip != null && rightShoulder != null && rightHip != null) {
         double leftTorsoAngle = _calculateAngleWithVertical(leftShoulder, leftHip);
         double rightTorsoAngle = _calculateAngleWithVertical(rightShoulder, rightHip);
-        double activeTorsoAngle = isSideFacing ?
-            ((leftShoulder.likelihood + leftHip.likelihood) > (rightShoulder.likelihood + rightHip.likelihood) ? leftTorsoAngle : rightTorsoAngle)
+        double activeTorsoAngle = isSideFacing
+            ? ((leftShoulder.likelihood + leftHip.likelihood) > (rightShoulder.likelihood + rightHip.likelihood) ? leftTorsoAngle : rightTorsoAngle)
             : (leftTorsoAngle + rightTorsoAngle) / 2;
-        
-        double torsoScore = 20.0;
-        // 允許 0~45 度前傾
+
+        double torsoScore = 30.0;
+        // 深蹲時軀幹可自然前傾 10°~45°，超過 50° 視為腰部太往前趴
         if (activeTorsoAngle > 50) {
           torsoScore -= (activeTorsoAngle - 50) * 1.5;
           _leanForwardFrames++;
-          if (_leanForwardFrames > 15) _currentFeedback.add('身體太往前趴了，注意腰部！');
+          if (_leanForwardFrames > 12) {
+            _currentFeedback.add('身體太往前趴了，注意腰部挺直！');
+          }
         } else {
           _leanForwardFrames = 0;
         }
         currentAccuracy += math.max(0.0, torsoScore);
       }
 
-      // 2. 深蹲手臂角度 (20分)
-      double armScore = 20.0;
-      if (isSideFacing) {
-        double activeArmAngle = ((leftElbow?.likelihood ?? 0) > (rightElbow?.likelihood ?? 0)) ? leftArmAngle : rightArmAngle;
-        if (activeArmAngle < 30) armScore -= 5.0;
-      } else {
-        if (leftArmAngle < 30 || rightArmAngle < 30) armScore -= 5.0;
+      // 3. 雙腳站距與防膝蓋內扣 (20分 - 正面視角特有判定)
+      double stanceScore = 20.0;
+      if (!isSideFacing && leftShoulder != null && rightShoulder != null && leftAnkle != null && rightAnkle != null) {
+        double shoulderWidth = (leftShoulder.x - rightShoulder.x).abs();
+        double ankleWidth = (leftAnkle.x - rightAnkle.x).abs();
+
+        if (shoulderWidth > 0) {
+          if (ankleWidth < shoulderWidth * 0.75) {
+            stanceScore -= 10.0;
+            _badStanceFrames++;
+            if (_badStanceFrames > 15) {
+              _currentFeedback.add('雙腳開得太窄囉！深蹲雙腳應與肩同寬。');
+            }
+          } else if (ankleWidth > shoulderWidth * 1.8) {
+            stanceScore -= 10.0;
+            _badStanceFrames++;
+            if (_badStanceFrames > 15) {
+              _currentFeedback.add('雙腳站得太開囉！站距請調整至與肩同寬或略寬。');
+            }
+          } else {
+            _badStanceFrames = 0;
+          }
+        }
+
+        // 🚨 膝蓋內扣防護 (Knee Valgus Prevention)
+        if (leftKnee != null && rightKnee != null) {
+          double kneeWidth = (leftKnee.x - rightKnee.x).abs();
+          if (_isSquattingDown && kneeWidth < ankleWidth * 0.82) {
+            stanceScore -= 15.0;
+            _kneeValgusFrames++;
+            if (_kneeValgusFrames > 8) {
+              _currentFeedback.add('膝蓋內扣囉！蹲下時膝蓋請對準腳尖方向。');
+            }
+          } else {
+            _kneeValgusFrames = 0;
+          }
+        }
+      }
+      currentAccuracy += math.max(0.0, stanceScore);
+
+      // 4. 手臂擺放與平衡 (10分)
+      double armScore = 10.0;
+      if (leftShoulder != null && rightShoulder != null && leftHip != null && rightHip != null && leftWrist != null && rightWrist != null) {
+        double torsoHeight = ((leftShoulder.y + rightShoulder.y) / 2 - (leftHip.y + rightHip.y) / 2).abs();
+        double wristY = (leftWrist.y + rightWrist.y) / 2;
+        double hipY = (leftHip.y + rightHip.y) / 2;
+
+        if (torsoHeight > 0 && wristY > hipY) {
+          armScore -= 5.0;
+          _currentFeedback.add('請將雙手在胸前交叉或向前平舉以維持平衡。');
+        }
       }
       currentAccuracy += math.max(0.0, armScore);
 
-      // 3. 深蹲膝蓋深度 (60分，佔比最高)
-      double kneeScore = 60.0;
-      double activeKneeAngle = isSideFacing ? 
-        ((leftKnee?.likelihood ?? 0) > (rightKnee?.likelihood ?? 0) ? leftKneeAngle : rightKneeAngle) 
-        : (leftKneeAngle + rightKneeAngle) / 2;
-      
-      if (activeKneeAngle < 60) {
-        kneeScore -= (60 - activeKneeAngle) * 2.0; // 蹲太深
-        _currentFeedback.add('蹲太深了，小心傷膝蓋！');
-      } else if (activeKneeAngle > 175) {
-        kneeScore -= (activeKneeAngle - 175) * 2.0; // 關節鎖死
-      }
-      currentAccuracy += math.max(0.0, kneeScore);
-
-      // 4. 深蹲計次與怠速 (Rep Counting)
-      if (activeKneeAngle < 120) {
+      // 5. 深蹲計次與怠速 (Rep Counting State Machine)
+      if (activeKneeAngle < 110) {
         if (!_isSquattingDown) {
           _isSquattingDown = true;
           stepTaken = true;
         }
-      } else if (activeKneeAngle > 160) {
+      } else if (activeKneeAngle > 155) {
         if (_isSquattingDown) {
           _isSquattingDown = false;
           _stepCount++; // 完成一次深蹲
@@ -186,7 +240,7 @@ class PoseAnalyzer {
         DateTime referenceTime = _lastStepTime ?? _firstFrameTime!;
         if (DateTime.now().difference(referenceTime).inMilliseconds > 4000) {
           _standingStillFrames++;
-          currentAccuracy -= 50.0;
+          currentAccuracy -= 30.0;
           if (_standingStillFrames > 10) _currentFeedback.add('請繼續深蹲，不要停下來！');
         }
       }
