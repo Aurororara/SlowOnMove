@@ -598,9 +598,74 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
     );
   }
 
-  /// ⚠️ 姿勢錯誤彈跳視窗 (顯示5秒後自動消失)
+  /// 根據 AI 反饋拆解出「姿勢問題標題」與「💡 具體改進建議」
+  Map<String, String> _getImprovementTip(String message) {
+    if (message.contains('前傾') || message.contains('前趴')) {
+      return {
+        'title': '軀幹過度前傾',
+        'tip': '請將重心稍往後移，收緊核心，保持背部與腰部自然挺直。',
+      };
+    }
+    if (message.contains('蹲太深')) {
+      return {
+        'title': '深蹲深度過深',
+        'tip': '膝蓋彎曲請控制在 90 度左右（大腿與地面平行），避免超過膝關節健康負擔。',
+      };
+    }
+    if (message.contains('膝蓋內扣')) {
+      return {
+        'title': '膝蓋往內扣',
+        'tip': '下蹲時請將膝蓋微外展，保持膝蓋與腳尖方向一致，保護膝關節。',
+      };
+    }
+    if (message.contains('太窄')) {
+      return {
+        'title': '站姿腳距過窄',
+        'tip': '請將雙腳稍微往外移，調整至雙腳與肩同寬。',
+      };
+    }
+    if (message.contains('太開')) {
+      return {
+        'title': '站姿腳距過寬',
+        'tip': '請縮小站距，保持雙腳與肩同寬或略寬即可。',
+      };
+    }
+    if (message.contains('雙手') || message.contains('手臂')) {
+      return {
+        'title': '手臂擺放位置不當',
+        'tip': '請將雙手向前平舉或置於胸前，幫助身體維持核心平衡。',
+      };
+    }
+    if (message.contains('抬太高') || message.contains('高抬腿')) {
+      return {
+        'title': '超慢跑膝蓋抬過高',
+        'tip': '超慢跑講求小步幅、高步頻，腳離地僅需 1~2 公分即可，避免過度抬膝。',
+      };
+    }
+    if (message.contains('腳跟重落地') || message.contains('腳跟')) {
+      return {
+        'title': '腳跟重落地',
+        'tip': '請以前腳掌或全腳掌輕盈著地，利用踝關節彈性避震，避免膝蓋承受衝擊。',
+      };
+    }
+    if (message.contains('停下來') || message.contains('保持動作')) {
+      return {
+        'title': '動作停頓提醒',
+        'tip': '請保持規律的運動節奏，不要停下來喔，加油！',
+      };
+    }
+
+    return {
+      'title': '姿勢需要調整',
+      'tip': message,
+    };
+  }
+
+  /// ⚠️ 姿勢錯誤改進建議彈跳視窗 (顯示5秒後自動消失)
   Widget _buildPostureErrorPopup() {
     if (_currentErrorPopupMessage == null) return const SizedBox.shrink();
+
+    final tipInfo = _getImprovementTip(_currentErrorPopupMessage!);
 
     return Positioned(
       top: 135,
@@ -613,48 +678,46 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
           decoration: BoxDecoration(
             gradient: LinearGradient(
               colors: [
-                Colors.red.shade900.withOpacity(0.92),
-                Colors.amber.shade900.withOpacity(0.92),
+                Colors.red.shade900.withOpacity(0.95),
+                Colors.amber.shade900.withOpacity(0.95),
               ],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: Colors.amberAccent.withOpacity(0.8),
+              color: Colors.amberAccent.withOpacity(0.85),
               width: 1.5,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.redAccent.withOpacity(0.4),
-                blurRadius: 15,
+                color: Colors.redAccent.withOpacity(0.45),
+                blurRadius: 16,
                 spreadRadius: 2,
-                offset: const Offset(0, 4),
+                offset: const Offset(0, 5),
               ),
             ],
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(16),
+            borderRadius: BorderRadius.circular(18),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
+                  padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
                   child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Container(
-                        padding: const EdgeInsets.all(8),
+                        padding: const EdgeInsets.all(9),
                         decoration: BoxDecoration(
                           color: Colors.amberAccent.withOpacity(0.2),
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(
-                          Icons.warning_amber_rounded,
+                          Icons.lightbulb_rounded,
                           color: Colors.amberAccent,
-                          size: 28,
+                          size: 26,
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -665,10 +728,10 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
                             const Row(
                               children: [
                                 Text(
-                                  '姿勢錯誤提醒',
+                                  '⚠️ 姿勢改進提醒',
                                   style: TextStyle(
                                     color: Colors.amberAccent,
-                                    fontSize: 14,
+                                    fontSize: 13,
                                     fontWeight: FontWeight.bold,
                                     letterSpacing: 0.5,
                                   ),
@@ -685,11 +748,21 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
                             ),
                             const SizedBox(height: 4),
                             Text(
-                              _currentErrorPopupMessage!,
+                              tipInfo['title']!,
                               style: const TextStyle(
                                 color: Colors.white,
-                                fontSize: 15,
-                                fontWeight: FontWeight.w600,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              '💡 改進建議：${tipInfo['tip']!}',
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.9),
+                                fontSize: 13.5,
+                                height: 1.3,
+                                fontWeight: FontWeight.w500,
                               ),
                             ),
                           ],
