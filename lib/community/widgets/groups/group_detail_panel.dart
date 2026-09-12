@@ -220,6 +220,72 @@ class GroupDetailPanelState extends State<GroupDetailPanel> {
     }
   }
 
+  Future<void> _leaveGroup() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('退出群組'),
+          content: Text(
+            '確定要退出「${group.name}」嗎？',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false);
+              },
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+              child: const Text(
+                '退出',
+                style: TextStyle(
+                  color: Colors.red,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    final success = await groupStore.leaveGroup(
+      group.id,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    if (!success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            groupStore.errorMessage ?? '退出群組失敗',
+          ),
+        ),
+      );
+
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('已退出群組'),
+      ),
+    );
+
+    widget.onBack();
+  }
+
   Future<void> _openInviteSheet() async {
     final isOwner = group.owner.id == UserSession.memberId;
 
@@ -708,6 +774,35 @@ class GroupDetailPanelState extends State<GroupDetailPanel> {
                         borderRadius: BorderRadius.circular(
                           12,
                         ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+              if (!isOwner) ...[
+                const SizedBox(height: 10),
+                SizedBox(
+                  width: double.infinity,
+                  height: 40,
+                  child: OutlinedButton.icon(
+                    onPressed: _leaveGroup,
+                    icon: const Icon(
+                      Icons.logout_rounded,
+                      size: 17,
+                    ),
+                    label: const Text(
+                      '退出群組',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red,
+                      side: const BorderSide(
+                        color: Color(0xFFFCA5A5),
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
                       ),
                     ),
                   ),

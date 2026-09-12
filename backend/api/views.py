@@ -2119,6 +2119,64 @@ class CommunityGroupViewSet(viewsets.ModelViewSet):
             ).data,
         )
 
+    # =========================
+    # 退出群組
+    # =========================
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="leave",
+    )
+    @transaction.atomic
+    def leave(self, request, pk=None):
+        group = CommunityGroup.objects.filter(
+            id=pk,
+        ).first()
+
+        if group is None:
+            return Response(
+                {
+                    "error": "找不到群組",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # 創立者不能直接退出
+        if group.owner_id == request.user.id:
+            return Response(
+                {
+                    "error": "群組創立者無法退出群組",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        membership = CommunityGroupMember.objects.filter(
+            group=group,
+            member=request.user,
+        ).first()
+
+        if membership is None:
+            return Response(
+                {
+                    "error": "你不是此群組的成員",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # 移除這個人在該群組活動中的參加紀錄
+        CommunityGroupActivityParticipant.objects.filter(
+            activity__group=group,
+            member=request.user,
+        ).delete()
+
+        membership.delete()
+
+        return Response(
+            {
+                "message": "已退出群組",
+            },
+            status=status.HTTP_200_OK,
+        )
 
     @transaction.atomic
     def perform_create(self, serializer):

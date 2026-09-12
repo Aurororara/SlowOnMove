@@ -310,6 +310,35 @@ class GroupStore extends ChangeNotifier {
     }
   }
 
+  Future<bool> leaveGroup(
+    int groupId,
+  ) async {
+    _errorMessage = null;
+
+    try {
+      await _api.dio.post(
+        'groups/$groupId/leave/',
+      );
+
+      _groups.removeWhere(
+        (group) => group.id == groupId,
+      );
+
+      _selectedGroup = null;
+
+      _joinRequestsByGroup.remove(groupId);
+
+      notifyListeners();
+
+      return true;
+    } catch (e) {
+      _setError(e);
+      notifyListeners();
+
+      return false;
+    }
+  }
+
   Future<bool> createGroup({
     required String name,
     required String description,
