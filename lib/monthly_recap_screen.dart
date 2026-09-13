@@ -551,7 +551,7 @@ class _MonthlyRecapScreenState extends State<MonthlyRecapScreen> {
                     ),
                     _buildSummaryItem(
                       Icons.emoji_events,
-                      '${_monthLogs.length >= 4 ? '已養成' : '持續中'}',
+                      _monthLogs.length >= 4 ? '已養成' : '持續中',
                       '習慣狀態',
                     ),
                   ],

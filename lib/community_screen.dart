@@ -1002,6 +1002,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                             ),
                           ),
                           onTap: () async {
+                            final messenger = ScaffoldMessenger.of(context);
                             Navigator.pop(sheetContext);
 
                             final success = await widget.store.reportPost(
@@ -1013,7 +1014,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                               return;
                             }
 
-                            ScaffoldMessenger.of(this.context).showSnackBar(
+                            messenger.showSnackBar(
                               SnackBar(
                                 content: Text(
                                   success
@@ -1104,7 +1105,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                             invitationId: invitation.id,
                           );
 
-                          if (!mounted) {
+                          if (!context.mounted) {
                             return success;
                           }
 
@@ -1138,7 +1139,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                             accept: accept,
                           );
 
-                          if (!mounted) {
+                          if (!context.mounted) {
                             return success;
                           }
 
@@ -1161,7 +1162,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                             message,
                           );
 
-                          if (!mounted || success) {
+                          if (!context.mounted || success) {
                             return;
                           }
 
@@ -1201,7 +1202,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                                 notes: notes,
                               );
 
-                              if (!mounted) {
+                              if (!context.mounted) {
                                 return success;
                               }
 
@@ -1830,7 +1831,7 @@ class _PostComposerState extends State<_PostComposer> {
         border: Border.all(color: Colors.black, width: 1.5),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
+            color: Colors.black.withValues(alpha: 0.08),
             offset: const Offset(0, 8),
             blurRadius: 18,
           ),

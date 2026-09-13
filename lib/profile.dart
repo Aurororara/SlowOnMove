@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:show_on_move/admin/admin_dashboard_screen.dart';
 
 import 'body_record_screen.dart';
+import 'badge_collection_screen.dart';
 import 'community/community_store.dart';
 import 'community/models/community_post.dart';
 import 'community/widgets/posts/comments_sheet.dart';
@@ -19,7 +20,6 @@ import 'monthly_recap_screen.dart';
 import 'purchase_screen.dart';
 import 'services/api_service.dart';
 import 'services/user_session.dart';
-import 'community/widgets/posts/post_share_sheet.dart';
 
 class ProfileScreen extends StatefulWidget {
   final CommunityStore store;
@@ -410,6 +410,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Icons.emoji_events_outlined,
                 '12',
                 '獎牌',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const BadgeCollectionScreen(),
+                    ),
+                  );
+                },
               ),
             ),
             const SizedBox(width: 16),
@@ -449,46 +457,54 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildStatCard(
     IconData icon,
     String value,
-    String label,
-  ) {
-    return Container(
-      padding: const EdgeInsets.symmetric(
-        vertical: 20,
-        horizontal: 8,
-      ),
-      decoration: BoxDecoration(
-        color: Colors.white,
+    String label, {
+    VoidCallback? onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: Colors.grey[200]!,
-        ),
-      ),
-      child: Column(
-        children: [
-          Icon(
-            icon,
-            size: 28,
-            color: const Color(0xFF4A5568),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(
+            vertical: 20,
+            horizontal: 8,
           ),
-          const SizedBox(height: 4),
-          FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(
-              value,
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: Colors.grey[200]!,
+            ),
+          ),
+          child: Column(
+            children: [
+              Icon(
+                icon,
+                size: 28,
+                color: const Color(0xFF4A5568),
               ),
-            ),
+              const SizedBox(height: 4),
+              FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: Color(0xFF718096),
+                ),
+              ),
+            ],
           ),
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 11,
-              color: Color(0xFF718096),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

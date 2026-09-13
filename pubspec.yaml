@@ -67,6 +67,7 @@ dev_dependencies:
 flutter:
   assets:
     - assets/
+    - assets/badges/
     - assets/models/
     - assets/audio/
 

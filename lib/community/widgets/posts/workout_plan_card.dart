@@ -52,7 +52,7 @@ class WorkoutPlanCard extends StatelessWidget {
           const SizedBox(height: 14),
           ...List.generate(plan.steps.length, (index) {
             final step = plan.steps[index];
-            String _stepValueText(WorkoutPlanStep step) {
+            String stepValueText(WorkoutPlanStep step) {
               switch (step.exerciseType) {
                 case 'squat':
                   final reps = step.reps;
@@ -113,7 +113,7 @@ class WorkoutPlanCard extends StatelessWidget {
                           ),
                           const SizedBox(height: 3),
                           Text(
-                            _stepValueText(step),
+                            stepValueText(step),
                             style: const TextStyle(
                               color: Color(0xFF6B7280),
                               fontSize: 12,

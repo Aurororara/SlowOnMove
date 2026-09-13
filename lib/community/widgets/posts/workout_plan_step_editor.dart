@@ -278,7 +278,7 @@ class _WorkoutPlanStepEditorState extends State<WorkoutPlanStepEditor> {
               const SizedBox(width: 10),
               Expanded(
                 child: DropdownButtonFormField<String>(
-                  value: widget.step.exerciseType,
+                  initialValue: widget.step.exerciseType,
                   decoration: communityInputDecoration(
                     '動作名稱',
                   ),

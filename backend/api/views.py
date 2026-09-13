@@ -924,9 +924,16 @@ class BadgeViewSet(viewsets.ModelViewSet):
     permission_classes = [AllowAny]
 
 class MemberBadgeViewSet(viewsets.ModelViewSet):
-    queryset = MemberBadge.objects.all()
+    queryset = MemberBadge.objects.select_related('badge').all()
     serializer_class = MemberBadgeSerializer
     permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        member_id = self.request.query_params.get('member_id')
+        if member_id:
+            queryset = queryset.filter(member_id=member_id)
+        return queryset
 
 class WorkoutMenuViewSet(viewsets.ModelViewSet):
     queryset = WorkoutMenu.objects.all()
@@ -3190,4 +3197,3 @@ class AdminAnalyticsView(APIView):
         timeframe = request.query_params.get("timeframe", "all")
         data = compute_admin_analytics(timeframe=timeframe)
         return Response(data, status=status.HTTP_200_OK)
-

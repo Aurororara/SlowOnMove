@@ -78,10 +78,12 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
         final bool isActive = user['isActive'] == true;
 
         // 1. 狀態篩選
-        if (_selectedFilter == UserFilterStatus.active && !isActive)
+        if (_selectedFilter == UserFilterStatus.active && !isActive) {
           return false;
-        if (_selectedFilter == UserFilterStatus.banned && isActive)
+        }
+        if (_selectedFilter == UserFilterStatus.banned && isActive) {
           return false;
+        }
 
         // 2. 關鍵字搜尋
         if (query.isNotEmpty) {

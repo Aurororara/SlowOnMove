@@ -279,12 +279,14 @@ class PoseAnalyzer {
         if (isSideFacing) {
           // 🏃 跑步時手臂擺動，側面視角角度會從 60度(前擺) 到 140度(後擺) 劇烈變化
           // 因此只要不是完全下垂(>155)或夾死(<45)，都應視為合理擺動
-          if (angle < 45) score -= (45 - angle) * 0.5;
-          else if (angle > 155) score -= (angle - 155) * 0.8;
+          if (angle < 45) {
+            score -= (45 - angle) * 0.5;
+          } else if (angle > 155) score -= (angle - 155) * 0.8;
         } else {
           // 正面投影容錯放寬 20~140 (不允許手完全伸直，例如T字或立正)
-          if (angle < 20) score -= (20 - angle) * 0.5;
-          else if (angle > 140) score -= (angle - 140) * 0.8;
+          if (angle < 20) {
+            score -= (20 - angle) * 0.5;
+          } else if (angle > 140) score -= (angle - 140) * 0.8;
         }
         return math.max(0.0, score);
       }
@@ -310,8 +312,9 @@ class PoseAnalyzer {
         double maxIdeal = 175.0; 
         if (k != null && k.likelihood < 0.7) maxIdeal = 179.0; // 長褲或模糊補償
 
-        if (angle < 90) score -= (90 - angle) * 0.5;
-        else if (angle > maxIdeal) score -= (angle - maxIdeal) * 2.0;
+        if (angle < 90) {
+          score -= (90 - angle) * 0.5;
+        } else if (angle > maxIdeal) score -= (angle - maxIdeal) * 2.0;
         return math.max(0.0, score);
       }
       
