@@ -144,7 +144,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   String _buildUrl(String path) {
-    const String baseUrl = ApiConfig.baseUrl;
+    final String baseUrl = ApiConfig.baseUrl;
 
     if (baseUrl.endsWith('/')) {
       return '$baseUrl$path';

@@ -54,7 +54,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _fetchProfileData() async {
-    const String baseUrl = ApiConfig.baseUrl;
+    final String baseUrl = ApiConfig.baseUrl;
     final int currentMemberId = UserSession.memberId;
 
     try {
