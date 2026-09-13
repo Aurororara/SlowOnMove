@@ -5,7 +5,7 @@ from .views import (
     CommunityPostViewSet, FavoriteViewSet, TrainingLogViewSet,
     PostLikeViewSet, PostCommentViewSet, PostReportViewSet, PoseAnalysisViewSet, PointTransactionViewSet,
     TaskViewSet, MemberTaskViewSet, BadgeViewSet, MemberBadgeViewSet, WorkoutMenuViewSet, WorkoutItemViewSet, FriendViewSet, ChatViewSet, RunInvitationViewSet, CommunityGroupViewSet, CommunityGroupInvitationViewSet,
-    PointsViewSet,
+    PointsViewSet, AdminAnalyticsView,
 )
 from .auth_views import GoogleLoginView, FacebookLoginView, RegisterView, LoginView
 
@@ -40,5 +40,6 @@ urlpatterns = [
     path('auth/facebook/', FacebookLoginView.as_view(), name='auth-facebook'),
     path('auth/register/', RegisterView.as_view(), name='auth-register'),
     path('auth/login/', LoginView.as_view(), name='auth-login'),
+    path('admin/analytics/', AdminAnalyticsView.as_view(), name='admin-analytics'),
     path('', include(router.urls)),
 ]

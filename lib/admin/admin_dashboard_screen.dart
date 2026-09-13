@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'admin_users_screen.dart';
 import 'admin_content_screen.dart';
+import 'admin_analytics_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -32,8 +33,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                 index: _currentIndex,
                 children: [
                   _buildOverviewContent(), // Index 0: 總覽內容
-                  const AdminUsersScreen(), // Index 1: 用戶管理畫面
-                  const AdminContentScreen(), // Index 2: 內容管理畫面
+                  const AdminAnalyticsScreen(), // Index 1: 數據分析畫面
+                  const AdminUsersScreen(), // Index 2: 用戶管理畫面
+                  const AdminContentScreen(), // Index 3: 內容管理畫面
                 ],
               ),
             ),
@@ -114,17 +116,23 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             title: '總覽',
             index: 0,
           ),
-          const SizedBox(width: 24),
+          const SizedBox(width: 20),
+          _buildTabItem(
+            icon: Icons.analytics_outlined,
+            title: '數據分析',
+            index: 1,
+          ),
+          const SizedBox(width: 20),
           _buildTabItem(
             icon: Icons.people_outline,
             title: '用戶管理',
-            index: 1,
+            index: 2,
           ),
-          const SizedBox(width: 24),
+          const SizedBox(width: 20),
           _buildTabItem(
             icon: Icons.chat_bubble_outline,
             title: '貼文管理',
-            index: 2,
+            index: 3,
           ),
         ],
       ),
