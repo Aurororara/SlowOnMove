@@ -52,6 +52,29 @@ class WorkoutPlanCard extends StatelessWidget {
           const SizedBox(height: 14),
           ...List.generate(plan.steps.length, (index) {
             final step = plan.steps[index];
+            String _stepValueText(WorkoutPlanStep step) {
+              switch (step.exerciseType) {
+                case 'squat':
+                  final reps = step.reps;
+
+                  if (reps == null) {
+                    return '尚未設定次數';
+                  }
+
+                  return '$reps 下';
+
+                case 'slow_jogging':
+                default:
+                  final minutes = step.minutes;
+
+                  if (minutes == null) {
+                    return '尚未設定時間';
+                  }
+
+                  return '$minutes 分鐘';
+              }
+            }
+
             return Padding(
               padding: EdgeInsets.only(
                 bottom: index == plan.steps.length - 1 ? 0 : 10,
@@ -90,7 +113,7 @@ class WorkoutPlanCard extends StatelessWidget {
                           ),
                           const SizedBox(height: 3),
                           Text(
-                            '${step.minutes} 分鐘',
+                            _stepValueText(step),
                             style: const TextStyle(
                               color: Color(0xFF6B7280),
                               fontSize: 12,

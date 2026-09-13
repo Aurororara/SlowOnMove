@@ -286,6 +286,78 @@ class GroupDetailPanelState extends State<GroupDetailPanel> {
     widget.onBack();
   }
 
+  Future<void> _removeGroupMember({
+    required int memberId,
+    required String memberName,
+  }) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('移除成員'),
+          content: Text(
+            '確定要將「$memberName」移出群組嗎？',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(false);
+              },
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop(true);
+              },
+              child: const Text(
+                '移除',
+                style: TextStyle(
+                  color: Colors.red,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !mounted) {
+      return;
+    }
+
+    final success = await groupStore.removeMember(
+      groupId: group.id,
+      memberId: memberId,
+    );
+
+    if (!mounted) {
+      return;
+    }
+
+    if (!success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            groupStore.errorMessage ?? '移除成員失敗',
+          ),
+        ),
+      );
+
+      return;
+    }
+
+    setState(() {});
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          '已將 $memberName 移出群組',
+        ),
+      ),
+    );
+  }
+
   Future<void> _openInviteSheet() async {
     final isOwner = group.owner.id == UserSession.memberId;
 
@@ -870,6 +942,8 @@ class GroupDetailPanelState extends State<GroupDetailPanel> {
 
                 final isGroupOwner = member.id == group.owner.id;
 
+                final canRemove = isOwner && !isGroupOwner;
+
                 return Padding(
                   padding: const EdgeInsets.only(
                     bottom: 12,
@@ -881,6 +955,15 @@ class GroupDetailPanelState extends State<GroupDetailPanel> {
                       groupMember.joinedAt,
                     ),
                     isOwner: isGroupOwner,
+                    canRemove: canRemove,
+                    onRemove: canRemove
+                        ? () {
+                            _removeGroupMember(
+                              memberId: member.id,
+                              memberName: member.name,
+                            );
+                          }
+                        : null,
                   ),
                 );
               },

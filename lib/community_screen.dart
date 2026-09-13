@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'community/community_store.dart';
 import 'community/models/community_post.dart';
@@ -35,6 +34,7 @@ import 'community/widgets/common/community_input.dart';
 import 'community/widgets/navigation/community_navigation.dart';
 import 'community/widgets/friends/friend_tabs.dart';
 import 'community/widgets/friends/friend_search_field.dart';
+import 'community/widgets/posts/workout_plan_step_editor.dart';
 
 enum _CommunityChatEntryType {
   message,
@@ -1617,10 +1617,10 @@ class _PostComposerState extends State<_PostComposer> {
   final TextEditingController _recipeCookMinutesController =
       TextEditingController();
   final Set<String> _selectedTags = <String>{};
-  final List<_EditablePlanStep> _planSteps = [
-    _EditablePlanStep(),
-    _EditablePlanStep(),
-    _EditablePlanStep(),
+  final List<EditableWorkoutPlanStep> _planSteps = [
+    EditableWorkoutPlanStep(),
+    EditableWorkoutPlanStep(),
+    EditableWorkoutPlanStep(),
   ];
   final List<_EditableRecipeIngredient> _recipeIngredients = [
     _EditableRecipeIngredient(),
@@ -1660,12 +1660,13 @@ class _PostComposerState extends State<_PostComposer> {
           _planSteps
             ..clear()
             ..addAll(
-              plan.steps.map((step) {
-                final editable = _EditablePlanStep();
-                editable.name.text = step.name;
-                editable.minutes.text = step.minutes.toString();
-                return editable;
-              }),
+              plan.steps.map(
+                (step) => EditableWorkoutPlanStep(
+                  exerciseType: step.exerciseType,
+                  minutes: step.minutes,
+                  reps: step.reps,
+                ),
+              ),
             );
         }
         break;
@@ -1726,7 +1727,9 @@ class _PostComposerState extends State<_PostComposer> {
 
   void _addPlanStep() {
     setState(() {
-      _planSteps.add(_EditablePlanStep());
+      _planSteps.add(
+        EditableWorkoutPlanStep(),
+      );
     });
   }
 
@@ -1788,8 +1791,10 @@ class _PostComposerState extends State<_PostComposer> {
 
     if (_mode == _ComposerMode.plan) {
       final steps = _validPlanSteps;
-      final totalMinutes =
-          steps.fold<int>(0, (sum, step) => sum + step.minutes);
+      final totalMinutes = steps.fold<int>(
+        0,
+        (sum, step) => sum + (step.minutes ?? 0),
+      );
       widget.onPost(
         _ComposerSubmission(
           type: CommunityPostType.plan,
@@ -1863,7 +1868,12 @@ class _PostComposerState extends State<_PostComposer> {
           _recipeTitleController,
           _recipeDescriptionController,
           _recipeCookMinutesController,
-          ..._planSteps.expand((step) => [step.name, step.minutes]),
+          ..._planSteps.expand(
+            (step) => [
+              step.minutes,
+              step.reps,
+            ],
+          ),
           ..._recipeIngredients.expand((item) => [item.name, item.grams]),
         ]),
         builder: (context, _) {
@@ -1969,7 +1979,7 @@ class _PostComposerState extends State<_PostComposer> {
                     padding: EdgeInsets.only(
                       bottom: index == _planSteps.length - 1 ? 0 : 10,
                     ),
-                    child: _PlanStepEditor(
+                    child: WorkoutPlanStepEditor(
                       index: index,
                       step: step,
                       onRemove: () => _removePlanStep(index),
@@ -2128,166 +2138,6 @@ class _PostComposerState extends State<_PostComposer> {
             ],
           );
         },
-      ),
-    );
-  }
-}
-
-class _EditablePlanStep {
-  final TextEditingController name = TextEditingController();
-  final TextEditingController minutes = TextEditingController();
-
-  WorkoutPlanStep? toPlanStep() {
-    final stepName = name.text.trim();
-    final stepMinutes = int.tryParse(minutes.text.trim()) ?? 0;
-    if (stepName.isEmpty || stepMinutes <= 0) return null;
-    return WorkoutPlanStep(
-      name: stepName,
-      minutes: stepMinutes,
-    );
-  }
-
-  void dispose() {
-    name.dispose();
-    minutes.dispose();
-  }
-}
-
-class _PlanStepEditor extends StatelessWidget {
-  final int index;
-  final _EditablePlanStep step;
-  final VoidCallback onRemove;
-
-  const _PlanStepEditor({
-    required this.index,
-    required this.step,
-    required this.onRemove,
-  });
-
-  Future<void> _pickMinutes(BuildContext context) async {
-    final currentMinutes = int.tryParse(step.minutes.text.trim()) ?? 10;
-    final initialMinutes = currentMinutes.clamp(1, 180);
-    var selectedMinutes = initialMinutes;
-    final pickerController =
-        FixedExtentScrollController(initialItem: initialMinutes - 1);
-
-    await showModalBottomSheet<void>(
-      context: context,
-      builder: (sheetContext) {
-        return SafeArea(
-          top: false,
-          child: SizedBox(
-            height: 300,
-            child: Column(
-              children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-                  child: Row(
-                    children: [
-                      TextButton(
-                        onPressed: () => Navigator.of(sheetContext).pop(),
-                        child: const Text('取消'),
-                      ),
-                      const Spacer(),
-                      const Text(
-                        '選擇分鐘數',
-                        style: TextStyle(
-                          color: Colors.black,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const Spacer(),
-                      TextButton(
-                        onPressed: () {
-                          step.minutes.text = selectedMinutes.toString();
-                          Navigator.of(sheetContext).pop();
-                        },
-                        child: const Text('完成'),
-                      ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: CupertinoPicker(
-                    scrollController: pickerController,
-                    itemExtent: 40,
-                    useMagnifier: true,
-                    magnification: 1.08,
-                    onSelectedItemChanged: (value) {
-                      selectedMinutes = value + 1;
-                    },
-                    children: List.generate(
-                      180,
-                      (index) => Center(
-                        child: Text(
-                          '${index + 1} 分鐘',
-                          style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FAFC),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              CircleAvatar(
-                radius: 14,
-                backgroundColor: const Color(0xFFE8F0FF),
-                child: Text(
-                  '${index + 1}',
-                  style: const TextStyle(
-                    color: Color(0xFF2563EB),
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: TextField(
-                  controller: step.name,
-                  decoration: communityInputDecoration('動作名稱'),
-                ),
-              ),
-              IconButton(
-                onPressed: onRemove,
-                icon: const Icon(Icons.delete_outline, size: 18),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          InkWell(
-            onTap: () => _pickMinutes(context),
-            borderRadius: BorderRadius.circular(16),
-            child: IgnorePointer(
-              child: TextField(
-                controller: step.minutes,
-                decoration: communityInputDecoration('分鐘數'),
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

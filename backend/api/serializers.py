@@ -77,7 +77,9 @@ class PostWorkoutPlanStepSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "name",
+            "exercise_type",
             "minutes",
+            "reps",
             "order",
         ]
 

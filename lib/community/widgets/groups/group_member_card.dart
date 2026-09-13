@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+
 import '../common/community_avatar.dart';
 import '../common/community_card_styles.dart';
 
@@ -8,12 +9,17 @@ class BackendGroupMemberCard extends StatelessWidget {
   final String joinedDate;
   final bool isOwner;
 
+  final bool canRemove;
+  final VoidCallback? onRemove;
+
   const BackendGroupMemberCard({
     super.key,
     required this.name,
     required this.initial,
     required this.joinedDate,
     required this.isOwner,
+    this.canRemove = false,
+    this.onRemove,
   });
 
   @override
@@ -75,6 +81,41 @@ class BackendGroupMemberCard extends StatelessWidget {
               ],
             ),
           ),
+          if (canRemove && !isOwner)
+            PopupMenuButton<String>(
+              tooltip: '更多操作',
+              icon: const Icon(
+                Icons.more_vert_rounded,
+                color: Color(0xFF64748B),
+              ),
+              onSelected: (value) {
+                if (value == 'remove') {
+                  onRemove?.call();
+                }
+              },
+              itemBuilder: (context) => const [
+                PopupMenuItem<String>(
+                  value: 'remove',
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.person_remove_outlined,
+                        size: 19,
+                        color: Colors.red,
+                      ),
+                      SizedBox(width: 8),
+                      Text(
+                        '移除成員',
+                        style: TextStyle(
+                          color: Colors.red,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
         ],
       ),
     );

@@ -702,38 +702,68 @@ class CommunityPostViewSet(viewsets.ModelViewSet):
         total_minutes = 0
 
         for index, step in enumerate(steps):
-
             if not isinstance(step, dict):
                 continue
 
-            name = str(
+            exercise_type = str(
                 step.get(
-                    "name",
+                    "exercise_type",
                     "",
                 )
             ).strip()
 
-            try:
-                minutes = int(
-                    step.get(
-                        "minutes",
-                        0,
-                    )
-                )
-
-            except (TypeError, ValueError):
-                minutes = 0
-
-            if not name or minutes <= 0:
+            if exercise_type not in [
+                "slow_jogging",
+                "squat",
+            ]:
                 continue
+
+            name = (
+                "超慢跑"
+                if exercise_type == "slow_jogging"
+                else "深蹲"
+            )
+
+            minutes = None
+            reps = None
+
+            if exercise_type == "slow_jogging":
+                try:
+                    minutes = int(
+                        step.get(
+                            "minutes",
+                            0,
+                        )
+                    )
+                except (TypeError, ValueError):
+                    minutes = 0
+
+                if minutes <= 0:
+                    continue
+
+                total_minutes += minutes
+
+            elif exercise_type == "squat":
+                try:
+                    reps = int(
+                        step.get(
+                            "reps",
+                            0,
+                        )
+                    )
+                except (TypeError, ValueError):
+                    reps = 0
+
+                if reps <= 0:
+                    continue
 
             valid_steps.append({
                 "name": name,
+                "exercise_type": exercise_type,
                 "minutes": minutes,
+                "reps": reps,
                 "order": index,
             })
-
-            total_minutes += minutes
 
         if not valid_steps:
             raise ValueError(
@@ -752,7 +782,9 @@ class CommunityPostViewSet(viewsets.ModelViewSet):
             PostWorkoutPlanStep(
                 plan=plan,
                 name=step["name"],
+                exercise_type=step["exercise_type"],
                 minutes=step["minutes"],
+                reps=step["reps"],
                 order=step["order"],
             )
             for step in valid_steps
@@ -2117,6 +2149,96 @@ class CommunityGroupViewSet(viewsets.ModelViewSet):
             CommunityGroupJoinRequestSerializer(
                 join_request,
             ).data,
+        )
+
+    # =========================
+    # 移除群組成員
+    # =========================
+    @action(
+        detail=True,
+        methods=["delete"],
+        url_path=r"members/(?P<member_id>\d+)",
+    )
+    @transaction.atomic
+    def remove_member(
+        self,
+        request,
+        pk=None,
+        member_id=None,
+    ):
+        group = CommunityGroup.objects.filter(
+            id=pk,
+        ).first()
+
+        if group is None:
+            return Response(
+                {
+                    "error": "找不到群組",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        # 只有群組創立者可以移除成員
+        if group.owner_id != request.user.id:
+            return Response(
+                {
+                    "error": "只有群組創立者可以移除成員",
+                },
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        try:
+            member_id = int(member_id)
+        except (TypeError, ValueError):
+            return Response(
+                {
+                    "error": "成員 ID 格式錯誤",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # 不允許移除自己
+        if member_id == group.owner_id:
+            return Response(
+                {
+                    "error": "無法移除群組創立者",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        membership = (
+            CommunityGroupMember.objects
+            .filter(
+                group=group,
+                member_id=member_id,
+            )
+            .select_related("member")
+            .first()
+        )
+
+        if membership is None:
+            return Response(
+                {
+                    "error": "找不到此群組成員",
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        member = membership.member
+
+        # 清除該成員在此群組活動中的參加紀錄
+        CommunityGroupActivityParticipant.objects.filter(
+            activity__group=group,
+            member=member,
+        ).delete()
+
+        membership.delete()
+
+        return Response(
+            {
+                "message": "已移除群組成員",
+            },
+            status=status.HTTP_200_OK,
         )
 
     # =========================

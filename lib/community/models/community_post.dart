@@ -239,11 +239,15 @@ class WorkoutPlanData {
 
 class WorkoutPlanStep {
   final String name;
-  final int minutes;
+  final String exerciseType;
+  final int? minutes;
+  final int? reps;
 
   const WorkoutPlanStep({
     required this.name,
-    required this.minutes,
+    required this.exerciseType,
+    this.minutes,
+    this.reps,
   });
 
   factory WorkoutPlanStep.fromJson(
@@ -251,17 +255,31 @@ class WorkoutPlanStep {
   ) {
     return WorkoutPlanStep(
       name: (json['name'] ?? '').toString(),
-      minutes: CommunityPost._toInt(
-        json['minutes'],
-      ),
+      exerciseType: (json['exercise_type'] ?? 'slow_jogging').toString(),
+      minutes: _toNullableInt(json['minutes']),
+      reps: _toNullableInt(json['reps']),
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
       'name': name,
+      'exercise_type': exerciseType,
       'minutes': minutes,
+      'reps': reps,
     };
+  }
+
+  static int? _toNullableInt(dynamic value) {
+    if (value == null) {
+      return null;
+    }
+
+    if (value is int) {
+      return value;
+    }
+
+    return int.tryParse(value.toString());
   }
 }
 

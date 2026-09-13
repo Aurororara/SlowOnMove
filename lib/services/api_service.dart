@@ -26,10 +26,21 @@ class ApiService {
     dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (options, handler) async {
-          final token = await getToken();
+          const publicAuthPaths = [
+            'auth/google/',
+            'auth/login/',
+          ];
 
-          if (token != null && token.isNotEmpty) {
-            options.headers['Authorization'] = 'Bearer $token';
+          final isPublicAuthRequest = publicAuthPaths.any(
+            (path) => options.path.contains(path),
+          );
+
+          if (!isPublicAuthRequest) {
+            final token = await getToken();
+
+            if (token != null && token.isNotEmpty) {
+              options.headers['Authorization'] = 'Bearer $token';
+            }
           }
 
           handler.next(options);

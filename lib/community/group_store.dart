@@ -310,6 +310,33 @@ class GroupStore extends ChangeNotifier {
     }
   }
 
+  Future<bool> removeMember({
+    required int groupId,
+    required int memberId,
+  }) async {
+    _errorMessage = null;
+
+    try {
+      await _api.dio.delete(
+        'groups/$groupId/members/$memberId/',
+      );
+
+      await loadGroup(
+        groupId,
+        showLoading: false,
+      );
+
+      notifyListeners();
+
+      return true;
+    } catch (e) {
+      _setError(e);
+      notifyListeners();
+
+      return false;
+    }
+  }
+
   Future<bool> leaveGroup(
     int groupId,
   ) async {

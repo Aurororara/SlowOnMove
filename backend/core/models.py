@@ -621,24 +621,52 @@ class PostWorkoutPlan(models.Model):
 
 
 class PostWorkoutPlanStep(models.Model):
+    EXERCISE_SLOW_JOGGING = "slow_jogging"
+    EXERCISE_SQUAT = "squat"
+
+    EXERCISE_TYPE_CHOICES = [
+        (EXERCISE_SLOW_JOGGING, "超慢跑"),
+        (EXERCISE_SQUAT, "深蹲"),
+    ]
+
     plan = models.ForeignKey(
         PostWorkoutPlan,
         on_delete=models.CASCADE,
-        related_name="steps"
+        related_name="steps",
     )
+
     name = models.CharField(
-        max_length=255
+        max_length=255,
     )
-    minutes = models.IntegerField()
+
+    exercise_type = models.CharField(
+        max_length=30,
+        choices=EXERCISE_TYPE_CHOICES,
+        default=EXERCISE_SLOW_JOGGING,
+    )
+
+    minutes = models.IntegerField(
+        null=True,
+        blank=True,
+    )
+
+    reps = models.IntegerField(
+        null=True,
+        blank=True,
+    )
+
     order = models.IntegerField(
-        default=0
+        default=0,
     )
+
     class Meta:
         ordering = ["order"]
 
     def __str__(self):
-        return f"{self.name} - {self.minutes}分鐘"
+        if self.exercise_type == self.EXERCISE_SQUAT:
+            return f"{self.name} - {self.reps or 0}下"
 
+        return f"{self.name} - {self.minutes or 0}分鐘"
 
 class Favorite(models.Model):
     member = models.ForeignKey(
