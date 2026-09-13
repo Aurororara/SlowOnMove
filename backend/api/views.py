@@ -616,6 +616,13 @@ class CommunityPostViewSet(viewsets.ModelViewSet):
             .distinct()
         )
 
+        post_type = request.query_params.get("post_type")
+
+        if post_type in ["journey", "plan", "recipe"]:
+            posts = posts.filter(
+                post_type=post_type
+            )
+
         serializer = self.get_serializer(
             posts,
             many=True,

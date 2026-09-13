@@ -29,12 +29,14 @@ import 'community/widgets/posts/post_card.dart';
 import 'community/widgets/posts/workout_plan_card.dart';
 import 'community/widgets/posts/recipe_card.dart';
 import 'community/widgets/common/community_tag_pill.dart';
+import 'community/widgets/posts/post_share_sheet.dart';
 import 'community/widgets/posts/post_composer.dart';
 import 'community/widgets/common/community_input.dart';
 import 'community/widgets/navigation/community_navigation.dart';
 import 'community/widgets/friends/friend_tabs.dart';
 import 'community/widgets/friends/friend_search_field.dart';
 import 'community/widgets/posts/workout_plan_step_editor.dart';
+import 'community/widgets/posts/comments_sheet.dart';
 
 enum _CommunityChatEntryType {
   message,
@@ -787,23 +789,40 @@ class _CommunityScreenState extends State<CommunityScreen> {
   }
 
   Future<void> _toggleLike(int index) async {
-    final success = await widget.store.toggleLike(index);
-
-    if (!success && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            widget.store.errorMessage ?? '按讚失敗',
-          ),
-        ),
-      );
+    if (index < 0 || index >= _posts.length) {
+      return;
     }
+
+    final post = _posts[index];
+
+    final success = await widget.store.toggleLikeByPostId(
+      post.id,
+    );
+
+    if (!mounted || success) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          widget.store.errorMessage ?? '按讚失敗',
+        ),
+      ),
+    );
   }
 
   Future<void> _toggleSave(int index) async {
-    final isSaving = !_posts[index].isSaved;
+    if (index < 0 || index >= _posts.length) {
+      return;
+    }
 
-    final success = await widget.store.toggleSave(index);
+    final post = _posts[index];
+    final isSaving = !post.isSaved;
+
+    final success = await widget.store.toggleSaveByPostId(
+      post.id,
+    );
 
     if (!mounted) {
       return;
@@ -822,16 +841,20 @@ class _CommunityScreenState extends State<CommunityScreen> {
   }
 
   Future<void> _openComments(int index) async {
+    if (index < 0 || index >= _posts.length) {
+      return;
+    }
+
+    final post = _posts[index];
+
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (sheetContext) {
-        return _CommentsSheet(
-          store: widget.store,
-          postIndex: index,
-        );
-      },
+      builder: (_) => CommentsSheet(
+        store: widget.store,
+        postId: post.id,
+      ),
     );
   }
 
@@ -1012,65 +1035,18 @@ class _CommunityScreenState extends State<CommunityScreen> {
   }
 
   Future<void> _showShareSheet(int index) async {
-    const shareTargets = [
-      ('Instagram', Icons.camera_alt_outlined),
-      ('Facebook', Icons.thumb_up_alt_outlined),
-      ('Messenger', Icons.send_outlined),
-      ('複製連結', Icons.link_outlined),
-    ];
+    if (index < 0 || index >= _posts.length) {
+      return;
+    }
+
+    final post = _posts[index];
 
     await showModalBottomSheet<void>(
       context: context,
-      isScrollControlled: true,
-      builder: (sheetContext) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 42,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFD1D5DB),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  '分享至',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.black,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                ...shareTargets.map((target) {
-                  return ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: CircleAvatar(
-                      backgroundColor: const Color(0xFFF1F5F9),
-                      child: Icon(target.$2, color: Colors.black),
-                    ),
-                    title: Text(target.$1),
-                    onTap: () {
-                      Navigator.pop(context);
-                      ScaffoldMessenger.of(this.context).showSnackBar(
-                        SnackBar(content: Text('已分享至 ${target.$1}')),
-                      );
-                    },
-                  );
-                }),
-              ],
-            ),
-          ),
-        );
-      },
+      backgroundColor: Colors.transparent,
+      builder: (_) => PostShareSheet(
+        post: post,
+      ),
     );
   }
 
@@ -7507,326 +7483,6 @@ class _EmptyProfileState extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _CommentsSheet extends StatefulWidget {
-  final CommunityStore store;
-  final int postIndex;
-
-  const _CommentsSheet({required this.store, required this.postIndex});
-
-  @override
-  State<_CommentsSheet> createState() => _CommentsSheetState();
-}
-
-class _CommentsSheetState extends State<_CommentsSheet> {
-  late final TextEditingController _controller;
-
-  List<Map<String, dynamic>> _comments = [];
-
-  bool _isLoading = true;
-  bool _isSubmitting = false;
-
-  @override
-  void initState() {
-    super.initState();
-
-    _controller = TextEditingController();
-
-    _loadComments();
-  }
-
-  Future<void> _loadComments() async {
-    if (widget.postIndex < 0 || widget.postIndex >= widget.store.posts.length) {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
-
-      return;
-    }
-
-    final post = widget.store.posts[widget.postIndex];
-
-    final comments = await widget.store.loadComments(
-      post.id,
-    );
-
-    if (!mounted) {
-      return;
-    }
-
-    setState(() {
-      _comments = comments;
-      _isLoading = false;
-    });
-  }
-
-  Future<void> _submitComment() async {
-    final text = _controller.text.trim();
-
-    if (text.isEmpty || _isSubmitting) {
-      return;
-    }
-
-    setState(() {
-      _isSubmitting = true;
-    });
-
-    final success = await widget.store.addComment(
-      widget.postIndex,
-      text,
-    );
-
-    if (!mounted) {
-      return;
-    }
-
-    if (success) {
-      _controller.clear();
-
-      FocusScope.of(context).unfocus();
-
-      await _loadComments();
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            widget.store.errorMessage ?? '留言失敗',
-          ),
-        ),
-      );
-    }
-
-    if (!mounted) {
-      return;
-    }
-
-    setState(() {
-      _isSubmitting = false;
-    });
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: widget.store,
-      builder: (context, _) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.viewInsetsOf(context).bottom,
-          ),
-          child: Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.vertical(
-                top: Radius.circular(24),
-              ),
-            ),
-            padding: const EdgeInsets.fromLTRB(
-              18,
-              18,
-              18,
-              20,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 42,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFD1D5DB),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 18),
-                const Text(
-                  '留言',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.black,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                if (_isLoading)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(
-                      vertical: 24,
-                    ),
-                    child: Center(
-                      child: CircularProgressIndicator(),
-                    ),
-                  )
-                else if (_comments.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.only(
-                      bottom: 16,
-                    ),
-                    child: Text(
-                      '目前還沒有留言。開始對話吧。',
-                      style: TextStyle(
-                        color: Color(0xFF6B7280),
-                        fontSize: 14,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  )
-                else
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(
-                      maxHeight: 260,
-                    ),
-                    child: ListView.separated(
-                      shrinkWrap: true,
-                      itemCount: _comments.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 10),
-                      itemBuilder: (
-                        context,
-                        commentIndex,
-                      ) {
-                        final comment = _comments[commentIndex];
-
-                        final name =
-                            (comment['member_name'] ?? '社群成員').toString();
-
-                        final initial =
-                            (comment['member_initial'] ?? 'U').toString();
-
-                        final content = (comment['content'] ?? '').toString();
-
-                        return Container(
-                          padding: const EdgeInsets.all(12),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF8FAFC),
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              CommunityAvatar(
-                                initial: initial.isEmpty ? 'U' : initial,
-                              ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      name,
-                                      style: const TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w800,
-                                        color: Colors.black,
-                                      ),
-                                    ),
-                                    const SizedBox(
-                                      height: 4,
-                                    ),
-                                    Text(
-                                      content,
-                                      style: const TextStyle(
-                                        fontSize: 14,
-                                        height: 1.4,
-                                        color: Color(0xFF374151),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _controller,
-                        decoration: InputDecoration(
-                          hintText: '寫下留言...',
-                          filled: true,
-                          fillColor: const Color(0xFFF8FAFC),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 14,
-                            vertical: 12,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                            borderSide: BorderSide.none,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    ValueListenableBuilder<TextEditingValue>(
-                      valueListenable: _controller,
-                      builder: (
-                        context,
-                        value,
-                        child,
-                      ) {
-                        final canSubmit =
-                            value.text.trim().isNotEmpty && !_isSubmitting;
-
-                        return ElevatedButton(
-                          onPressed: canSubmit ? _submitComment : null,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF65C16F),
-                            foregroundColor: Colors.white,
-                            disabledBackgroundColor: const Color(0xFFDDEDDD),
-                            disabledForegroundColor: const Color(0xFF8DAA90),
-                            elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14),
-                            ),
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 14,
-                            ),
-                          ),
-                          child: _isSubmitting
-                              ? const SizedBox(
-                                  width: 18,
-                                  height: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Text(
-                                  '送出',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w800,
-                                  ),
-                                ),
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      },
     );
   }
 }

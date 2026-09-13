@@ -7,15 +7,23 @@ import 'models/community_post.dart';
 class CommunityStore extends ChangeNotifier {
   final List<CommunityPost> _posts = [];
 
+  final List<CommunityPost> _savedPosts = [];
+  bool _savedPostsLoading = false;
+
+  List<CommunityPost> get savedPosts => List.unmodifiable(_savedPosts);
+
+  int get savedCount => _savedPosts.length;
+
+  List<CommunityPost> get savedWorkoutPlans => _savedPosts
+      .where((post) => post.type == CommunityPostType.plan)
+      .toList(growable: false);
+
+  bool get savedPostsLoading => _savedPostsLoading;
+
   bool _isLoading = false;
   String? _errorMessage;
 
   List<CommunityPost> get posts => List.unmodifiable(_posts);
-
-  List<CommunityPost> get savedPosts =>
-      _posts.where((post) => post.isSaved).toList(growable: false);
-
-  int get savedCount => savedPosts.length;
 
   bool get isLoading => _isLoading;
 
@@ -65,6 +73,50 @@ class CommunityStore extends ChangeNotifier {
     }
   }
 
+  Future<bool> loadSavedPosts() async {
+    if (_savedPostsLoading) {
+      return false;
+    }
+
+    _savedPostsLoading = true;
+    notifyListeners();
+
+    try {
+      final response = await ApiService().dio.get(
+            'community-posts/saved/',
+          );
+
+      final data = response.data;
+
+      if (data is List) {
+        _savedPosts
+          ..clear()
+          ..addAll(
+            data.whereType<Map>().map(
+                  (json) => CommunityPost.fromJson(
+                    Map<String, dynamic>.from(json),
+                  ),
+                ),
+          );
+      }
+
+      return true;
+    } on DioException catch (e) {
+      _errorMessage = _getDioErrorMessage(
+        e,
+        defaultMessage: '取得收藏失敗',
+      );
+
+      return false;
+    } catch (e) {
+      _errorMessage = e.toString();
+
+      return false;
+    } finally {
+      _savedPostsLoading = false;
+      notifyListeners();
+    }
+  }
   // ============================================================
   // 發文
   // ============================================================
@@ -276,6 +328,59 @@ class CommunityStore extends ChangeNotifier {
     }
   }
 
+  Future<bool> toggleLikeByPostId(int postId) async {
+    _errorMessage = null;
+
+    try {
+      final response = await ApiService().dio.post(
+            'community-posts/$postId/toggle-like/',
+          );
+
+      final data = response.data;
+
+      final isLiked = data['is_liked'] == true;
+      final likes = _toInt(data['like_count']);
+
+      final savedIndex = _savedPosts.indexWhere(
+        (post) => post.id == postId,
+      );
+
+      if (savedIndex != -1) {
+        _savedPosts[savedIndex] = _savedPosts[savedIndex].copyWith(
+          isLiked: isLiked,
+          likes: likes,
+        );
+      }
+
+      final postIndex = _posts.indexWhere(
+        (post) => post.id == postId,
+      );
+
+      if (postIndex != -1) {
+        _posts[postIndex] = _posts[postIndex].copyWith(
+          isLiked: isLiked,
+          likes: likes,
+        );
+      }
+
+      notifyListeners();
+
+      return true;
+    } on DioException catch (e) {
+      _errorMessage = _getDioErrorMessage(
+        e,
+        defaultMessage: '按讚失敗',
+      );
+
+      notifyListeners();
+      return false;
+    } catch (e) {
+      _errorMessage = e.toString();
+
+      notifyListeners();
+      return false;
+    }
+  }
   // ============================================================
   // 收藏
   // ============================================================
@@ -298,9 +403,27 @@ class CommunityStore extends ChangeNotifier {
 
       final data = response.data;
 
-      _posts[index] = post.copyWith(
-        isSaved: data['is_saved'] == true,
+      final isSaved = data['is_saved'] == true;
+
+      final updatedPost = post.copyWith(
+        isSaved: isSaved,
       );
+
+      _posts[index] = updatedPost;
+
+      if (isSaved) {
+        final exists = _savedPosts.any(
+          (item) => item.id == updatedPost.id,
+        );
+
+        if (!exists) {
+          _savedPosts.insert(0, updatedPost);
+        }
+      } else {
+        _savedPosts.removeWhere(
+          (item) => item.id == updatedPost.id,
+        );
+      }
 
       notifyListeners();
 
@@ -323,6 +446,70 @@ class CommunityStore extends ChangeNotifier {
     }
   }
 
+  Future<bool> toggleSaveByPostId(int postId) async {
+    _errorMessage = null;
+
+    try {
+      final response = await ApiService().dio.post(
+            'community-posts/$postId/toggle-favorite/',
+          );
+
+      final data = response.data;
+      final isSaved = data['is_saved'] == true;
+
+      // 更新社群貼文列表
+      final postIndex = _posts.indexWhere(
+        (post) => post.id == postId,
+      );
+
+      if (postIndex != -1) {
+        _posts[postIndex] = _posts[postIndex].copyWith(
+          isSaved: isSaved,
+        );
+      }
+
+      // 找出目前收藏列表中的貼文
+      final savedIndex = _savedPosts.indexWhere(
+        (post) => post.id == postId,
+      );
+
+      if (isSaved) {
+        // 收藏
+        if (savedIndex == -1) {
+          CommunityPost? post;
+
+          if (postIndex != -1) {
+            post = _posts[postIndex];
+          }
+
+          if (post != null) {
+            _savedPosts.insert(0, post);
+          }
+        }
+      } else {
+        // 取消收藏
+        if (savedIndex != -1) {
+          _savedPosts.removeAt(savedIndex);
+        }
+      }
+
+      notifyListeners();
+      return true;
+    } on DioException catch (e) {
+      _errorMessage = _getDioErrorMessage(
+        e,
+        defaultMessage: '收藏失敗',
+      );
+
+      notifyListeners();
+      return false;
+    } catch (e) {
+      _errorMessage = e.toString();
+
+      notifyListeners();
+      return false;
+    }
+  }
   // ============================================================
   // 留言
   // ============================================================
@@ -410,6 +597,69 @@ class CommunityStore extends ChangeNotifier {
 
       notifyListeners();
 
+      return false;
+    }
+  }
+
+  Future<bool> addCommentByPostId(
+    int postId,
+    String comment,
+  ) async {
+    final content = comment.trim();
+
+    if (content.isEmpty) {
+      return false;
+    }
+
+    _errorMessage = null;
+
+    try {
+      await ApiService().dio.post(
+        'community-posts/$postId/comments/',
+        data: {
+          'content': content,
+        },
+      );
+
+      final savedIndex = _savedPosts.indexWhere(
+        (post) => post.id == postId,
+      );
+
+      if (savedIndex != -1) {
+        final post = _savedPosts[savedIndex];
+
+        _savedPosts[savedIndex] = post.copyWith(
+          commentCount: post.commentCount + 1,
+        );
+      }
+
+      final postIndex = _posts.indexWhere(
+        (post) => post.id == postId,
+      );
+
+      if (postIndex != -1) {
+        final post = _posts[postIndex];
+
+        _posts[postIndex] = post.copyWith(
+          commentCount: post.commentCount + 1,
+        );
+      }
+
+      notifyListeners();
+
+      return true;
+    } on DioException catch (e) {
+      _errorMessage = _getDioErrorMessage(
+        e,
+        defaultMessage: '留言失敗',
+      );
+
+      notifyListeners();
+      return false;
+    } catch (e) {
+      _errorMessage = e.toString();
+
+      notifyListeners();
       return false;
     }
   }
