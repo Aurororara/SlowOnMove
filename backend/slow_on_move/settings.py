@@ -136,7 +136,8 @@ STATIC_URL = 'static/'
 AUTH_USER_MODEL = 'core.Member'
 
 # CORS
-CORS_ALLOW_ALL_ORIGINS = os.getenv("CORS_ALLOW_ALL_ORIGINS", "False") == "True"
+CORS_ALLOW_ALL_ORIGINS = True
+
 
 # Django REST Framework
 REST_FRAMEWORK = {
