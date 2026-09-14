@@ -1,10 +1,11 @@
+import 'dart:convert';
 import 'dart:math';
-import 'dart:convert'; //
-import 'package:flutter/material.dart';
 import 'package:confetti/confetti.dart';
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'services/user_session.dart';
+import 'body_pain_picker.dart';
 import 'config/api_config.dart';
+import 'services/user_session.dart';
 
 class ResultsScreen extends StatefulWidget {
   final int timeSeconds;
@@ -31,15 +32,176 @@ class _ResultsScreenState extends State<ResultsScreen> {
   String? _dynamicAiFeedback;
   bool _isLoadingAi = true;
 
+  // 記錄使用者填寫的疼痛部位
+  Set<BodyPart> _recordedPainParts = {};
+
   @override
   void initState() {
     super.initState();
+
     _confettiController =
         ConfettiController(duration: const Duration(seconds: 3));
     _confettiController.play();
 
     _fetchAiFeedback(); // 獲取 AI 建議
     _saveData();
+
+    // 第一次進入頁面：畫面渲染完畢後自動跳出回饋彈窗
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _showDiscomfortModal(context);
+      }
+    });
+  }
+
+  // 疼痛回饋彈窗方法
+  void _showDiscomfortModal(BuildContext context) {
+    Set<BodyPart> tempSelected = Set.from(_recordedPainParts);
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return SafeArea(
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      '跑步後有哪裡不適嗎？',
+                      style:
+                          TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 6),
+                    const Text(
+                      '點擊圖中感到痠痛或需要注意的部位',
+                      style: TextStyle(color: Colors.grey, fontSize: 13),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // 火柴人元件
+                    BodyPainPicker(
+                      onSelectionChanged: (parts) {
+                        setModalState(() {
+                          tempSelected = parts;
+                        });
+                      },
+                    ),
+
+                    const SizedBox(height: 12),
+                    Text(
+                      tempSelected.isEmpty
+                          ? '尚未選取部位（無不適請直接完成）'
+                          : '已選部位：${tempSelected.map((e) => e.label).join('、')}',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: tempSelected.isEmpty
+                            ? Colors.grey
+                            : Colors.redAccent,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48),
+                        backgroundColor: Colors.black,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        setState(() {
+                          _recordedPainParts = tempSelected;
+                        });
+
+                        List<String> partLabels =
+                            tempSelected.map((p) => p.label).toList();
+                        debugPrint('送出部位中文名稱: $partLabels');
+                        _saveData();
+                      },
+                      child: const Text('完成回饋', style: TextStyle(fontSize: 16)),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // 結算頁面中供使用者手動開啟修改的卡片按鈕
+  Widget _buildPainStatusCard() {
+    final hasPain = _recordedPainParts.isNotEmpty;
+
+    return InkWell(
+      onTap: () => _showDiscomfortModal(context),
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: hasPain ? Colors.red.shade50 : Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: hasPain ? Colors.redAccent.shade100 : Colors.grey.shade200,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.03),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Icon(
+              hasPain
+                  ? Icons.warning_amber_rounded
+                  : Icons.accessibility_new_rounded,
+              color: hasPain ? Colors.redAccent : Colors.black87,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    hasPain ? '身體不適回報（點擊修改）' : '身體狀態良好（點擊記錄不適）',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                      color: hasPain ? Colors.redAccent : Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    hasPain
+                        ? _recordedPainParts.map((e) => e.label).join('、')
+                        : '無回報痠痛部位',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: Colors.grey),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _saveData() async {
@@ -52,6 +214,10 @@ class _ResultsScreenState extends State<ResultsScreen> {
     final int totalMins = widget.timeSeconds ~/ 60;
     final int fixedCalories = caloriesBurned;
     final int fixedSteps = isSquat ? 0 : widget.stepCount;
+
+    // 將使用者選取的部位轉成中文 List<String>
+    final List<String> painList =
+        _recordedPainParts.map((e) => e.label).toList();
 
     try {
       final response = await http.post(
@@ -68,15 +234,21 @@ class _ResultsScreenState extends State<ResultsScreen> {
           "posture_score": widget.averageAccuracy.toInt(),
           "calories": fixedCalories,
           "step_count": fixedSteps,
+          "pain_parts": painList, // 👈 加上這一行！
         }),
       );
+
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        debugPrint("✅ 運動與疼痛紀錄成功同步至後端 (Status: ${response.statusCode})");
+      } else {
+        debugPrint("⚠️ 儲存失敗: ${response.statusCode} - ${response.body}");
+      }
     } catch (e) {
       debugPrint("⚠️ 連線異常: $e");
     }
   }
 
   Future<void> _fetchAiFeedback() async {
-    // 暫時停用 Gemini API，改用固定的教練建議
     String feedback = "";
     if (widget.exerciseTitle == '深蹲') {
       if (widget.averageAccuracy >= 80) {
@@ -96,7 +268,6 @@ class _ResultsScreenState extends State<ResultsScreen> {
       }
     }
 
-    // 延遲一下模擬 AI 載入感
     await Future.delayed(const Duration(seconds: 1));
 
     if (mounted) {
@@ -148,59 +319,74 @@ class _ResultsScreenState extends State<ResultsScreen> {
                   Row(
                     children: [
                       Expanded(
-                          child: _buildStatCard(
-                              '運動時間',
-                              '$minutesStr:$secondsStr',
-                              Icons.timer_outlined,
-                              Colors.blueAccent)),
+                        child: _buildStatCard(
+                          '運動時間',
+                          '$minutesStr:$secondsStr',
+                          Icons.timer_outlined,
+                          Colors.blueAccent,
+                        ),
+                      ),
                       const SizedBox(width: 16),
                       Expanded(
-                          child: _buildStatCard(
-                              '消耗熱量',
-                              '$caloriesBurned kcal',
-                              Icons.local_fire_department_outlined,
-                              Colors.redAccent)),
+                        child: _buildStatCard(
+                          '消耗熱量',
+                          '$caloriesBurned kcal',
+                          Icons.local_fire_department_outlined,
+                          Colors.redAccent,
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 16),
                   Row(
                     children: [
                       Expanded(
-                          child: _buildStatCard(
-                              '平均準確率',
-                              '${widget.averageAccuracy.toStringAsFixed(1)}%',
-                              Icons.check_circle_outline,
-                              widget.averageAccuracy > 80
-                                  ? Colors.green
-                                  : Colors.orange)),
+                        child: _buildStatCard(
+                          '平均準確率',
+                          '${widget.averageAccuracy.toStringAsFixed(1)}%',
+                          Icons.check_circle_outline,
+                          widget.averageAccuracy > 80
+                              ? Colors.green
+                              : Colors.orange,
+                        ),
+                      ),
                       const SizedBox(width: 16),
                       if (widget.exerciseTitle != '深蹲')
                         Expanded(
-                            child: _buildStatCard(
-                                '步數',
-                                '${widget.stepCount} 步',
-                                Icons.directions_walk_outlined,
-                                Colors.purpleAccent))
+                          child: _buildStatCard(
+                            '步數',
+                            '${widget.stepCount} 步',
+                            Icons.directions_walk_outlined,
+                            Colors.purpleAccent,
+                          ),
+                        )
                       else
-                        Expanded(child: Container()), // 保持排版平衡
+                        Expanded(child: Container()),
                     ],
                   ),
 
-                  const SizedBox(height: 48),
+                  const SizedBox(height: 24),
+
+                  // 疼痛回報卡片（支援二次點選修改）
+                  _buildPainStatusCard(),
+
+                  const SizedBox(height: 24),
 
                   // AI 建議區塊
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                              color: Colors.black.withOpacity(0.05),
-                              blurRadius: 10,
-                              offset: const Offset(0, 5))
-                        ]),
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(20),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 10,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
+                    ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -216,12 +402,15 @@ class _ResultsScreenState extends State<ResultsScreen> {
                         const SizedBox(height: 16),
                         if (_isLoadingAi)
                           const Center(
-                              child: CircularProgressIndicator(
-                                  color: Colors.amber))
+                            child: CircularProgressIndicator(
+                              color: Colors.amber,
+                            ),
+                          )
                         else
-                          Text(_dynamicAiFeedback ?? '沒有建議',
-                              style:
-                                  const TextStyle(fontSize: 16, height: 1.6)),
+                          Text(
+                            _dynamicAiFeedback ?? '沒有建議',
+                            style: const TextStyle(fontSize: 16, height: 1.6),
+                          ),
                       ],
                     ),
                   ),
@@ -236,7 +425,8 @@ class _ResultsScreenState extends State<ResultsScreen> {
                         backgroundColor: Colors.black87,
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(30)),
+                          borderRadius: BorderRadius.circular(30),
+                        ),
                       ),
                       child: const Text('回到主頁',
                           style: TextStyle(
@@ -266,7 +456,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
                 Colors.blue,
                 Colors.pink,
                 Colors.orange,
-                Colors.purple
+                Colors.purple,
               ],
             ),
           ),
@@ -280,14 +470,16 @@ class _ResultsScreenState extends State<ResultsScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withOpacity(0.03),
-                blurRadius: 8,
-                offset: const Offset(0, 4))
-          ]),
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.03),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -297,10 +489,12 @@ class _ResultsScreenState extends State<ResultsScreen> {
               style: const TextStyle(fontSize: 14, color: Colors.black54)),
           const SizedBox(height: 4),
           FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(value,
-                  style: const TextStyle(
-                      fontSize: 20, fontWeight: FontWeight.bold))),
+            fit: BoxFit.scaleDown,
+            child: Text(
+              value,
+              style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+            ),
+          ),
         ],
       ),
     );

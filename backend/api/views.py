@@ -3197,6 +3197,52 @@ class AdminAnalyticsView(APIView):
         timeframe = request.query_params.get("timeframe", "all")
         data = compute_admin_analytics(timeframe=timeframe)
 
+        # 確保 data 是字典結構
+        if not isinstance(data, dict):
+            data = {}
+
+        # ----------------------------------------------------
+        # 4. 跑後身體不適與疼痛部位統計 (Pain Analytics)
+        # ----------------------------------------------------
+        try:
+            # 撈取有填寫 pain_parts 的紀錄（排除 None 與空列表）
+            logs = TrainingLog.objects.exclude(pain_parts__isnull=True)
+            
+            total_pain_reports = 0
+            top_pain_parts = {}
+
+            for log in logs:
+                parts = getattr(log, 'pain_parts', [])
+                # 兼容 JSONField 與字串解析
+                if isinstance(parts, str):
+                    try:
+                        import json
+                        parts = json.loads(parts)
+                    except Exception:
+                        parts = []
+
+                if isinstance(parts, list) and len(parts) > 0:
+                    total_pain_reports += 1
+                    for part in parts:
+                        if part:
+                            top_pain_parts[part] = top_pain_parts.get(part, 0) + 1
+
+            # 依回報次數由高至低排序
+            sorted_pain_parts = dict(
+                sorted(top_pain_parts.items(), key=lambda item: item[1], reverse=True)
+            )
+
+            data['pain_analytics'] = {
+                'total_pain_reports': total_pain_reports,
+                'top_pain_parts': sorted_pain_parts,
+            }
+        except Exception as e:
+            # 若發生例外則給予安全預設值，避免畫面炸開
+            data['pain_analytics'] = {
+                'total_pain_reports': 0,
+                'top_pain_parts': {},
+            }
+
         # 抓取真實近期動態 (運動紀錄 + 新會員 + 貼文)
         activities = []
         now = timezone.now()
@@ -3206,7 +3252,7 @@ class AdminAnalyticsView(APIView):
             latest_trainings = TrainingLog.objects.select_related('member').order_by('-created_at')[:3]
             for log in latest_trainings:
                 user_name = getattr(log.member, 'nickname', None) or getattr(log.member, 'username', '使用者')
-                duration = getattr(log, 'duration_mins', getattr(log, 'duration', 0))
+                duration = getattr(log, 'total_mins', getattr(log, 'duration_mins', getattr(log, 'duration', 0)))
                 activities.append({
                     'title': f"{user_name} 完成了 {duration} 分鐘運動",
                     'type': 'exercise',
@@ -3247,7 +3293,6 @@ class AdminAnalyticsView(APIView):
         activities.sort(key=lambda x: x.get('created_at', ''), reverse=True)
 
         # 注入近期動態清單到回傳資料中
-        if isinstance(data, dict):
-            data['recent_activities'] = activities[:5]
+        data['recent_activities'] = activities[:5]
 
         return Response(data, status=status.HTTP_200_OK)

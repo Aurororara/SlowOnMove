@@ -694,6 +694,7 @@ class TrainingLog(models.Model):
     start_time = models.DateTimeField()
     end_time = models.DateTimeField()
     total_mins = models.IntegerField()
+    pain_parts = models.JSONField(default=list, blank=True)
     exercise_type = models.CharField(
         max_length=20,
         choices=[

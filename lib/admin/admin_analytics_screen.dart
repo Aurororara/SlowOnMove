@@ -109,8 +109,8 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
                     _buildExerciseAnalyticsSection(),
                     const SizedBox(height: 20),
 
-                    // 5. 社群互動與檢舉區塊
-                    _buildCommunityAnalyticsSection(),
+                    // 5. 跑後不適與疼痛部位統計區塊
+                    _buildPainAnalyticsSection(),
                     const SizedBox(height: 20),
 
                     // 6. 點數與綠界營收區塊
@@ -241,8 +241,8 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
   Widget _buildKpiOverviewGrid() {
     final uData = _analyticsData?['user_analytics'] ?? {};
     final eData = _analyticsData?['exercise_analytics'] ?? {};
-    final cData = _analyticsData?['community_analytics'] ?? {};
     final pData = _analyticsData?['points_analytics'] ?? {};
+    final painData = _analyticsData?['pain_analytics'] ?? {};
 
     return Column(
       children: [
@@ -276,12 +276,12 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
           children: [
             Expanded(
               child: _buildMetricTile(
-                title: '社群發帖數',
-                value: '${cData['total_posts'] ?? 0}',
-                unit: '篇',
-                icon: Icons.article_outlined,
-                color: Colors.purple.shade700,
-                bg: Colors.purple.shade50,
+                title: '疼痛回報次數',
+                value: '${painData['total_pain_reports'] ?? 0}',
+                unit: '次',
+                icon: Icons.warning_amber_rounded,
+                color: Colors.red.shade700,
+                bg: Colors.red.shade50,
               ),
             ),
             const SizedBox(width: 12),
@@ -615,18 +615,14 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
     );
   }
 
-  // 5. 社群與檢舉分析區塊
-  Widget _buildCommunityAnalyticsSection() {
-    final cData = _analyticsData?['community_analytics'] ?? {};
-    final postTypes = cData['post_types'] ?? {};
-    final int journeyCnt = postTypes['journey'] ?? 0;
-    final int planCnt = postTypes['plan'] ?? 0;
-    final int recipeCnt = postTypes['recipe'] ?? 0;
-    final int totalPostType =
-        (journeyCnt + planCnt + recipeCnt).clamp(1, 999999);
+  // 5. 跑後不適與疼痛部位統計
+  Widget _buildPainAnalyticsSection() {
+    final painData = _analyticsData?['pain_analytics'] ?? {};
+    final int totalReports = painData['total_pain_reports'] ?? 0;
 
-    final reports = cData['report_status'] ?? {};
-    final int pendingRep = reports['pending'] ?? 0;
+    // 部位分佈字典，例如: {'左腿/膝蓋': 8, '右腿/膝蓋': 5}
+    final Map<String, dynamic> partsMap =
+        Map<String, dynamic>.from(painData['top_pain_parts'] ?? {});
 
     return Container(
       padding: const EdgeInsets.all(16.0),
@@ -639,80 +635,67 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildSectionHeader(
-            icon: Icons.mark_chat_read_outlined,
-            title: '社群互動與風控檢舉 (Community & Moderation)',
+            icon: Icons.healing_outlined,
+            title: '跑後身體不適部位分佈 (Pain & Discomfort)',
           ),
           const SizedBox(height: 14),
+
+          // 子 KPI
           Row(
             children: [
               Expanded(
                 child: _buildSubStatChip(
-                    '總按讚數', '${cData['total_likes'] ?? 0} ❤️', Colors.pink),
+                  '累積回報次數',
+                  '$totalReports 次',
+                  Colors.red.shade700,
+                ),
               ),
-              const SizedBox(width: 8),
+              const SizedBox(width: 10),
               Expanded(
                 child: _buildSubStatChip(
-                    '總留言數',
-                    '${cData['total_comments'] ?? 0} 💬',
-                    Colors.purple.shade600),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildSubStatChip('待處理檢舉', '$pendingRep 件',
-                    pendingRep > 0 ? Colors.red : Colors.green),
+                  '最常不適部位',
+                  partsMap.isEmpty ? '暫無數據' : partsMap.keys.first,
+                  Colors.orange.shade800,
+                ),
               ),
             ],
           ),
           const SizedBox(height: 16),
+
           const Text(
-            '貼文類型分佈 (Post Categories)',
+            '各部位回報排行 (Top Pain Areas)',
             style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87),
-          ),
-          const SizedBox(height: 8),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: SizedBox(
-              height: 12,
-              child: Row(
-                children: [
-                  if (journeyCnt > 0)
-                    Expanded(
-                        flex: journeyCnt,
-                        child: Container(color: Colors.teal.shade400)),
-                  if (planCnt > 0)
-                    Expanded(
-                        flex: planCnt,
-                        child: Container(color: Colors.purple.shade400)),
-                  if (recipeCnt > 0)
-                    Expanded(
-                        flex: recipeCnt,
-                        child: Container(color: Colors.amber.shade600)),
-                ],
-              ),
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: Colors.black87,
             ),
           ),
-          const SizedBox(height: 10),
-          Wrap(
-            spacing: 12.0,
-            runSpacing: 6.0,
-            children: [
-              _buildLegendDot(
-                  '旅程',
-                  '$journeyCnt篇 (${(journeyCnt / totalPostType * 100).toStringAsFixed(0)}%)',
-                  Colors.teal.shade400),
-              _buildLegendDot(
-                  '計畫',
-                  '$planCnt篇 (${(planCnt / totalPostType * 100).toStringAsFixed(0)}%)',
-                  Colors.purple.shade400),
-              _buildLegendDot(
-                  '食譜',
-                  '$recipeCnt篇 (${(recipeCnt / totalPostType * 100).toStringAsFixed(0)}%)',
-                  Colors.amber.shade600),
-            ],
-          ),
+          const SizedBox(height: 12),
+
+          if (partsMap.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16.0),
+              child: Center(
+                child: Text(
+                  '目前尚未有跑後不適紀錄',
+                  style: TextStyle(fontSize: 12, color: Colors.grey),
+                ),
+              ),
+            )
+          else
+            ...partsMap.entries.map((entry) {
+              final String partName = entry.key;
+              final int count = (entry.value as num).toInt();
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 8.0),
+                child: _buildProgressBarItem(
+                  partName,
+                  count,
+                  totalReports.clamp(1, 999999),
+                  Colors.redAccent,
+                ),
+              );
+            }),
         ],
       ),
     );
