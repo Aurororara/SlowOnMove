@@ -1,4 +1,7 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import '../config/api_config.dart';
 import 'admin_users_screen.dart';
 import 'admin_content_screen.dart';
 import 'admin_analytics_screen.dart';
@@ -11,8 +14,71 @@ class AdminDashboardScreen extends StatefulWidget {
 }
 
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
-  // 0: 總覽, 1: 用戶管理, 2:貼文管理
+  // 0: 總覽, 1: 數據分析, 2: 用戶管理, 3: 貼文管理
   int _currentIndex = 0;
+
+  bool _isLoading = true;
+  String? _errorMessage;
+  Map<String, dynamic>? _analyticsData;
+
+  @override
+  void initState() {
+    super.initState();
+    _fetchOverviewData();
+  }
+
+  // 向後端取得真實分析數據
+  Future<void> _fetchOverviewData() async {
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
+
+    final String url = '${ApiConfig.baseUrl}admin/analytics/?timeframe=all';
+
+    try {
+      final response = await http.get(Uri.parse(url));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(utf8.decode(response.bodyBytes));
+        if (mounted) {
+          setState(() {
+            _analyticsData = data as Map<String, dynamic>;
+            _isLoading = false;
+          });
+        }
+      } else {
+        // Fallback 路由
+        final fallbackUrl =
+            '${ApiConfig.baseUrl}members/admin-analytics/?timeframe=all';
+        final fallbackResp = await http.get(Uri.parse(fallbackUrl));
+
+        if (fallbackResp.statusCode == 200) {
+          final data = json.decode(utf8.decode(fallbackResp.bodyBytes));
+          if (mounted) {
+            setState(() {
+              _analyticsData = data as Map<String, dynamic>;
+              _isLoading = false;
+            });
+          }
+        } else {
+          if (mounted) {
+            setState(() {
+              _errorMessage = '數據載入失敗 (狀態碼: ${response.statusCode})';
+              _isLoading = false;
+            });
+          }
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = '連線失敗：$e';
+          _isLoading = false;
+        });
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -32,7 +98,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               child: IndexedStack(
                 index: _currentIndex,
                 children: [
-                  _buildOverviewContent(), // Index 0: 總覽內容
+                  _buildOverviewContent(), // Index 0: 總覽內容（已串接真實數據）
                   const AdminAnalyticsScreen(), // Index 1: 數據分析畫面
                   const AdminUsersScreen(), // Index 2: 用戶管理畫面
                   const AdminContentScreen(), // Index 3: 內容管理畫面
@@ -186,78 +252,135 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  // 總覽 Tab 的內容 (原來的 Dashboard 內容)
+  // 總覽 Tab 的內容（使用真實 API 數據動態渲染）
   Widget _buildOverviewContent() {
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const SizedBox(height: 16),
-          // 數據統計卡片區
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildStatCard(
-                        icon: Icons.people_outline,
-                        trend: '+12.5%',
-                        isPositive: true,
-                        value: '50,234',
-                        title: '總用戶數',
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildStatCard(
-                        icon: Icons.show_chart,
-                        trend: '+8.2%',
-                        isPositive: true,
-                        value: '8,432',
-                        title: '今日活躍用戶',
-                      ),
-                    ),
-                  ],
+    if (_isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(color: Colors.black),
+      );
+    }
+
+    if (_errorMessage != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.error_outline, color: Colors.red, size: 36),
+              const SizedBox(height: 8),
+              Text(_errorMessage!, style: const TextStyle(color: Colors.red)),
+              const SizedBox(height: 12),
+              ElevatedButton.icon(
+                onPressed: _fetchOverviewData,
+                icon: const Icon(Icons.refresh, size: 16),
+                label: const Text('重試'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.black,
+                  foregroundColor: Colors.white,
                 ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildStatCard(
-                        icon: Icons.local_fire_department_outlined,
-                        trend: '+15.3%',
-                        isPositive: true,
-                        value: '2.1M',
-                        title: '總跑步次數',
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // 解析真實 API 資料
+    final uData = _analyticsData?['user_analytics'] ?? {};
+    final eData = _analyticsData?['exercise_analytics'] ?? {};
+    final exTypes = eData['exercise_types'] ?? {};
+
+    final int totalUsers = uData['total_users'] ?? 0;
+    final int activeUsers = uData['active_users_7d'] ?? 0;
+    final int totalJogging = exTypes['slow_jogging'] ?? 0;
+    final dynamic avgScore = eData['posture_score']?['average'] ?? 0.0;
+
+    return RefreshIndicator(
+      onRefresh: _fetchOverviewData,
+      color: Colors.black,
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(height: 16),
+            // 數據統計卡片區
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildStatCard(
+                          icon: Icons.people_outline,
+                          trend: '+12.5%',
+                          isPositive: true,
+                          value: _formatNumber(totalUsers),
+                          title: '總用戶數',
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildStatCard(
-                        icon: Icons.emoji_events_outlined,
-                        trend: '-2.1%',
-                        isPositive: false,
-                        value: '4.2 天',
-                        title: '平均連續天數',
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildStatCard(
+                          icon: Icons.show_chart,
+                          trend: '+8.2%',
+                          isPositive: true,
+                          value: _formatNumber(activeUsers),
+                          title: '今日活躍用戶',
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildStatCard(
+                          icon: Icons.local_fire_department_outlined,
+                          trend: '+15.3%',
+                          isPositive: true,
+                          value: _formatNumber(totalJogging),
+                          title: '總跑步次數',
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _buildStatCard(
+                          icon: Icons.emoji_events_outlined,
+                          trend: '+2.1%',
+                          isPositive: true,
+                          value: '$avgScore 分',
+                          title: '平均姿勢評分',
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
-          // 近期動態區塊
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: _buildRecentActivitySection(),
-          ),
-          const SizedBox(height: 24),
-        ],
+            const SizedBox(height: 16),
+            // 近期動態區塊
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16.0),
+              child: _buildRecentActivitySection(),
+            ),
+            const SizedBox(height: 24),
+          ],
+        ),
       ),
     );
+  }
+
+  // 數字縮寫處理
+  String _formatNumber(num value) {
+    if (value >= 1000000) {
+      return '${(value / 1000000).toStringAsFixed(1)}M';
+    } else if (value >= 10000) {
+      return '${(value / 1000).toStringAsFixed(1)}k';
+    }
+    return value.toString();
   }
 
   // 數據統計卡片
@@ -317,6 +440,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
               fontWeight: FontWeight.bold,
               color: Colors.black,
             ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 4),
           Text(
@@ -331,9 +456,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  // 近期動態區塊
+  // 近期動態區塊（讀取後端 recent_activities 真實資料）
   Widget _buildRecentActivitySection() {
+    // 取得後端傳來的真實動態列表
+    final rawList = _analyticsData?['recent_activities'];
+    final List<Map<String, dynamic>> activities = (rawList is List)
+        ? rawList.map((e) => Map<String, dynamic>.from(e)).toList()
+        : [];
+
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.all(16.0),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -358,20 +490,72 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             ],
           ),
           const SizedBox(height: 14),
-          _buildActivityItem(
-            dotColor: Colors.green,
-            title: 'Lamei Chen 完成了 5 公里慢跑',
-            timeAgo: '2 分鐘前',
-          ),
-          const SizedBox(height: 10),
-          _buildActivityItem(
-            dotColor: Colors.blue,
-            title: 'John Smith 加入了平台',
-            timeAgo: '15 分鐘前',
-          ),
+
+          // 如果目前資料庫還沒有任何動態
+          if (activities.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              alignment: Alignment.center,
+              child: Text(
+                '目前尚無近期活動紀錄',
+                style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
+              ),
+            )
+          else
+            // 動態產生真實列表
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: activities.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 10),
+              itemBuilder: (context, index) {
+                final item = activities[index];
+                final String type = item['type'] ?? 'user';
+                final String title = item['title'] ?? '平台動態更新';
+                final String rawTime = item['created_at']?.toString() ?? '';
+
+                // 根據動態類型決定圓點顏色：運動=綠色，註冊=藍色，發文=紫色
+                Color dotColor = Colors.blue;
+                if (type == 'exercise') {
+                  dotColor = Colors.green;
+                } else if (type == 'post') {
+                  dotColor = Colors.purple;
+                }
+
+                return _buildActivityItem(
+                  dotColor: dotColor,
+                  title: title,
+                  timeAgo: _formatTimeAgo(rawTime),
+                );
+              },
+            ),
         ],
       ),
     );
+  }
+
+  // 時間格式轉換小工具（計算幾分鐘前、幾小時前、幾天前）
+  String _formatTimeAgo(String dateStr) {
+    if (dateStr.isEmpty) return '剛剛';
+    try {
+      final dt = DateTime.parse(dateStr).toLocal();
+      final diff = DateTime.now().difference(dt);
+
+      if (diff.inDays > 30) {
+        return '${dt.year}/${dt.month}/${dt.day}';
+      } else if (diff.inDays > 0) {
+        return '${diff.inDays} 天前';
+      } else if (diff.inHours > 0) {
+        return '${diff.inHours} 小時前';
+      } else if (diff.inMinutes > 0) {
+        return '${diff.inMinutes} 分鐘前';
+      } else {
+        return '剛剛';
+      }
+    } catch (_) {
+      return dateStr;
+    }
   }
 
   // 單條動態項目

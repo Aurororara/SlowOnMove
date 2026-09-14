@@ -3196,4 +3196,58 @@ class AdminAnalyticsView(APIView):
     def get(self, request):
         timeframe = request.query_params.get("timeframe", "all")
         data = compute_admin_analytics(timeframe=timeframe)
+
+        # 抓取真實近期動態 (運動紀錄 + 新會員 + 貼文)
+        activities = []
+        now = timezone.now()
+
+        # 1. 最新 3 筆運動紀錄
+        try:
+            latest_trainings = TrainingLog.objects.select_related('member').order_by('-created_at')[:3]
+            for log in latest_trainings:
+                user_name = getattr(log.member, 'nickname', None) or getattr(log.member, 'username', '使用者')
+                duration = getattr(log, 'duration_mins', getattr(log, 'duration', 0))
+                activities.append({
+                    'title': f"{user_name} 完成了 {duration} 分鐘運動",
+                    'type': 'exercise',
+                    'created_at': log.created_at.isoformat() if hasattr(log, 'created_at') else now.isoformat(),
+                })
+        except Exception:
+            pass
+
+        # 2. 最新 3 位新註冊會員
+        try:
+            date_field = '-created_at' if hasattr(Member, 'created_at') else '-date_joined'
+            latest_members = Member.objects.order_by(date_field)[:3]
+            for m in latest_members:
+                user_name = getattr(m, 'nickname', None) or getattr(m, 'username', '新會員')
+                join_time = getattr(m, 'created_at', getattr(m, 'date_joined', now))
+                activities.append({
+                    'title': f"{user_name} 加入了平台",
+                    'type': 'user',
+                    'created_at': join_time.isoformat() if hasattr(join_time, 'isoformat') else str(join_time),
+                })
+        except Exception:
+            pass
+
+        # 3. 最新 2 筆社群貼文
+        try:
+            latest_posts = CommunityPost.objects.select_related('member').order_by('-created_at')[:2]
+            for p in latest_posts:
+                p_user = getattr(p.member, 'nickname', None) or getattr(p.member, 'username', '會員')
+                activities.append({
+                    'title': f"{p_user} 發布了新貼文",
+                    'type': 'post',
+                    'created_at': p.created_at.isoformat() if hasattr(p, 'created_at') else now.isoformat(),
+                })
+        except Exception:
+            pass
+
+        # 依照時間排序取最新 5 筆
+        activities.sort(key=lambda x: x.get('created_at', ''), reverse=True)
+
+        # 注入近期動態清單到回傳資料中
+        if isinstance(data, dict):
+            data['recent_activities'] = activities[:5]
+
         return Response(data, status=status.HTTP_200_OK)

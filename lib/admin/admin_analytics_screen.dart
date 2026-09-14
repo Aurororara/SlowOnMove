@@ -28,7 +28,8 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
       _errorMessage = null;
     });
 
-    final String url = '${ApiConfig.baseUrl}admin/analytics/?timeframe=$_selectedTimeframe';
+    final String url =
+        '${ApiConfig.baseUrl}admin/analytics/?timeframe=$_selectedTimeframe';
 
     try {
       final response = await http.get(Uri.parse(url));
@@ -41,7 +42,8 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
         });
       } else {
         // Try fallback route
-        final fallbackUrl = '${ApiConfig.baseUrl}members/admin-analytics/?timeframe=$_selectedTimeframe';
+        final fallbackUrl =
+            '${ApiConfig.baseUrl}members/admin-analytics/?timeframe=$_selectedTimeframe';
         final fallbackResp = await http.get(Uri.parse(fallbackUrl));
 
         if (fallbackResp.statusCode == 200) {
@@ -128,24 +130,28 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        const Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              '數據分析中心',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Colors.black87,
+        const Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                '數據分析中心',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87,
+                ),
               ),
-            ),
-            SizedBox(height: 2),
-            Text(
-              '平台即時營運與使用者運動指標彙整',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-          ],
+              SizedBox(height: 2),
+              Text(
+                '平台即時營運與使用者運動指標彙整',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
         ),
+        const SizedBox(width: 8),
         Container(
           padding: const EdgeInsets.all(3),
           decoration: BoxDecoration(
@@ -153,6 +159,7 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
             borderRadius: BorderRadius.circular(10),
           ),
           child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
               _buildTimeChip('7d', '7 天'),
               _buildTimeChip('30d', '30 天'),
@@ -221,7 +228,8 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
               foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8)),
             ),
           )
         ],
@@ -314,9 +322,15 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                title,
-                style: TextStyle(fontSize: 13, color: Colors.grey.shade600, fontWeight: FontWeight.w500),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                      fontSize: 13,
+                      color: Colors.grey.shade600,
+                      fontWeight: FontWeight.w500),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
               Container(
                 padding: const EdgeInsets.all(6),
@@ -330,9 +344,15 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
             crossAxisAlignment: CrossAxisAlignment.baseline,
             textBaseline: TextBaseline.alphabetic,
             children: [
-              Text(
-                value,
-                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black),
+              Flexible(
+                child: Text(
+                  value,
+                  style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.black),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
               const SizedBox(width: 4),
               Text(
@@ -355,7 +375,8 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
     final int fbCnt = providers['facebook'] ?? 0;
     final int totalProv = (emailCnt + googleCnt + fbCnt).clamp(1, 999999);
 
-    final regTrend = List<Map<String, dynamic>>.from(uData['registration_trend'] ?? []);
+    final regTrend =
+        List<Map<String, dynamic>>.from(uData['registration_trend'] ?? []);
 
     return Container(
       padding: const EdgeInsets.all(16.0),
@@ -377,11 +398,13 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
           Row(
             children: [
               Expanded(
-                child: _buildSubStatChip('30天新會員', '${uData['new_users_30d'] ?? 0} 人', Colors.blue),
+                child: _buildSubStatChip(
+                    '30天新會員', '${uData['new_users_30d'] ?? 0} 人', Colors.blue),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: _buildSubStatChip('7天活躍會員', '${uData['active_users_7d'] ?? 0} 人', Colors.teal),
+                child: _buildSubStatChip('7天活躍會員',
+                    '${uData['active_users_7d'] ?? 0} 人', Colors.teal),
               ),
             ],
           ),
@@ -389,7 +412,10 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
 
           const Text(
             '登入方式分佈 (Login Providers)',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87),
+            style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87),
           ),
           const SizedBox(height: 8),
 
@@ -419,15 +445,25 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
 
-          // 圖例 Legend
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
+          // 圖例改用 Wrap 避免溢出
+          Wrap(
+            spacing: 12.0,
+            runSpacing: 6.0,
             children: [
-              _buildLegendDot('Email / 密碼', '$emailCnt人 (${(emailCnt / totalProv * 100).toStringAsFixed(0)}%)', Colors.grey.shade700),
-              _buildLegendDot('Google 登入', '$googleCnt人 (${(googleCnt / totalProv * 100).toStringAsFixed(0)}%)', Colors.red.shade400),
-              _buildLegendDot('Facebook 登入', '$fbCnt人 (${(fbCnt / totalProv * 100).toStringAsFixed(0)}%)', Colors.blue.shade600),
+              _buildLegendDot(
+                  'Email / 密碼',
+                  '$emailCnt人 (${(emailCnt / totalProv * 100).toStringAsFixed(0)}%)',
+                  Colors.grey.shade700),
+              _buildLegendDot(
+                  'Google 登入',
+                  '$googleCnt人 (${(googleCnt / totalProv * 100).toStringAsFixed(0)}%)',
+                  Colors.red.shade400),
+              _buildLegendDot(
+                  'Facebook 登入',
+                  '$fbCnt人 (${(fbCnt / totalProv * 100).toStringAsFixed(0)}%)',
+                  Colors.blue.shade600),
             ],
           ),
 
@@ -435,11 +471,19 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
             const SizedBox(height: 16),
             const Text(
               '近期註冊趨勢 (Registration Trend)',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87),
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.black87),
             ),
             const SizedBox(height: 12),
             _buildBarTrendChart(
-              items: regTrend.map((e) => {'label': e['date'] ?? '', 'value': (e['count'] ?? 0).toDouble()}).toList(),
+              items: regTrend
+                  .map((e) => {
+                        'label': e['date'] ?? '',
+                        'value': (e['count'] ?? 0).toDouble()
+                      })
+                  .toList(),
               barColor: Colors.blue.shade600,
             ),
           ],
@@ -461,7 +505,8 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
     final int goodCnt = postureScore['good'] ?? 0;
     final int fairCnt = postureScore['fair'] ?? 0;
     final int needsWorkCnt = postureScore['needs_work'] ?? 0;
-    final int totalPosture = (goodCnt + fairCnt + needsWorkCnt).clamp(1, 999999);
+    final int totalPosture =
+        (goodCnt + fairCnt + needsWorkCnt).clamp(1, 999999);
 
     return Container(
       padding: const EdgeInsets.all(16.0),
@@ -483,15 +528,20 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
           Row(
             children: [
               Expanded(
-                child: _buildSubStatChip('累積消耗熱量', '${eData['total_calories'] ?? 0} kcal', Colors.orange.shade700),
+                child: _buildSubStatChip(
+                    '累積消耗熱量',
+                    '${eData['total_calories'] ?? 0} kcal',
+                    Colors.orange.shade700),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
-                child: _buildSubStatChip('累積訓練次數', '${eData['total_sessions'] ?? 0} 次', Colors.indigo),
+                child: _buildSubStatChip('累積訓練次數',
+                    '${eData['total_sessions'] ?? 0} 次', Colors.indigo),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
-                child: _buildSubStatChip('平均姿勢分', '$avgScore 分', Colors.green.shade700),
+                child: _buildSubStatChip(
+                    '平均姿勢分', '$avgScore 分', Colors.green.shade700),
               ),
             ],
           ),
@@ -500,7 +550,10 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
           // 運動項目比例
           const Text(
             '運動項目分佈 (Slow Jogging vs Squat)',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87),
+            style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87),
           ),
           const SizedBox(height: 8),
           ClipRRect(
@@ -523,12 +576,19 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 12.0,
+            runSpacing: 6.0,
             children: [
-              _buildLegendDot('超慢跑 (Slow Jogging)', '$jogCnt次 (${(jogCnt / totalEx * 100).toStringAsFixed(0)}%)', Colors.blue.shade500),
-              _buildLegendDot('深蹲 (Squat)', '$squatCnt次 (${(squatCnt / totalEx * 100).toStringAsFixed(0)}%)', Colors.orange.shade500),
+              _buildLegendDot(
+                  '超慢跑 (Slow Jogging)',
+                  '$jogCnt次 (${(jogCnt / totalEx * 100).toStringAsFixed(0)}%)',
+                  Colors.blue.shade500),
+              _buildLegendDot(
+                  '深蹲 (Squat)',
+                  '$squatCnt次 (${(squatCnt / totalEx * 100).toStringAsFixed(0)}%)',
+                  Colors.orange.shade500),
             ],
           ),
           const SizedBox(height: 16),
@@ -536,14 +596,20 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
           // 姿勢評分等級分佈
           const Text(
             '姿勢品質分佈 (Posture Accuracy Rate)',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87),
+            style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87),
           ),
           const SizedBox(height: 10),
-          _buildProgressBarItem('優良 (>=80分)', goodCnt, totalPosture, Colors.green),
-          const SizedBox(height: 6),
-          _buildProgressBarItem('良好 (60-79分)', fairCnt, totalPosture, Colors.amber.shade700),
-          const SizedBox(height: 6),
-          _buildProgressBarItem('待改進 (<60分)', needsWorkCnt, totalPosture, Colors.red.shade400),
+          _buildProgressBarItem(
+              '優良 (>=80分)', goodCnt, totalPosture, Colors.green),
+          const SizedBox(height: 8),
+          _buildProgressBarItem(
+              '良好 (60-79分)', fairCnt, totalPosture, Colors.amber.shade700),
+          const SizedBox(height: 8),
+          _buildProgressBarItem(
+              '待改進 (<60分)', needsWorkCnt, totalPosture, Colors.red.shade400),
         ],
       ),
     );
@@ -556,7 +622,8 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
     final int journeyCnt = postTypes['journey'] ?? 0;
     final int planCnt = postTypes['plan'] ?? 0;
     final int recipeCnt = postTypes['recipe'] ?? 0;
-    final int totalPostType = (journeyCnt + planCnt + recipeCnt).clamp(1, 999999);
+    final int totalPostType =
+        (journeyCnt + planCnt + recipeCnt).clamp(1, 999999);
 
     final reports = cData['report_status'] ?? {};
     final int pendingRep = reports['pending'] ?? 0;
@@ -576,27 +643,33 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
             title: '社群互動與風控檢舉 (Community & Moderation)',
           ),
           const SizedBox(height: 14),
-
           Row(
             children: [
               Expanded(
-                child: _buildSubStatChip('總按讚數', '${cData['total_likes'] ?? 0} ❤️', Colors.pink),
+                child: _buildSubStatChip(
+                    '總按讚數', '${cData['total_likes'] ?? 0} ❤️', Colors.pink),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
-                child: _buildSubStatChip('總留言數', '${cData['total_comments'] ?? 0} 💬', Colors.purple.shade600),
+                child: _buildSubStatChip(
+                    '總留言數',
+                    '${cData['total_comments'] ?? 0} 💬',
+                    Colors.purple.shade600),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
-                child: _buildSubStatChip('待處理檢舉', '$pendingRep 件', pendingRep > 0 ? Colors.red : Colors.green),
+                child: _buildSubStatChip('待處理檢舉', '$pendingRep 件',
+                    pendingRep > 0 ? Colors.red : Colors.green),
               ),
             ],
           ),
           const SizedBox(height: 16),
-
           const Text(
             '貼文類型分佈 (Post Categories)',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87),
+            style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87),
           ),
           const SizedBox(height: 8),
           ClipRRect(
@@ -606,22 +679,38 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
               child: Row(
                 children: [
                   if (journeyCnt > 0)
-                    Expanded(flex: journeyCnt, child: Container(color: Colors.teal.shade400)),
+                    Expanded(
+                        flex: journeyCnt,
+                        child: Container(color: Colors.teal.shade400)),
                   if (planCnt > 0)
-                    Expanded(flex: planCnt, child: Container(color: Colors.purple.shade400)),
+                    Expanded(
+                        flex: planCnt,
+                        child: Container(color: Colors.purple.shade400)),
                   if (recipeCnt > 0)
-                    Expanded(flex: recipeCnt, child: Container(color: Colors.amber.shade600)),
+                    Expanded(
+                        flex: recipeCnt,
+                        child: Container(color: Colors.amber.shade600)),
                 ],
               ),
             ),
           ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 12.0,
+            runSpacing: 6.0,
             children: [
-              _buildLegendDot('旅程', '$journeyCnt篇 (${(journeyCnt / totalPostType * 100).toStringAsFixed(0)}%)', Colors.teal.shade400),
-              _buildLegendDot('計畫', '$planCnt篇 (${(planCnt / totalPostType * 100).toStringAsFixed(0)}%)', Colors.purple.shade400),
-              _buildLegendDot('食譜', '$recipeCnt篇 (${(recipeCnt / totalPostType * 100).toStringAsFixed(0)}%)', Colors.amber.shade600),
+              _buildLegendDot(
+                  '旅程',
+                  '$journeyCnt篇 (${(journeyCnt / totalPostType * 100).toStringAsFixed(0)}%)',
+                  Colors.teal.shade400),
+              _buildLegendDot(
+                  '計畫',
+                  '$planCnt篇 (${(planCnt / totalPostType * 100).toStringAsFixed(0)}%)',
+                  Colors.purple.shade400),
+              _buildLegendDot(
+                  '食譜',
+                  '$recipeCnt篇 (${(recipeCnt / totalPostType * 100).toStringAsFixed(0)}%)',
+                  Colors.amber.shade600),
             ],
           ),
         ],
@@ -637,7 +726,8 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
     final int spendCnt = tTypes['spend'] ?? 0;
     final int rewardCnt = tTypes['reward'] ?? 0;
 
-    final topupAmounts = Map<String, dynamic>.from(pData['topup_amounts'] ?? {});
+    final topupAmounts =
+        Map<String, dynamic>.from(pData['topup_amounts'] ?? {});
 
     return Container(
       padding: const EdgeInsets.all(16.0),
@@ -658,11 +748,17 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
           Row(
             children: [
               Expanded(
-                child: _buildSubStatChip('變動總點數', '${pData['total_points_changed'] ?? 0} 點', Colors.green.shade700),
+                child: _buildSubStatChip(
+                    '變動總點數',
+                    '${pData['total_points_changed'] ?? 0} 點',
+                    Colors.green.shade700),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: _buildSubStatChip('成功交易數', '${pData['total_transactions'] ?? 0} 筆', Colors.blue.shade700),
+                child: _buildSubStatChip(
+                    '成功交易數',
+                    '${pData['total_transactions'] ?? 0} 筆',
+                    Colors.blue.shade700),
               ),
             ],
           ),
@@ -670,23 +766,32 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
 
           const Text(
             '交易類型比例 (Top-up / Spend / Reward)',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87),
+            style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87),
           ),
-          const SizedBox(height: 8),
-          Row(
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
             children: [
-              _buildChipBadge('綠界儲值', '$topupCnt 筆', Colors.green.shade700, Colors.green.shade50),
-              const SizedBox(width: 8),
-              _buildChipBadge('點數消費', '$spendCnt 筆', Colors.orange.shade800, Colors.orange.shade50),
-              const SizedBox(width: 8),
-              _buildChipBadge('任務獎勵', '$rewardCnt 筆', Colors.blue.shade700, Colors.blue.shade50),
+              _buildChipBadge('綠界儲值', '$topupCnt 筆', Colors.green.shade700,
+                  Colors.green.shade50),
+              _buildChipBadge('點數消費', '$spendCnt 筆', Colors.orange.shade800,
+                  Colors.orange.shade50),
+              _buildChipBadge('任務獎勵', '$rewardCnt 筆', Colors.blue.shade700,
+                  Colors.blue.shade50),
             ],
           ),
           const SizedBox(height: 16),
 
           const Text(
             '儲值金額方案購買次數 (Tier Distribution)',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.black87),
+            style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87),
           ),
           const SizedBox(height: 10),
 
@@ -698,7 +803,8 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
               final cnt = topupAmounts[amt] ?? 0;
               return Container(
                 width: 100,
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                 decoration: BoxDecoration(
                   color: const Color(0xFFF9FAFB),
                   borderRadius: BorderRadius.circular(10),
@@ -708,12 +814,16 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
                   children: [
                     Text(
                       '\$$amt 元',
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.black87),
+                      style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.black87),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       '$cnt 次',
-                      style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                      style:
+                          TextStyle(fontSize: 11, color: Colors.grey.shade600),
                     ),
                   ],
                 ),
@@ -741,7 +851,9 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
         Expanded(
           child: Text(
             title,
-            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.black),
+            style: const TextStyle(
+                fontSize: 15, fontWeight: FontWeight.bold, color: Colors.black),
+            overflow: TextOverflow.ellipsis,
           ),
         ),
       ],
@@ -751,7 +863,7 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
   // Sub Stat Chip Helper
   Widget _buildSubStatChip(String label, String value, Color accentColor) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
       decoration: BoxDecoration(
         color: const Color(0xFFF9FAFB),
         borderRadius: BorderRadius.circular(10),
@@ -760,22 +872,36 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+          Text(
+            label,
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+            overflow: TextOverflow.ellipsis,
+          ),
           const SizedBox(height: 4),
-          Text(value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: accentColor)),
+          Text(
+            value,
+            style: TextStyle(
+                fontSize: 13, fontWeight: FontWeight.bold, color: accentColor),
+            overflow: TextOverflow.ellipsis,
+          ),
         ],
       ),
     );
   }
 
   // Progress Bar Line Item
-  Widget _buildProgressBarItem(String label, int count, int total, Color color) {
+  Widget _buildProgressBarItem(
+      String label, int count, int total, Color color) {
     final double pct = total > 0 ? (count / total) : 0.0;
     return Row(
       children: [
         SizedBox(
-          width: 100,
-          child: Text(label, style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
+          width: 95,
+          child: Text(
+            label,
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade700),
+            overflow: TextOverflow.ellipsis,
+          ),
         ),
         Expanded(
           child: ClipRRect(
@@ -788,13 +914,17 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
             ),
           ),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 8),
         SizedBox(
-          width: 65,
+          width: 75,
           child: Text(
             '$count次 (${(pct * 100).toStringAsFixed(0)}%)',
-            style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey.shade800),
+            style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey.shade800),
             textAlign: TextAlign.end,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
       ],
@@ -806,10 +936,18 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(width: 8, height: 8, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+        Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
         const SizedBox(width: 4),
-        Text('$label: ', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
-        Text(value, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.black87)),
+        Text('$label: ',
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+        Text(value,
+            style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: Colors.black87)),
       ],
     );
   }
@@ -817,18 +955,24 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
   Widget _buildChipBadge(String title, String count, Color color, Color bg) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8)),
+      decoration:
+          BoxDecoration(color: bg, borderRadius: BorderRadius.circular(8)),
       child: Text(
         '$title: $count',
-        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color),
+        style:
+            TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: color),
       ),
     );
   }
 
   // Simple Trend Bar Chart Builder
-  Widget _buildBarTrendChart({required List<Map<String, dynamic>> items, required Color barColor}) {
+  Widget _buildBarTrendChart(
+      {required List<Map<String, dynamic>> items, required Color barColor}) {
     if (items.isEmpty) return const SizedBox.shrink();
-    final double maxVal = items.map((e) => e['value'] as double).reduce((a, b) => a > b ? a : b).clamp(1.0, 9999.0);
+    final double maxVal = items
+        .map((e) => e['value'] as double)
+        .reduce((a, b) => a > b ? a : b)
+        .clamp(1.0, 9999.0);
 
     return SizedBox(
       height: 80,
@@ -841,7 +985,8 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
           return Column(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              Text('${val.toInt()}', style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
+              Text('${val.toInt()}',
+                  style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
               const SizedBox(height: 2),
               Container(
                 width: 14,
@@ -852,7 +997,8 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
                 ),
               ),
               const SizedBox(height: 4),
-              Text(item['label'] ?? '', style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
+              Text(item['label'] ?? '',
+                  style: TextStyle(fontSize: 10, color: Colors.grey.shade500)),
             ],
           );
         }).toList(),

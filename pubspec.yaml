@@ -30,7 +30,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  share_plus:
+  share_plus: ^12.0.2
 
 
   # The following adds the Cupertino Icons font to your application.
@@ -68,7 +68,7 @@ flutter:
   assets:
     - assets/
     - assets/badges/
-    - assets/models/
+    # - assets/models/
     - assets/audio/
 
   # The following line ensures that the Material Icons font is
