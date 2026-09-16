@@ -6,6 +6,7 @@ import 'package:http/http.dart' as http;
 import 'body_pain_picker.dart';
 import 'config/api_config.dart';
 import 'services/user_session.dart';
+import 'services/badge_progress_service.dart';
 
 class ResultsScreen extends StatefulWidget {
   final int timeSeconds;
@@ -44,14 +45,145 @@ class _ResultsScreenState extends State<ResultsScreen> {
     _confettiController.play();
 
     _fetchAiFeedback(); // 獲取 AI 建議
-    _saveData();
 
-    // 第一次進入頁面：畫面渲染完畢後自動跳出回饋彈窗
+    // 畫面載入完成後：先存檔、檢查徽章並優先頒獎，最後再跳疼痛回饋
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        _showDiscomfortModal(context);
+        _handleInitialFlow();
       }
     });
+  }
+
+  // 循序流程：先檢查頒獎 -> 關閉後接著跳疼痛回報
+  Future<void> _handleInitialFlow() async {
+    // 1. 先送出基礎運動數據
+    await _saveData();
+
+    // 2. 檢查是否有新解鎖的徽章
+    List<String> newBadges = [];
+    try {
+      newBadges = await BadgeProgressService().syncNewlyEarnedBadges();
+      debugPrint('🎖️ 本次訓練解鎖徽章: $newBadges');
+    } catch (e) {
+      debugPrint('⚠️ 徽章檢查失敗: $e');
+    }
+
+    if (!mounted) return;
+
+    if (newBadges.isNotEmpty) {
+      // 👉 優先跳出頒獎彈窗！使用者點擊收下後，再跳疼痛回報
+      await _showBadgeUnlockedDialog(newBadges);
+    }
+
+    // 3. 頒獎結束（或無新徽章）後，彈出疼痛回饋
+    if (mounted) {
+      _showDiscomfortModal(context);
+    }
+  }
+
+  // 🎖️ 頒發新解鎖徽章的慶祝彈窗（回傳 Future 支援 await 等待關閉）
+  Future<void> _showBadgeUnlockedDialog(List<String> badgeNames) async {
+    if (!mounted || badgeNames.isEmpty) return;
+
+    // 再次噴射慶祝彩帶
+    _confettiController.play();
+
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) {
+        return Dialog(
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // 獎牌圖示
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade50,
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(
+                    Icons.military_tech_rounded,
+                    size: 64,
+                    color: Colors.amber,
+                  ),
+                ),
+                const SizedBox(height: 18),
+                const Text(
+                  '恭喜獲得新徽章！',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  '你在本次訓練中達成了以下成就：',
+                  style: TextStyle(fontSize: 13, color: Colors.grey),
+                ),
+                const SizedBox(height: 16),
+
+                // 列出所有剛解鎖的徽章名稱
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  alignment: WrapAlignment.center,
+                  children: badgeNames.map((badgeName) {
+                    return Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.shade100,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.amber.shade300),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.star_rounded,
+                              size: 18, color: Colors.orange),
+                          const SizedBox(width: 4),
+                          Text(
+                            badgeName,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.brown,
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(46),
+                    backgroundColor: Colors.black,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  onPressed: () => Navigator.pop(ctx),
+                  child: const Text('太棒了！收下獎勵',
+                      style:
+                          TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   // 疼痛回饋彈窗方法
@@ -129,6 +261,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
                         List<String> partLabels =
                             tempSelected.map((p) => p.label).toList();
                         debugPrint('送出部位中文名稱: $partLabels');
+                        // 填寫完畢後更新後端紀錄
                         _saveData();
                       },
                       child: const Text('完成回饋', style: TextStyle(fontSize: 16)),
@@ -215,7 +348,6 @@ class _ResultsScreenState extends State<ResultsScreen> {
     final int fixedCalories = caloriesBurned;
     final int fixedSteps = isSquat ? 0 : widget.stepCount;
 
-    // 將使用者選取的部位轉成中文 List<String>
     final List<String> painList =
         _recordedPainParts.map((e) => e.label).toList();
 
@@ -234,12 +366,12 @@ class _ResultsScreenState extends State<ResultsScreen> {
           "posture_score": widget.averageAccuracy.toInt(),
           "calories": fixedCalories,
           "step_count": fixedSteps,
-          "pain_parts": painList, // 👈 加上這一行！
+          "pain_parts": painList,
         }),
       );
 
       if (response.statusCode == 200 || response.statusCode == 201) {
-        debugPrint("✅ 運動與疼痛紀錄成功同步至後端 (Status: ${response.statusCode})");
+        debugPrint("✅ 運動紀錄成功同步至後端 (Status: ${response.statusCode})");
       } else {
         debugPrint("⚠️ 儲存失敗: ${response.statusCode} - ${response.body}");
       }
