@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
-import 'services/api_service.dart';
-import 'services/user_session.dart';
+import 'services/badge_progress_service.dart';
 
 class BadgeCollectionScreen extends StatefulWidget {
   const BadgeCollectionScreen({super.key});
@@ -21,11 +20,24 @@ class _BadgeCollectionScreenState extends State<BadgeCollectionScreen> {
         _BadgeItem(
           name: '起步之星',
           icon: Icons.star_outline_rounded,
-          assetPath: 'assets/badges/start_star.jpg',
-          condition: '完成第一次運動紀錄',
+          unlockedAssetPath: 'assets/badges/start_star_unlocked.png',
+          lockedAssetPath: 'assets/badges/start_star_locked.png',
+          condition: '完成第 1 次運動紀錄',
         ),
-        _BadgeItem(name: '超慢跑新星', icon: Icons.directions_run_rounded),
-        _BadgeItem(name: '深蹲入門生', icon: Icons.fitness_center_rounded),
+        _BadgeItem(
+          name: '超慢跑新星',
+          icon: Icons.directions_run_rounded,
+          unlockedAssetPath: 'assets/badges/slow_jogging_rookie_unlocked.png',
+          lockedAssetPath: 'assets/badges/slow_jogging_rookie_locked.png',
+          condition: '累積完成 5 次超慢跑',
+        ),
+        _BadgeItem(
+          name: '深蹲入門生',
+          icon: Icons.fitness_center_rounded,
+          unlockedAssetPath: 'assets/badges/squat_beginner_unlocked.png',
+          lockedAssetPath: 'assets/badges/squat_beginner_locked.png',
+          condition: '累積完成 5 次深蹲訓練',
+        ),
       ],
     ),
     _BadgeCategory(
@@ -34,9 +46,27 @@ class _BadgeCollectionScreenState extends State<BadgeCollectionScreen> {
       color: Color(0xFF76B7F2),
       icon: Icons.calendar_month_outlined,
       badges: [
-        _BadgeItem(name: '穩穩前進', icon: Icons.trending_up_rounded),
-        _BadgeItem(name: '節奏守護者', icon: Icons.graphic_eq_rounded),
-        _BadgeItem(name: '不間斷玩家', icon: Icons.all_inclusive_rounded),
+        _BadgeItem(
+          name: '穩穩前進',
+          icon: Icons.trending_up_rounded,
+          unlockedAssetPath: 'assets/badges/three_day_streak_unlocked.png',
+          lockedAssetPath: 'assets/badges/three_day_streak_locked.png',
+          condition: '連續運動 3 天',
+        ),
+        _BadgeItem(
+          name: '節奏守護者',
+          icon: Icons.graphic_eq_rounded,
+          unlockedAssetPath: 'assets/badges/seven_day_streak_unlocked.png',
+          lockedAssetPath: 'assets/badges/seven_day_streak_locked.png',
+          condition: '連續運動 7 天',
+        ),
+        _BadgeItem(
+          name: '不間斷玩家',
+          icon: Icons.all_inclusive_rounded,
+          unlockedAssetPath: 'assets/badges/thirty_day_streak_unlocked.png',
+          lockedAssetPath: 'assets/badges/thirty_day_streak_locked.png',
+          condition: '連續運動 30 天',
+        ),
       ],
     ),
     _BadgeCategory(
@@ -45,9 +75,41 @@ class _BadgeCollectionScreenState extends State<BadgeCollectionScreen> {
       color: Color(0xFFF28B82),
       icon: Icons.workspace_premium_outlined,
       badges: [
-        _BadgeItem(name: '今日萬步王', icon: Icons.directions_walk_rounded),
-        _BadgeItem(name: '姿勢優等生', icon: Icons.verified_outlined),
-        _BadgeItem(name: '燃燒模式', icon: Icons.local_fire_department_outlined),
+        _BadgeItem(
+          name: '今日萬步王',
+          icon: Icons.directions_walk_rounded,
+          unlockedAssetPath: 'assets/badges/daily_10k_steps_unlocked.png',
+          lockedAssetPath: 'assets/badges/daily_10k_steps_locked.png',
+          condition: '單日步數達 10,000 步',
+        ),
+        _BadgeItem(
+          name: '姿勢優等生',
+          icon: Icons.verified_outlined,
+          unlockedAssetPath: 'assets/badges/posture_honor_unlocked.png',
+          lockedAssetPath: 'assets/badges/posture_honor_locked.png',
+          condition: '單次運動姿勢分數達 90 分以上',
+        ),
+        _BadgeItem(
+          name: '穩定輸出王',
+          icon: Icons.stacked_line_chart_rounded,
+          unlockedAssetPath: 'assets/badges/stable_output_unlocked.png',
+          lockedAssetPath: 'assets/badges/stable_output_locked.png',
+          condition: '連續 5 次運動姿勢分數都超過 90 分',
+        ),
+        _BadgeItem(
+          name: '燃脂小火苗',
+          icon: Icons.local_fire_department_outlined,
+          unlockedAssetPath: 'assets/badges/calorie_flame_unlocked.png',
+          lockedAssetPath: 'assets/badges/calorie_flame_locked.png',
+          condition: '累積消耗 500 卡',
+        ),
+        _BadgeItem(
+          name: '燃燒模式',
+          icon: Icons.whatshot_rounded,
+          unlockedAssetPath: 'assets/badges/burn_mode_unlocked.png',
+          lockedAssetPath: 'assets/badges/burn_mode_locked.png',
+          condition: '累積消耗 3,000 卡',
+        ),
       ],
     ),
     _BadgeCategory(
@@ -56,9 +118,27 @@ class _BadgeCollectionScreenState extends State<BadgeCollectionScreen> {
       color: Color(0xFFB99AF4),
       icon: Icons.people_alt_outlined,
       badges: [
-        _BadgeItem(name: '社群冒險家', icon: Icons.explore_outlined),
-        _BadgeItem(name: '人氣回應王', icon: Icons.chat_bubble_outline_rounded),
-        _BadgeItem(name: '按讚收集者', icon: Icons.favorite_border_rounded),
+        _BadgeItem(
+          name: '社群冒險家',
+          icon: Icons.explore_outlined,
+          unlockedAssetPath: 'assets/badges/community_adventurer_unlocked.png',
+          lockedAssetPath: 'assets/badges/community_adventurer_locked.png',
+          condition: '首次發布社群貼文',
+        ),
+        _BadgeItem(
+          name: '人氣回應王',
+          icon: Icons.chat_bubble_outline_rounded,
+          unlockedAssetPath: 'assets/badges/popular_responder_unlocked.png',
+          lockedAssetPath: 'assets/badges/popular_responder_locked.png',
+          condition: '單篇社群貼文累積 20 則回應',
+        ),
+        _BadgeItem(
+          name: '按讚收集者',
+          icon: Icons.favorite_border_rounded,
+          unlockedAssetPath: 'assets/badges/like_collector_unlocked.png',
+          lockedAssetPath: 'assets/badges/like_collector_locked.png',
+          condition: '累積獲得 100 個讚',
+        ),
       ],
     ),
   ];
@@ -87,48 +167,7 @@ class _BadgeCollectionScreenState extends State<BadgeCollectionScreen> {
     }
 
     try {
-      final responses = await Future.wait([
-        ApiService().dio.get('badges/'),
-        ApiService().dio.get(
-          'member-badges/',
-          queryParameters: {'member_id': UserSession.memberId},
-        ),
-      ]);
-
-      final badgeNamesById = <int, String>{};
-      for (final badge in _extractList(responses[0].data)) {
-        if (badge is! Map) {
-          continue;
-        }
-
-        final id = int.tryParse('${badge['id'] ?? ''}');
-        final name = badge['badge_name']?.toString();
-        if (id != null && name != null && name.isNotEmpty) {
-          badgeNamesById[id] = name;
-        }
-      }
-
-      final earnedDates = <String, DateTime>{};
-      for (final memberBadge in _extractList(responses[1].data)) {
-        if (memberBadge is! Map) {
-          continue;
-        }
-
-        final memberId = int.tryParse('${memberBadge['member'] ?? ''}');
-        if (memberId != UserSession.memberId) {
-          continue;
-        }
-
-        final badgeId = int.tryParse('${memberBadge['badge'] ?? ''}');
-        final earnedAt = DateTime.tryParse(
-          memberBadge['earn_at']?.toString() ?? '',
-        );
-        final badgeName = badgeNamesById[badgeId];
-
-        if (badgeName != null && earnedAt != null) {
-          earnedDates[badgeName] = earnedAt.toLocal();
-        }
-      }
+      final earnedDates = await BadgeProgressService().loadEarnedDates();
 
       if (!mounted) {
         return;
@@ -141,7 +180,8 @@ class _BadgeCollectionScreenState extends State<BadgeCollectionScreen> {
         _isLoadingDates = false;
       });
     } catch (error) {
-      debugPrint('載入勳章日期失敗: $error');
+      debugPrint('載入勳章獲得日期失敗: $error');
+
       if (!mounted) {
         return;
       }
@@ -151,16 +191,6 @@ class _BadgeCollectionScreenState extends State<BadgeCollectionScreen> {
         _dateLoadFailed = true;
       });
     }
-  }
-
-  List<dynamic> _extractList(dynamic payload) {
-    if (payload is List) {
-      return payload;
-    }
-    if (payload is Map && payload['results'] is List) {
-      return payload['results'] as List;
-    }
-    return const [];
   }
 
   @override
@@ -476,7 +506,9 @@ class _CabinetShelf extends StatelessWidget {
                     ),
                   ),
                   Text(
-                    isLoadingDates ? '...' : '$earnedCount / 3',
+                    isLoadingDates
+                        ? '...'
+                        : '$earnedCount / ${category.badges.length}',
                     style: TextStyle(
                       color: category.color,
                       fontSize: 12,
@@ -486,26 +518,37 @@ class _CabinetShelf extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 8),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  for (int index = 0;
-                      index < category.badges.length;
-                      index++) ...[
-                    Expanded(
-                      child: _ShelfBadge(
-                        badge: category.badges[index],
-                        categoryTitle: category.title,
-                        accentColor: category.color,
-                        earnedAt: earnedDates[category.badges[index].name],
-                        isLoadingDate: isLoadingDates,
-                        dateLoadFailed: dateLoadFailed,
-                      ),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final itemWidth = (constraints.maxWidth - 10) / 3;
+                  return SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    physics: const BouncingScrollPhysics(),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (int index = 0;
+                            index < category.badges.length;
+                            index++) ...[
+                          SizedBox(
+                            width: itemWidth,
+                            child: _ShelfBadge(
+                              badge: category.badges[index],
+                              categoryTitle: category.title,
+                              accentColor: category.color,
+                              earnedAt:
+                                  earnedDates[category.badges[index].name],
+                              isLoadingDate: isLoadingDates,
+                              dateLoadFailed: dateLoadFailed,
+                            ),
+                          ),
+                          if (index != category.badges.length - 1)
+                            const SizedBox(width: 5),
+                        ],
+                      ],
                     ),
-                    if (index != category.badges.length - 1)
-                      const SizedBox(width: 5),
-                  ],
-                ],
+                  );
+                },
               ),
             ],
           ),
@@ -573,6 +616,7 @@ class _ShelfBadge extends StatelessWidget {
                       badge: badge,
                       accentColor: accentColor,
                       size: 66,
+                      isEarned: _isEarned,
                     ),
                   ),
                   if (!isLoadingDate && !dateLoadFailed)
@@ -646,39 +690,30 @@ class _BadgeArtwork extends StatelessWidget {
   final _BadgeItem badge;
   final Color accentColor;
   final double size;
+  final bool isEarned;
 
   const _BadgeArtwork({
     required this.badge,
     required this.accentColor,
     required this.size,
+    required this.isEarned,
   });
 
   @override
   Widget build(BuildContext context) {
-    if (badge.assetPath != null) {
-      return Container(
+    final assetPath = isEarned
+        ? badge.unlockedAssetPath
+        : badge.lockedAssetPath ?? badge.unlockedAssetPath;
+
+    if (assetPath != null) {
+      return SizedBox(
         width: size,
         height: size,
-        padding: EdgeInsets.all(size * 0.03),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(size * 0.2),
-          boxShadow: const [
-            BoxShadow(
-              color: Color(0x3D000000),
-              blurRadius: 7,
-              offset: Offset(0, 3),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(size * 0.17),
-          child: Image.asset(
-            badge.assetPath!,
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) =>
-                _buildPlaceholderArtwork(),
-          ),
+        child: Image.asset(
+          assetPath,
+          fit: BoxFit.contain,
+          errorBuilder: (context, error, stackTrace) =>
+              _buildPlaceholderArtwork(),
         ),
       );
     }
@@ -765,6 +800,7 @@ class _BadgeDetailSheet extends StatelessWidget {
               badge: badge,
               accentColor: accentColor,
               size: 116,
+              isEarned: isEarned,
             ),
             const SizedBox(height: 18),
             Container(
@@ -903,13 +939,15 @@ class _BadgeCategory {
 class _BadgeItem {
   final String name;
   final IconData icon;
-  final String? assetPath;
+  final String? unlockedAssetPath;
+  final String? lockedAssetPath;
   final String condition;
 
   const _BadgeItem({
     required this.name,
     required this.icon,
-    this.assetPath,
+    this.unlockedAssetPath,
+    this.lockedAssetPath,
     this.condition = '獲取條件即將公布',
   });
 }

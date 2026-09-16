@@ -19,6 +19,7 @@ import 'login_screen.dart';
 import 'monthly_recap_screen.dart';
 import 'purchase_screen.dart';
 import 'services/api_service.dart';
+import 'services/badge_progress_service.dart';
 import 'services/user_session.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -38,6 +39,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int _workoutCount = 0;
   int _totalCalories = 0;
   int _totalSteps = 0;
+  int _badgeCount = 0;
 
   String get _fullName => UserSession.displayName;
   String get _email => UserSession.email;
@@ -56,6 +58,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _fetchProfileData() async {
     final String baseUrl = ApiConfig.baseUrl;
     final int currentMemberId = UserSession.memberId;
+    var workoutCount = _workoutCount;
+    var totalCalories = _totalCalories;
+    var totalSteps = _totalSteps;
+    var badgeCount = _badgeCount;
 
     try {
       final logStatsResponse = await http.get(
@@ -66,35 +72,36 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       if (logStatsResponse.statusCode == 200) {
         final Map<String, dynamic> stats = json.decode(logStatsResponse.body);
-
-        if (!mounted) {
-          return;
-        }
-
-        setState(() {
-          _workoutCount = stats['total_time'] ?? 0;
-          _totalCalories = stats['total_calories'] ?? 0;
-          _totalSteps = stats['total_steps'] ?? 0;
-          _isLoading = false;
-        });
-
-        return;
-      }
-
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+        workoutCount = stats['total_time'] ?? 0;
+        totalCalories = stats['total_calories'] ?? 0;
+        totalSteps = stats['total_steps'] ?? 0;
+      } else {
+        debugPrint('抓取運動統計失敗: ${logStatsResponse.statusCode}');
       }
     } catch (e) {
       debugPrint('抓取資料失敗: $e');
-
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
     }
+
+    try {
+      final earnedDates = await BadgeProgressService().loadEarnedDates(
+        memberId: currentMemberId,
+      );
+      badgeCount = earnedDates.length;
+    } catch (e) {
+      debugPrint('抓取勳章數量失敗: $e');
+    }
+
+    if (!mounted) {
+      return;
+    }
+
+    setState(() {
+      _workoutCount = workoutCount;
+      _totalCalories = totalCalories;
+      _totalSteps = totalSteps;
+      _badgeCount = badgeCount;
+      _isLoading = false;
+    });
   }
 
   Future<void> _refreshProfile() async {
@@ -408,15 +415,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Expanded(
               child: _buildStatCard(
                 Icons.emoji_events_outlined,
-                '12',
+                '$_badgeCount',
                 '獎牌',
-                onTap: () {
-                  Navigator.push(
+                onTap: () async {
+                  await Navigator.push(
                     context,
                     MaterialPageRoute(
                       builder: (_) => const BadgeCollectionScreen(),
                     ),
                   );
+                  await _fetchProfileData();
                 },
               ),
             ),
