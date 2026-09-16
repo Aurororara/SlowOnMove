@@ -291,7 +291,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final int currentMemberId = UserSession.memberId;
 
     debugPrint('========== 首頁資料 Debug 開始 ==========');
-    debugPrint('目前登入 memberId: $currentMemberId');
+    debugPrint('目前登入的 memberId: $currentMemberId');
 
     try {
       final response = await http.get(
