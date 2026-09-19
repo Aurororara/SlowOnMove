@@ -18,6 +18,7 @@ import 'group_activity_form.dart';
 import 'group_member_card.dart';
 import 'group_tab_button.dart';
 import '../../models/community_group_activity.dart';
+import '../../group_run_screen.dart';
 
 class GroupDetailPanel extends StatefulWidget {
   final CommunityGroup group;
@@ -880,6 +881,35 @@ class GroupDetailPanelState extends State<GroupDetailPanel> {
                   ),
                 ),
               ],
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                height: 46,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => GroupRunScreen(
+                          group: group,
+                          title: '${group.name} 30人揪團即時房',
+                          exerciseType: group.exerciseType,
+                        ),
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.videocam_rounded, size: 20, color: Colors.white),
+                  label: const Text(
+                    '🏃 進入 30人揪團跑即時連線房 (Google Meet 分屏)',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Colors.white),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.black,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    elevation: 2,
+                  ),
+                ),
+              ),
             ],
           ),
         ),

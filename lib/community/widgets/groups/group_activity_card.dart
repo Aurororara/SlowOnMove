@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/community_group_activity.dart';
+import '../../group_run_screen.dart';
 
 class BackendGroupActivityCard extends StatelessWidget {
   final CommunityGroupActivity activity;
@@ -224,20 +225,50 @@ class BackendGroupActivityCard extends StatelessWidget {
                             height: 16,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              color: Colors.white,
                             ),
                           )
                         : const Icon(
-                            Icons.person_add_alt_1_outlined,
+                            Icons.check_circle_outline,
                             size: 17,
                           ),
                     label: Text(
-                      isUpdating ? '處理中...' : '加入活動',
+                      isUpdating ? '處理中...' : '報名參加活動',
                       style: const TextStyle(
                         fontWeight: FontWeight.w800,
                       ),
                     ),
                   ),
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => GroupRunScreen(
+                      activity: activity,
+                      title: activity.title,
+                      exerciseType: activity.exerciseType,
+                    ),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF1E222D),
+                foregroundColor: Colors.greenAccent,
+                padding: const EdgeInsets.symmetric(vertical: 10),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              icon: const Icon(Icons.videocam_outlined, size: 18, color: Colors.greenAccent),
+              label: const Text(
+                '進入 30人揪團跑連線房 (Google Meet 分屏)',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+              ),
+            ),
           ),
         ],
       ),
