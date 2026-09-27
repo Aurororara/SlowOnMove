@@ -407,6 +407,18 @@ class _ResultsScreenState extends State<ResultsScreen> {
             _trainingLogId = id is int ? id : int.tryParse(id.toString());
 
             await _checkDeepAnalysisUnlock();
+
+            final balance = await _pointsService.getBalance();
+
+            UserSession.walletBalanceNotifier.value = balance.toDouble();
+
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('完成運動，獲得 +5 SP'),
+                ),
+              );
+            }
           }
         }
 

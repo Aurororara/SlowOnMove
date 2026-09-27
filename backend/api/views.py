@@ -8,6 +8,7 @@ from django.utils import timezone
 from django.db import transaction
 from django.db.models import Count, Sum, Q
 from api.leaderboard_service import get_leaderboard
+from datetime import timedelta
 
 from core.models import (
     Member, BodyRecord, BloodPressureRecord, BoardRanking, CommunityPost, Favorite, TrainingLog,
@@ -842,6 +843,120 @@ class TrainingLogViewSet(viewsets.ModelViewSet):
             "total_calories": stats['total_calories'] or 0,
             "total_steps": stats['total_steps'] or 0,
         })
+
+    @transaction.atomic
+    def perform_create(self, serializer):
+        training_log = serializer.save()
+
+        member = (
+            Member.objects
+            .select_for_update()
+            .get(id=training_log.member_id)
+        )
+
+        # =========================
+        # 1. 完成一次運動 +5 SP
+        # =========================
+
+        workout_reference_key = (
+            f"workout:{training_log.id}"
+        )
+
+        workout_reward_exists = (
+            PointTransaction.objects.filter(
+                member=member,
+                reference_key=workout_reference_key,
+                tran_type="reward",
+                status="completed",
+            ).exists()
+        )
+
+        if not workout_reward_exists:
+            workout_reward = 5
+
+            member.points += workout_reward
+            member.save(
+                update_fields=["points"]
+            )
+
+            PointTransaction.objects.create(
+                member=member,
+                points_changed=workout_reward,
+                tran_type="reward",
+                description="完成運動獎勵",
+                reference_key=workout_reference_key,
+                status="completed",
+            )
+
+        # =========================
+        # 2. 計算目前連續運動天數
+        # =========================
+
+        today = timezone.localdate(
+            training_log.start_time
+        )
+
+        log_dates = {
+            timezone.localdate(start_time)
+            for start_time in (
+                TrainingLog.objects
+                .filter(member=member)
+                .values_list(
+                    "start_time",
+                    flat=True,
+                )
+            )
+        }
+
+        streak_days = 0
+        current_date = today
+
+        while current_date in log_dates:
+            streak_days += 1
+            current_date -= timedelta(days=1)
+
+        # current_date 已經是沒有運動的前一天
+        streak_start_date = (
+            today - timedelta(
+                days=streak_days - 1
+            )
+        )
+
+        # =========================
+        # 3. 連續 7 天 +30 SP
+        # =========================
+
+        if streak_days >= 7:
+            streak_reference_key = (
+                "streak:7:"
+                f"{streak_start_date.isoformat()}"
+            )
+
+            streak_reward_exists = (
+                PointTransaction.objects.filter(
+                    member=member,
+                    reference_key=streak_reference_key,
+                    tran_type="reward",
+                    status="completed",
+                ).exists()
+            )
+
+            if not streak_reward_exists:
+                streak_reward = 30
+
+                member.points += streak_reward
+                member.save(
+                    update_fields=["points"]
+                )
+
+                PointTransaction.objects.create(
+                    member=member,
+                    points_changed=streak_reward,
+                    tran_type="reward",
+                    description="連續運動 7 天獎勵",
+                    reference_key=streak_reference_key,
+                    status="completed",
+                )
 
 class PostLikeViewSet(viewsets.ModelViewSet):
     queryset = PostLike.objects.all()

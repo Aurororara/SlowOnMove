@@ -791,6 +791,11 @@ class PointTransaction(models.Model):
     points_changed = models.IntegerField()
     tran_type = models.CharField(max_length=50) # 'top_up', 'spend', 'reward'
     description = models.CharField(max_length=255, blank=True, default='')
+    reference_key = models.CharField(
+        max_length=100,
+        blank=True,
+        default='',
+    )
     order_number = models.CharField(max_length=100, blank=True, null=True)
     status = models.CharField(max_length=20, default='completed') # 'pending', 'completed', 'failed'
     created_at = models.DateTimeField(auto_now_add=True)
