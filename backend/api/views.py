@@ -50,6 +50,193 @@ class MemberViewSet(viewsets.ModelViewSet):
     serializer_class = MemberSerializer
     permission_classes = [AllowAny]
 
+
+    @action(detail=True, methods=["get"], url_path="daily-tasks")
+    def daily_tasks(self, request, pk=None):
+        member = self.get_object()
+
+        goal = member.exercise_goal
+        frequency = member.exercise_frequency
+
+        # 根據「運動目標」＋「每週運動頻率」決定今日任務
+        task_rules = {
+            "weight_loss": {
+                "1_2": {
+                    "title": "今日燃脂訓練",
+                    "tasks": [
+                        {
+                            "type": "slow_jogging",
+                            "title": "超慢跑",
+                            "target": 20,
+                            "unit": "分鐘",
+                        },
+                        {
+                            "type": "steps",
+                            "title": "今日步數",
+                            "target": 7000,
+                            "unit": "步",
+                        },
+                    ],
+                },
+                "3_4": {
+                    "title": "今日燃脂訓練",
+                    "tasks": [
+                        {
+                            "type": "slow_jogging",
+                            "title": "超慢跑",
+                            "target": 30,
+                            "unit": "分鐘",
+                        },
+                        {
+                            "type": "steps",
+                            "title": "今日步數",
+                            "target": 8000,
+                            "unit": "步",
+                        },
+                    ],
+                },
+                "5_plus": {
+                    "title": "今日燃脂訓練",
+                    "tasks": [
+                        {
+                            "type": "slow_jogging",
+                            "title": "超慢跑",
+                            "target": 40,
+                            "unit": "分鐘",
+                        },
+                        {
+                            "type": "steps",
+                            "title": "今日步數",
+                            "target": 10000,
+                            "unit": "步",
+                        },
+                    ],
+                },
+            },
+
+            "muscle_gain": {
+                "1_2": {
+                    "title": "今日肌力訓練",
+                    "tasks": [
+                        {
+                            "type": "squat",
+                            "title": "深蹲",
+                            "target": 2,
+                            "unit": "組",
+                        },
+                        {
+                            "type": "training",
+                            "title": "完成運動",
+                            "target": 20,
+                            "unit": "分鐘",
+                        },
+                    ],
+                },
+                "3_4": {
+                    "title": "今日肌力訓練",
+                    "tasks": [
+                        {
+                            "type": "squat",
+                            "title": "深蹲",
+                            "target": 3,
+                            "unit": "組",
+                        },
+                        {
+                            "type": "training",
+                            "title": "完成運動",
+                            "target": 30,
+                            "unit": "分鐘",
+                        },
+                    ],
+                },
+                "5_plus": {
+                    "title": "今日肌力訓練",
+                    "tasks": [
+                        {
+                            "type": "squat",
+                            "title": "深蹲",
+                            "target": 4,
+                            "unit": "組",
+                        },
+                        {
+                            "type": "training",
+                            "title": "完成運動",
+                            "target": 40,
+                            "unit": "分鐘",
+                        },
+                    ],
+                },
+            },
+
+            "health": {
+                "1_2": {
+                    "title": "今日健康任務",
+                    "tasks": [
+                        {
+                            "type": "training",
+                            "title": "完成運動",
+                            "target": 20,
+                            "unit": "分鐘",
+                        },
+                        {
+                            "type": "steps",
+                            "title": "今日步數",
+                            "target": 7000,
+                            "unit": "步",
+                        },
+                    ],
+                },
+                "3_4": {
+                    "title": "今日健康任務",
+                    "tasks": [
+                        {
+                            "type": "training",
+                            "title": "完成運動",
+                            "target": 30,
+                            "unit": "分鐘",
+                        },
+                        {
+                            "type": "steps",
+                            "title": "今日步數",
+                            "target": 8000,
+                            "unit": "步",
+                        },
+                    ],
+                },
+                "5_plus": {
+                    "title": "今日健康任務",
+                    "tasks": [
+                        {
+                            "type": "training",
+                            "title": "完成運動",
+                            "target": 40,
+                            "unit": "分鐘",
+                        },
+                        {
+                            "type": "steps",
+                            "title": "今日步數",
+                            "target": 10000,
+                            "unit": "步",
+                        },
+                    ],
+                },
+            },
+        }
+
+        selected = task_rules.get(goal, task_rules["health"])
+        plan = selected.get(
+            frequency,
+            selected["1_2"],
+        )
+
+        return Response({
+            "member_id": member.id,
+            "goal": goal,
+            "frequency": frequency,
+            "plan_title": plan["title"],
+            "tasks": plan["tasks"],
+        })
+    
     # 排行榜 API
     @action(detail=False, methods=["get"], url_path="leaderboard")
     def leaderboard(self, request):

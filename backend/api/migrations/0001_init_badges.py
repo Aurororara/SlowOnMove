@@ -34,7 +34,7 @@ def reverse_func(apps, schema_editor):
 
 class Migration(migrations.Migration):
 
-    dependencies = [  ('core', '__latest__'),  ]
+    dependencies = [('core', '0019_traininglog_pain_parts')]
 
     operations = [
         migrations.RunPython(create_initial_badges, reverse_func),
