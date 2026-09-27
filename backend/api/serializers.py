@@ -367,9 +367,20 @@ class WorkoutMenuSerializer(serializers.ModelSerializer):
         ]
 
 class WorkoutItemSerializer(serializers.ModelSerializer):
+    menu_detail = WorkoutMenuSerializer(
+        source='menu',
+        read_only=True,
+    )
+
     class Meta:
         model = WorkoutItem
-        fields = '__all__'
+        fields = [
+            "id",
+            "member",
+            "menu",
+            "menu_detail",
+            "save_at",
+        ]
         read_only_fields = [
             'id',
             'member',

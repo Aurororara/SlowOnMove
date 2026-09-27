@@ -17,6 +17,7 @@ import 'purchase_screen.dart';
 import 'services/api_service.dart';
 import 'services/badge_progress_service.dart';
 import 'services/user_session.dart';
+import 'my_workout_menu_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final CommunityStore store;
@@ -215,12 +216,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               },
                             ),
                             _buildMenuButton(
-                              icon: Icons.restaurant_menu,
+                              icon: Icons.fitness_center,
                               title: '我的菜單',
-                              subtitle: '個人飲食營養追蹤',
+                              subtitle: '查看已套用的運動計畫',
                               iconColor: Colors.greenAccent,
                               onTap: () {
-                                debugPrint('跳轉到我的菜單');
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => const MyWorkoutMenuScreen(),
+                                  ),
+                                );
                               },
                             ),
                             const SizedBox(height: 32),
