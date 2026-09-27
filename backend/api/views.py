@@ -20,6 +20,7 @@ from core.models import (
     CommunityGroupActivity,
     CommunityGroupActivityParticipant,
     CommunityGroupJoinRequest,
+    FeatureUnlock,
 )
 from .serializers import (
     MemberSerializer, AdminMemberListSerializer,AdminPostReportSerializer, BodyRecordSerializer, BloodPressureRecordSerializer, BoardRankingSerializer,
@@ -3168,6 +3169,32 @@ class PointsViewSet(viewsets.ViewSet):
             }
             for code, feature in POINT_FEATURES.items()
         ])
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path="unlocks",
+    )
+    def unlocks(self, request):
+        unlocks = (
+            FeatureUnlock.objects
+            .filter(member=request.user)
+            .order_by("-unlocked_at")
+        )
+
+        data = [
+            {
+                "feature_code": unlock.feature_code,
+                "reference_id": unlock.reference_id,
+                "unlocked_at": unlock.unlocked_at,
+            }
+            for unlock in unlocks
+        ]
+
+        return Response(data)
+
+
+
 
 def compute_admin_analytics(timeframe="all"):
     from datetime import timedelta

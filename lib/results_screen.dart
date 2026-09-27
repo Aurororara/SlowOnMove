@@ -7,6 +7,7 @@ import 'body_pain_picker.dart';
 import 'config/api_config.dart';
 import 'services/user_session.dart';
 import 'services/badge_progress_service.dart';
+import 'services/points_service.dart';
 
 class ResultsScreen extends StatefulWidget {
   final int timeSeconds;
@@ -33,6 +34,13 @@ class _ResultsScreenState extends State<ResultsScreen> {
   String? _dynamicAiFeedback;
   bool _isLoadingAi = true;
 
+  final PointsService _pointsService = PointsService();
+
+  int? _trainingLogId;
+
+  bool _isDeepAnalysisUnlocked = false;
+  bool _isUnlockingDeepAnalysis = false;
+
   // 記錄使用者填寫的疼痛部位
   Set<BodyPart> _recordedPainParts = {};
 
@@ -43,8 +51,6 @@ class _ResultsScreenState extends State<ResultsScreen> {
     _confettiController =
         ConfettiController(duration: const Duration(seconds: 3));
     _confettiController.play();
-
-    _fetchAiFeedback(); // 獲取 AI 建議
 
     // 畫面載入完成後：先存檔、檢查徽章並優先頒獎，最後再跳疼痛回饋
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -339,9 +345,14 @@ class _ResultsScreenState extends State<ResultsScreen> {
 
   Future<void> _saveData() async {
     final String baseUrl = ApiConfig.baseUrl;
-    final String url = baseUrl.endsWith('/')
+    final String baseTrainingUrl = baseUrl.endsWith('/')
         ? '${baseUrl}training-logs/'
         : '$baseUrl/training-logs/';
+
+    final bool isCreating = _trainingLogId == null;
+
+    final String url =
+        isCreating ? baseTrainingUrl : '$baseTrainingUrl$_trainingLogId/';
 
     final bool isSquat = widget.exerciseTitle == '深蹲';
     final int totalMins = widget.timeSeconds ~/ 60;
@@ -352,31 +363,152 @@ class _ResultsScreenState extends State<ResultsScreen> {
         _recordedPainParts.map((e) => e.label).toList();
 
     try {
-      final response = await http.post(
-        Uri.parse(url),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          "member": UserSession.memberId,
-          "exercise_type": isSquat ? "squat" : "slow_jogging",
-          "start_time": DateTime.now()
-              .subtract(Duration(seconds: widget.timeSeconds))
-              .toIso8601String(),
-          "end_time": DateTime.now().toIso8601String(),
-          "total_mins": totalMins,
-          "posture_score": widget.averageAccuracy.toInt(),
-          "calories": fixedCalories,
-          "step_count": fixedSteps,
-          "pain_parts": painList,
-        }),
-      );
+      final body = jsonEncode({
+        "member": UserSession.memberId,
+        "exercise_type": isSquat ? "squat" : "slow_jogging",
+        "start_time": DateTime.now()
+            .subtract(
+              Duration(
+                seconds: widget.timeSeconds,
+              ),
+            )
+            .toIso8601String(),
+        "end_time": DateTime.now().toIso8601String(),
+        "total_mins": totalMins,
+        "posture_score": widget.averageAccuracy.toInt(),
+        "calories": fixedCalories,
+        "step_count": fixedSteps,
+        "pain_parts": painList,
+      });
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        debugPrint("✅ 運動紀錄成功同步至後端 (Status: ${response.statusCode})");
+      final response = isCreating
+          ? await http.post(
+              Uri.parse(url),
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: body,
+            )
+          : await http.patch(
+              Uri.parse(url),
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: body,
+            );
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        final data = jsonDecode(response.body);
+
+        if (isCreating) {
+          final id = data['id'];
+
+          if (id != null) {
+            _trainingLogId = id is int ? id : int.tryParse(id.toString());
+
+            await _checkDeepAnalysisUnlock();
+          }
+        }
+
+        debugPrint(
+          isCreating
+              ? '✅ 運動紀錄建立成功 '
+                  '(ID: $_trainingLogId)'
+              : '✅ 運動紀錄更新成功 '
+                  '(ID: $_trainingLogId)',
+        );
       } else {
-        debugPrint("⚠️ 儲存失敗: ${response.statusCode} - ${response.body}");
+        debugPrint(
+          '⚠️ 儲存失敗: '
+          '${response.statusCode} - '
+          '${response.body}',
+        );
       }
     } catch (e) {
       debugPrint("⚠️ 連線異常: $e");
+    }
+  }
+
+  Future<void> _checkDeepAnalysisUnlock() async {
+    if (_trainingLogId == null) return;
+
+    try {
+      final unlocks = await _pointsService.getUnlocks();
+
+      final referenceId = 'training_log:$_trainingLogId';
+
+      final unlocked = unlocks.any(
+        (item) =>
+            item['feature_code'] == 'deep_analysis' &&
+            item['reference_id'] == referenceId,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _isDeepAnalysisUnlocked = unlocked;
+      });
+
+      if (unlocked) {
+        await _fetchAiFeedback();
+      }
+    } catch (e) {
+      debugPrint(
+        '檢查深度分析解鎖狀態失敗: $e',
+      );
+    }
+  }
+
+  Future<void> _unlockDeepAnalysis() async {
+    if (_trainingLogId == null || _isUnlockingDeepAnalysis) {
+      return;
+    }
+
+    setState(() {
+      _isUnlockingDeepAnalysis = true;
+    });
+
+    await _fetchAiFeedback();
+
+    try {
+      final result = await _pointsService.unlockFeature(
+        featureCode: 'deep_analysis',
+        referenceId: 'training_log:$_trainingLogId',
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _isDeepAnalysisUnlocked = true;
+      });
+
+      final remainingBalance = result['remaining_balance'];
+
+      if (remainingBalance is num) {
+        UserSession.walletBalanceNotifier.value = remainingBalance.toDouble();
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('已解鎖深度運動分析'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            _pointsService.getErrorMessage(e),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isUnlockingDeepAnalysis = false;
+        });
+      }
     }
   }
 
@@ -532,7 +664,46 @@ class _ResultsScreenState extends State<ResultsScreen> {
                           ],
                         ),
                         const SizedBox(height: 16),
-                        if (_isLoadingAi)
+                        if (_trainingLogId == null)
+                          const Center(child: CircularProgressIndicator())
+                        else if (!_isDeepAnalysisUnlocked)
+                          Column(
+                            children: [
+                              const Text(
+                                '解鎖本次運動的深度分析與改善建議',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  color: Colors.black54,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              SizedBox(
+                                width: double.infinity,
+                                child: ElevatedButton(
+                                  onPressed: _isUnlockingDeepAnalysis
+                                      ? null
+                                      : _unlockDeepAnalysis,
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.black87,
+                                    foregroundColor: Colors.white,
+                                  ),
+                                  child: _isUnlockingDeepAnalysis
+                                      ? const SizedBox(
+                                          width: 20,
+                                          height: 20,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Colors.white,
+                                          ),
+                                        )
+                                      : const Text(
+                                          '使用 50 SP 解鎖',
+                                        ),
+                                ),
+                              ),
+                            ],
+                          )
+                        else if (_isLoadingAi)
                           const Center(
                             child: CircularProgressIndicator(
                               color: Colors.amber,
@@ -541,7 +712,10 @@ class _ResultsScreenState extends State<ResultsScreen> {
                         else
                           Text(
                             _dynamicAiFeedback ?? '沒有建議',
-                            style: const TextStyle(fontSize: 16, height: 1.6),
+                            style: const TextStyle(
+                              fontSize: 16,
+                              height: 1.6,
+                            ),
                           ),
                       ],
                     ),
