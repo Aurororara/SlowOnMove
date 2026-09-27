@@ -1,8 +1,6 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 
-import 'config/api_config.dart';
+import 'services/api_service.dart';
 import 'services/user_session.dart';
 
 class PurchaseScreen extends StatefulWidget {
@@ -15,6 +13,7 @@ class PurchaseScreen extends StatefulWidget {
 class _PurchaseScreenState extends State<PurchaseScreen> {
   int _selectedAmount = 33;
   bool _isLoading = false;
+  final ApiService _api = ApiService();
 
   static const List<_TopUpPlan> _topUpPlans = [
     _TopUpPlan(price: 33, points: 60, bonusPoints: 100),
@@ -39,81 +38,91 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
   // ---------------------------------------------------------------------------
   Future<void> _fetchPointsBalance() async {
     try {
-      final url = Uri.parse('${ApiConfig.baseUrl}points/balance/');
-      final response = await http.get(
-        url,
-        headers: {'Content-Type': 'application/json'},
+      final response = await _api.dio.get(
+        'points/balance/',
       );
 
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data.containsKey('balance')) {
-          final double balance = (data['balance'] as num).toDouble();
-          UserSession.walletBalanceNotifier.value = balance;
-        }
+      final data = response.data;
+
+      if (data is Map<String, dynamic> && data.containsKey('balance')) {
+        final double balance = (data['balance'] as num).toDouble();
+
+        UserSession.walletBalanceNotifier.value = balance;
       }
     } catch (e) {
-      debugPrint('Error fetching point balance: $e');
+      debugPrint(
+        'Error fetching point balance: '
+        '${_api.getErrorMessage(e)}',
+      );
     }
   }
 
   // ---------------------------------------------------------------------------
   // 6.1 綠界科技 ECPay 金流串接與模擬付款 API
   // ---------------------------------------------------------------------------
-  Future<void> _processECPayCheckout(_TopUpPlan plan, {bool isSimulated = false}) async {
+  Future<void> _processECPayCheckout(
+    _TopUpPlan plan, {
+    bool isSimulated = false,
+  }) async {
     final int totalPoints = plan.points + plan.bonusPoints;
-    
+
     setState(() {
       _isLoading = true;
     });
 
     try {
-      final endpoint = isSimulated ? 'points/ecpay/simulate/' : 'points/ecpay/checkout/';
-      final url = Uri.parse('${ApiConfig.baseUrl}$endpoint');
+      final endpoint =
+          isSimulated ? 'points/ecpay/simulate/' : 'points/ecpay/checkout/';
 
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: json.encode({
+      final response = await _api.dio.post(
+        endpoint,
+        data: {
           'amount': plan.price,
           'points': totalPoints,
-        }),
+        },
       );
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        final data = json.decode(response.body);
+      final data = response.data;
 
-        if (isSimulated) {
-          final double newBalance = (data['new_balance'] as num).toDouble();
-          UserSession.walletBalanceNotifier.value = newBalance;
+      if (isSimulated) {
+        final double newBalance = (data['new_balance'] as num).toDouble();
 
-          if (mounted) {
-            _showSuccessDialog(
-              title: '綠界科技 (ECPay) 儲值成功',
-              message: '已成功儲值 ${plan.price} 元，獲得 $totalPoints 點數！\n目前點數餘額：${_formatPoints(newBalance)} 點。',
-            );
-          }
-        } else {
-          final String checkoutUrl = data['checkout_url'] ?? 'https://payment-stage.ecpay.com.tw/Cashier/AioCheckOut/V5';
-          final Map<String, dynamic> ecpayParams = data['ecpay_params'] ?? {};
+        UserSession.walletBalanceNotifier.value = newBalance;
 
-          if (mounted) {
-            _showECPayGatewayModal(checkoutUrl, ecpayParams, plan, totalPoints);
-          }
+        if (mounted) {
+          _showSuccessDialog(
+            title: '綠界科技 (ECPay) 儲值成功',
+            message: '已成功儲值 ${plan.price} 元，'
+                '獲得 $totalPoints 點數！\n'
+                '目前點數餘額：'
+                '${_formatPoints(newBalance)} 點。',
+          );
         }
       } else {
+        final String checkoutUrl = data['checkout_url'] ?? '';
+
+        final Map<String, dynamic> ecpayParams = Map<String, dynamic>.from(
+          data['ecpay_params'] ?? {},
+        );
+
         if (mounted) {
-          _showErrorDialog('綠界金流請求失敗', '伺服器回應錯誤 (${response.statusCode})');
+          _showECPayGatewayModal(
+            checkoutUrl,
+            ecpayParams,
+            plan,
+            totalPoints,
+          );
         }
       }
     } catch (e) {
-      debugPrint('Error initiating ECPay checkout: $e');
-      // 本地展示備用（當未連線真實後端時）
-      UserSession.addWalletBalance(totalPoints.toDouble());
+      debugPrint(
+        'Error initiating ECPay checkout: $e',
+      );
+
       if (mounted) {
-        _showSuccessDialog(
-          title: '綠界科技 (ECPay) 儲值成功',
-          message: '已成功儲值 ${plan.price} 元，獲得 $totalPoints 點數！',
+        _showErrorDialog(
+          '儲值失敗',
+          _api.getErrorMessage(e),
         );
       }
     } finally {
@@ -322,7 +331,8 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
                       color: const Color(0xFFE0F2FE),
                       borderRadius: BorderRadius.circular(14),
                     ),
-                    child: const Icon(Icons.payment_rounded, color: Color(0xFF0284C7), size: 28),
+                    child: const Icon(Icons.payment_rounded,
+                        color: Color(0xFF0284C7), size: 28),
                   ),
                   const SizedBox(width: 14),
                   Expanded(
@@ -331,11 +341,13 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
                       children: [
                         const Text(
                           '綠界科技 (ECPay) 金流結帳',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                              fontSize: 18, fontWeight: FontWeight.bold),
                         ),
                         Text(
                           '特店編號 MerchantID: ${ecpayParams['MerchantID'] ?? '3002607'} (測試沙盒)',
-                          style: const TextStyle(color: Color(0xFF6B7280), fontSize: 12),
+                          style: const TextStyle(
+                              color: Color(0xFF6B7280), fontSize: 12),
                         ),
                       ],
                     ),
@@ -356,9 +368,14 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
                     const SizedBox(height: 8),
                     _buildInfoRow('獲得總點數', '$totalPoints 點'),
                     const SizedBox(height: 8),
-                    _buildInfoRow('綠界訂單號', ecpayParams['MerchantTradeNo']?.toString() ?? 'SOM20260907'),
+                    _buildInfoRow(
+                        '綠界訂單號',
+                        ecpayParams['MerchantTradeNo']?.toString() ??
+                            'SOM20260907'),
                     const SizedBox(height: 8),
-                    _buildInfoRow('CheckMacValue (SHA256)', '${(ecpayParams['CheckMacValue']?.toString() ?? 'CALCULATED').substring(0, 16)}...', isBold: false),
+                    _buildInfoRow('CheckMacValue (SHA256)',
+                        '${(ecpayParams['CheckMacValue']?.toString() ?? 'CALCULATED').substring(0, 16)}...',
+                        isBold: false),
                   ],
                 ),
               ),
@@ -372,11 +389,14 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
                     await _processECPayCheckout(plan, isSimulated: true);
                   },
                   icon: const Icon(Icons.bolt_rounded, color: Colors.white),
-                  label: const Text('一鍵完成綠界交易 (沙盒測試入帳)', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                  label: const Text('一鍵完成綠界交易 (沙盒測試入帳)',
+                      style:
+                          TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF059669),
                     foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
                   ),
                 ),
               ),
@@ -388,7 +408,9 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
                   onPressed: () {
                     Navigator.pop(context);
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('已生成綠界科技 AIO 測試 Portal 網址: $checkoutUrl')),
+                      SnackBar(
+                          content:
+                              Text('已生成綠界科技 AIO 測試 Portal 網址: $checkoutUrl')),
                     );
                   },
                   icon: const Icon(Icons.open_in_browser_rounded),
@@ -396,7 +418,8 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
                   style: OutlinedButton.styleFrom(
                     foregroundColor: Colors.black,
                     side: const BorderSide(color: Color(0xFFD1D5DB)),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14)),
                   ),
                 ),
               ),
@@ -411,8 +434,16 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(title, style: const TextStyle(color: Color(0xFF6B7280), fontSize: 13, fontWeight: FontWeight.w600)),
-        Text(value, style: TextStyle(color: Colors.black, fontSize: 13, fontWeight: isBold ? FontWeight.bold : FontWeight.normal)),
+        Text(title,
+            style: const TextStyle(
+                color: Color(0xFF6B7280),
+                fontSize: 13,
+                fontWeight: FontWeight.w600)),
+        Text(value,
+            style: TextStyle(
+                color: Colors.black,
+                fontSize: 13,
+                fontWeight: isBold ? FontWeight.bold : FontWeight.normal)),
       ],
     );
   }
@@ -424,16 +455,20 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Row(
           children: [
-            const Icon(Icons.check_circle_rounded, color: Colors.green, size: 28),
+            const Icon(Icons.check_circle_rounded,
+                color: Colors.green, size: 28),
             const SizedBox(width: 10),
-            Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text(title,
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           ],
         ),
         content: Text(message, style: const TextStyle(fontSize: 14)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('確定', style: TextStyle(fontWeight: FontWeight.bold)),
+            child:
+                const Text('確定', style: TextStyle(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -447,16 +482,20 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: Row(
           children: [
-            const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 28),
+            const Icon(Icons.error_outline_rounded,
+                color: Colors.redAccent, size: 28),
             const SizedBox(width: 10),
-            Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text(title,
+                style:
+                    const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
           ],
         ),
         content: Text(message, style: const TextStyle(fontSize: 14)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('我知道了', style: TextStyle(fontWeight: FontWeight.bold)),
+            child: const Text('我知道了',
+                style: TextStyle(fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -499,7 +538,8 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
                 ValueListenableBuilder<double>(
                   valueListenable: UserSession.walletBalanceNotifier,
                   builder: (context, walletBalance, _) {
-                    final double balanceAfterTopUp = walletBalance + totalPoints;
+                    final double balanceAfterTopUp =
+                        walletBalance + totalPoints;
                     return _buildBalanceCard(
                       walletBalance,
                       balanceAfterTopUp,

@@ -34,7 +34,12 @@ def reverse_func(apps, schema_editor):
 
 class Migration(migrations.Migration):
 
-    dependencies = [  ('core', '__latest__'),  ]
+    dependencies = [
+        (
+            'core',
+            '0005_badge_workoutmenu_workoutitem_task_postreport_and_more',
+        ),
+    ]
 
     operations = [
         migrations.RunPython(create_initial_badges, reverse_func),

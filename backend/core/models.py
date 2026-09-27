@@ -619,6 +619,45 @@ class PostWorkoutPlan(models.Model):
     def __str__(self):
         return self.title
 
+class FeatureUnlock(models.Model):
+    member = models.ForeignKey(
+        Member,
+        on_delete=models.CASCADE,
+        related_name="feature_unlocks",
+    )
+
+    feature_code = models.CharField(
+        max_length=100,
+    )
+
+    reference_id = models.CharField(
+        max_length=100,
+        blank=True,
+        default="",
+    )
+
+    unlocked_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=[
+                    "member",
+                    "feature_code",
+                    "reference_id",
+                ],
+                name="unique_member_feature_unlock",
+            ),
+        ]
+
+    def __str__(self):
+        return (
+            f"{self.member_id} - "
+            f"{self.feature_code} - "
+            f"{self.reference_id}"
+        )
 
 class PostWorkoutPlanStep(models.Model):
     EXERCISE_SLOW_JOGGING = "slow_jogging"
