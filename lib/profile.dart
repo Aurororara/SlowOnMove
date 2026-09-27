@@ -1,7 +1,4 @@
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:show_on_move/admin/admin_dashboard_screen.dart';
 
@@ -12,7 +9,6 @@ import 'community/models/community_post.dart';
 import 'community/widgets/posts/comments_sheet.dart';
 import 'community/widgets/posts/post_card.dart';
 import 'community/widgets/posts/post_share_sheet.dart';
-import 'config/api_config.dart';
 import 'edit_profile_screen.dart';
 import 'exercise_history_screen.dart';
 import 'login_screen.dart';
@@ -40,6 +36,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int _totalCalories = 0;
   int _totalSteps = 0;
   int _badgeCount = 0;
+  final ApiService _api = ApiService();
 
   String get _fullName => UserSession.displayName;
   String get _email => UserSession.email;
@@ -56,30 +53,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _fetchProfileData() async {
-    final String baseUrl = ApiConfig.baseUrl;
     final int currentMemberId = UserSession.memberId;
+
     var workoutCount = _workoutCount;
     var totalCalories = _totalCalories;
     var totalSteps = _totalSteps;
     var badgeCount = _badgeCount;
 
     try {
-      final logStatsResponse = await http.get(
-        Uri.parse(
-          '${baseUrl}training-logs/my-stats/?member_id=$currentMemberId',
-        ),
+      final response = await _api.dio.get(
+        'training-logs/my-stats/',
       );
 
-      if (logStatsResponse.statusCode == 200) {
-        final Map<String, dynamic> stats = json.decode(logStatsResponse.body);
-        workoutCount = stats['total_time'] ?? 0;
-        totalCalories = stats['total_calories'] ?? 0;
-        totalSteps = stats['total_steps'] ?? 0;
-      } else {
-        debugPrint('抓取運動統計失敗: ${logStatsResponse.statusCode}');
-      }
+      final stats = Map<String, dynamic>.from(response.data);
+
+      workoutCount = (stats['total_time'] as num?)?.toInt() ?? 0;
+
+      totalCalories = (stats['total_calories'] as num?)?.toInt() ?? 0;
+
+      totalSteps = (stats['total_steps'] as num?)?.toInt() ?? 0;
     } catch (e) {
-      debugPrint('抓取資料失敗: $e');
+      debugPrint(
+        '抓取運動統計失敗: '
+        '${_api.getErrorMessage(e)}',
+      );
     }
 
     try {

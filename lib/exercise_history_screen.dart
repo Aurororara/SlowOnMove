@@ -1,8 +1,6 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'services/user_session.dart';
-import 'config/api_config.dart';
+
+import 'services/api_service.dart';
 
 class ExerciseHistoryScreen extends StatefulWidget {
   const ExerciseHistoryScreen({super.key});
@@ -12,6 +10,7 @@ class ExerciseHistoryScreen extends StatefulWidget {
 }
 
 class _ExerciseHistoryScreenState extends State<ExerciseHistoryScreen> {
+  final ApiService _api = ApiService();
   bool _isLoading = true;
   List<dynamic> _historyLogs = [];
 
@@ -25,49 +24,39 @@ class _ExerciseHistoryScreenState extends State<ExerciseHistoryScreen> {
     _fetchHistoryData();
   }
 
-  // 抓取資料 (全面統一版本)
+  // 抓取資料
   Future<void> _fetchHistoryData() async {
-    // 1. 統一採用組員寫好的 ApiConfig IP 機制
-    final String baseUrl = ApiConfig.baseUrl;
-
-    // 2. 統一從 UserSession 拿取目前登入者的 Member ID
-    final int currentMemberId = UserSession.memberId;
-
     try {
-      // 3. 拼接正確的 baseUrl 路徑
-      final response = await http.get(Uri.parse('${baseUrl}training-logs/'));
+      final response = await _api.dio.get(
+        'training-logs/',
+      );
 
-      if (response.statusCode == 200) {
-        final List allLogs = json.decode(response.body);
+      final List<dynamic> logs =
+          response.data is List ? List<dynamic>.from(response.data) : [];
 
-        // 4. 動態過濾自己的紀錄 (currentMemberId 是誰就過濾誰)
-        final myLogs =
-            allLogs.where((log) => log['member'] == currentMemberId).toList();
+      logs.sort(
+        (a, b) => (b['start_time'] ?? '').toString().compareTo(
+              (a['start_time'] ?? '').toString(),
+            ),
+      );
 
-        // 時間排序（最新在前）
-        myLogs.sort(
-          (a, b) => b['start_time'].compareTo(a['start_time']),
-        );
+      if (!mounted) return;
 
-        if (mounted) {
-          setState(() {
-            _historyLogs = myLogs;
-            _isLoading = false;
-            _currentPage = 1;
-          });
-        }
-      } else {
-        debugPrint("API 錯誤，狀態碼: ${response.statusCode}");
-        if (mounted) {
-          setState(() => _isLoading = false);
-        }
-      }
+      setState(() {
+        _historyLogs = logs;
+        _isLoading = false;
+        _currentPage = 1;
+      });
     } catch (e) {
-      debugPrint("抓取歷史失敗: $e");
+      debugPrint(
+        '抓取歷史失敗: ${_api.getErrorMessage(e)}',
+      );
 
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+      });
     }
   }
 

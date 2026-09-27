@@ -1,11 +1,8 @@
-import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 
-import 'config/api_config.dart';
-import 'services/user_session.dart';
+import 'services/api_service.dart';
 
 class MonthlyRecapScreen extends StatefulWidget {
   const MonthlyRecapScreen({super.key});
@@ -17,7 +14,9 @@ class MonthlyRecapScreen extends StatefulWidget {
 class _MonthlyRecapScreenState extends State<MonthlyRecapScreen> {
   bool _isLoading = true;
   DateTime _selectedMonth = DateTime(DateTime.now().year, DateTime.now().month);
+  List<dynamic> _allLogs = [];
   List<dynamic> _monthLogs = [];
+  final ApiService _api = ApiService();
 
   final PageController _pageController = PageController();
   int _currentPage = 0;
@@ -32,39 +31,64 @@ class _MonthlyRecapScreenState extends State<MonthlyRecapScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final int memberId = UserSession.memberId;
-      final response = await http.get(
-        Uri.parse('${ApiConfig.baseUrl}training-logs/'),
+      final response = await _api.dio.get('training-logs/');
+
+      final List<dynamic> logs =
+          response.data is List ? List<dynamic>.from(response.data) : [];
+
+      if (!mounted) return;
+
+      if (!mounted) return;
+
+      _allLogs = logs;
+
+      _filterSelectedMonth();
+    } catch (e) {
+      debugPrint(
+        '月度回顧抓取失敗: '
+        '${_api.getErrorMessage(e)}',
       );
 
-      if (response.statusCode == 200) {
-        final List allLogs = json.decode(response.body);
+      if (!mounted) return;
 
-        final logs = allLogs.where((log) {
-          if (log['member'] != memberId || log['start_time'] == null) {
-            return false;
-          }
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
 
-          final DateTime time = DateTime.parse(log['start_time']);
-          return time.year == _selectedMonth.year &&
-              time.month == _selectedMonth.month;
-        }).toList();
+  void _filterSelectedMonth() {
+    final logs = _allLogs.where((log) {
+      final startTime = log['start_time'];
 
-        logs.sort((a, b) => b['start_time'].compareTo(a['start_time']));
-
-        if (mounted) {
-          setState(() {
-            _monthLogs = logs;
-            _isLoading = false;
-            _currentPage = 0;
-          });
-        }
-      } else {
-        if (mounted) setState(() => _isLoading = false);
+      if (startTime == null) {
+        return false;
       }
-    } catch (e) {
-      debugPrint('月度回顧抓取失敗: $e');
-      if (mounted) setState(() => _isLoading = false);
+
+      final DateTime time = DateTime.parse(
+        startTime.toString(),
+      ).toLocal();
+
+      return time.year == _selectedMonth.year &&
+          time.month == _selectedMonth.month;
+    }).toList();
+
+    logs.sort(
+      (a, b) => (b['start_time'] ?? '').toString().compareTo(
+            (a['start_time'] ?? '').toString(),
+          ),
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _monthLogs = logs;
+      _isLoading = false;
+      _currentPage = 0;
+    });
+
+    if (_pageController.hasClients) {
+      _pageController.jumpToPage(0);
     }
   }
 
@@ -77,8 +101,7 @@ class _MonthlyRecapScreenState extends State<MonthlyRecapScreen> {
       _currentPage = 0;
     });
 
-    _pageController.jumpToPage(0);
-    _fetchMonthlyLogs();
+    _filterSelectedMonth();
   }
 
   void _goNextPage() {

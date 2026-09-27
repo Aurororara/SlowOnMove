@@ -49,4 +49,16 @@ class PointsService {
   String getErrorMessage(dynamic error) {
     return _api.getErrorMessage(error);
   }
+
+  Future<List<Map<String, dynamic>>> getTransactions() async {
+    final response = await _api.dio.get('points/transactions/');
+
+    final data = response.data;
+
+    if (data is List) {
+      return data.map((item) => Map<String, dynamic>.from(item)).toList();
+    }
+
+    return [];
+  }
 }

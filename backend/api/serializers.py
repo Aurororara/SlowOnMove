@@ -271,6 +271,11 @@ class TrainingLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = TrainingLog
         fields = '__all__'
+        read_only_fields = [
+            'id',
+            'member',
+            'created_at',
+        ]
 
 class PostLikeSerializer(serializers.ModelSerializer):
     class Meta:

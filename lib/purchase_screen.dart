@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-
+import 'sp_transaction_screen.dart';
 import 'services/api_service.dart';
 import 'services/user_session.dart';
 
@@ -522,6 +522,20 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
         foregroundColor: Colors.black,
         elevation: 0.5,
         actions: [
+          IconButton(
+            icon: const Icon(
+              Icons.receipt_long_outlined,
+            ),
+            tooltip: 'SP 紀錄',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const SpTransactionScreen(),
+                ),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.sync_rounded),
             tooltip: '重新整理餘額',

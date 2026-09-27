@@ -8,6 +8,7 @@ import 'config/api_config.dart';
 import 'services/user_session.dart';
 import 'services/badge_progress_service.dart';
 import 'services/points_service.dart';
+import 'services/api_service.dart';
 
 class ResultsScreen extends StatefulWidget {
   final int timeSeconds;
@@ -33,6 +34,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
   late ConfettiController _confettiController;
   String? _dynamicAiFeedback;
   bool _isLoadingAi = true;
+  final ApiService _api = ApiService();
 
   final PointsService _pointsService = PointsService();
 
@@ -363,8 +365,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
         _recordedPainParts.map((e) => e.label).toList();
 
     try {
-      final body = jsonEncode({
-        "member": UserSession.memberId,
+      final data = {
         "exercise_type": isSquat ? "squat" : "slow_jogging",
         "start_time": DateTime.now()
             .subtract(
@@ -379,65 +380,52 @@ class _ResultsScreenState extends State<ResultsScreen> {
         "calories": fixedCalories,
         "step_count": fixedSteps,
         "pain_parts": painList,
-      });
+      };
 
       final response = isCreating
-          ? await http.post(
-              Uri.parse(url),
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: body,
+          ? await _api.dio.post(
+              'training-logs/',
+              data: data,
             )
-          : await http.patch(
-              Uri.parse(url),
-              headers: {
-                'Content-Type': 'application/json',
-              },
-              body: body,
+          : await _api.dio.patch(
+              'training-logs/$_trainingLogId/',
+              data: data,
             );
 
-      if (response.statusCode >= 200 && response.statusCode < 300) {
-        final data = jsonDecode(response.body);
+      final responseData = Map<String, dynamic>.from(response.data);
 
-        if (isCreating) {
-          final id = data['id'];
+      if (isCreating) {
+        final id = responseData['id'];
 
-          if (id != null) {
-            _trainingLogId = id is int ? id : int.tryParse(id.toString());
+        if (id != null) {
+          _trainingLogId = id is int ? id : int.tryParse(id.toString());
 
-            await _checkDeepAnalysisUnlock();
+          await _checkDeepAnalysisUnlock();
 
-            final balance = await _pointsService.getBalance();
+          final balance = await _pointsService.getBalance();
 
-            UserSession.walletBalanceNotifier.value = balance.toDouble();
+          UserSession.walletBalanceNotifier.value = balance.toDouble();
 
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('完成運動，獲得 +5 SP'),
-                ),
-              );
-            }
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('完成運動，獲得 +5 SP'),
+              ),
+            );
           }
         }
-
-        debugPrint(
-          isCreating
-              ? '✅ 運動紀錄建立成功 '
-                  '(ID: $_trainingLogId)'
-              : '✅ 運動紀錄更新成功 '
-                  '(ID: $_trainingLogId)',
-        );
-      } else {
-        debugPrint(
-          '⚠️ 儲存失敗: '
-          '${response.statusCode} - '
-          '${response.body}',
-        );
       }
+
+      debugPrint(
+        isCreating
+            ? '✅ 運動紀錄建立成功 (ID: $_trainingLogId)'
+            : '✅ 運動紀錄更新成功 (ID: $_trainingLogId)',
+      );
     } catch (e) {
-      debugPrint("⚠️ 連線異常: $e");
+      debugPrint(
+        '⚠️ 儲存運動紀錄失敗: '
+        '${_api.getErrorMessage(e)}',
+      );
     }
   }
 

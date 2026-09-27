@@ -815,30 +815,23 @@ class FavoriteViewSet(viewsets.ModelViewSet):
 class TrainingLogViewSet(viewsets.ModelViewSet):
     queryset = TrainingLog.objects.all()
     serializer_class = TrainingLogSerializer
-    permission_classes = [AllowAny]
-    #permission_classes = [IsAuthenticated]
-    # ⭐個人運動數據加總 API
+    permission_classes = [IsAuthenticated]
+    # 個人運動數據加總 API
     @action(detail=False, methods=['get'], url_path='my-stats')
     def my_stats(self, request):
-        member_id = request.query_params.get('member_id')
+        user_logs = TrainingLog.objects.filter(
+            member=request.user
+        )
         
-        if not member_id:
-            return Response({"error": "缺少 member_id 參數"}, status=400)
-
-        # 篩選該會員的所有運動紀錄
-        user_logs = TrainingLog.objects.filter(member_id=member_id)
-        
-        # 讓資料庫直接幫我們加總 (效能最高)
         stats = user_logs.aggregate(
             total_time=Sum('total_mins'),
             total_calories=Sum('calories'),
             total_steps=Sum('step_count'),
         )
 
-        # 如果沒有紀錄，Sum 會回傳 None，所以要用 'or 0' 給預設值
         return Response({
-            "member_id": member_id,
-            "workout_count": user_logs.count(), # 總運動次數
+            "member_id": request.user.id,
+            "workout_count": user_logs.count(),
             "total_time": stats['total_time'] or 0,
             "total_calories": stats['total_calories'] or 0,
             "total_steps": stats['total_steps'] or 0,
@@ -846,7 +839,9 @@ class TrainingLogViewSet(viewsets.ModelViewSet):
 
     @transaction.atomic
     def perform_create(self, serializer):
-        training_log = serializer.save()
+        training_log = serializer.save(
+            member=self.request.user
+        )
 
         member = (
             Member.objects
@@ -3066,209 +3061,210 @@ class PointsViewSet(viewsets.ViewSet):
                 ).data,
             }
         )
-        @action(
-            detail=False,
-            methods=["post"],
-            url_path="ecpay/checkout",
+    
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="ecpay/checkout",
+    )
+    @transaction.atomic
+    def ecpay_checkout(self, request):
+        user = request.user
+
+        try:
+            amount = int(
+                request.data.get("amount", 33)
+            )
+            points = int(
+                request.data.get("points", 160)
+            )
+        except (TypeError, ValueError):
+            amount, points = 33, 160
+
+        now_str = timezone.now().strftime(
+            "%Y%m%d%H%M%S"
         )
-        @transaction.atomic
-        def ecpay_checkout(self, request):
-            user = request.user
 
-            try:
-                amount = int(
-                    request.data.get("amount", 33)
-                )
-                points = int(
-                    request.data.get("points", 160)
-                )
-            except (TypeError, ValueError):
-                amount, points = 33, 160
+        import random
 
-            now_str = timezone.now().strftime(
-                "%Y%m%d%H%M%S"
-            )
+        order_number = (
+            f"SOM{now_str}"
+            f"{random.randint(100, 999)}"
+        )
 
-            import random
+        item_name = f"ShowOnMove {points}點儲值方案"
 
-            order_number = (
-                f"SOM{now_str}"
-                f"{random.randint(100, 999)}"
-            )
+        description = (
+            f"綠界金流儲值 "
+            f"NT${amount} 得 {points}點"
+        )
 
-            item_name = f"ShowOnMove {points}點儲值方案"
+        tran = PointTransaction.objects.create(
+            member=user,
+            points_changed=points,
+            tran_type="top_up",
+            description=description,
+            order_number=order_number,
+            status="pending",
+        )
 
-            description = (
-                f"綠界金流儲值 "
-                f"NT${amount} 得 {points}點"
-            )
+        domain = request.build_absolute_uri("/")[:-1]
 
-            tran = PointTransaction.objects.create(
-                member=user,
-                points_changed=points,
-                tran_type="top_up",
-                description=description,
+        return_url = (
+            f"{domain}/api/points/"
+            f"ecpay/callback/"
+        )
+
+        client_back_url = (
+            f"{domain}/api/points/"
+            f"ecpay/success/"
+        )
+
+        checkout_data = (
+            ECPayService.create_checkout_params(
                 order_number=order_number,
-                status="pending",
+                amount=amount,
+                item_name=item_name,
+                return_url=return_url,
+                client_back_url=client_back_url,
             )
-
-            domain = request.build_absolute_uri("/")[:-1]
-
-            return_url = (
-                f"{domain}/api/points/"
-                f"ecpay/callback/"
-            )
-
-            client_back_url = (
-                f"{domain}/api/points/"
-                f"ecpay/success/"
-            )
-
-            checkout_data = (
-                ECPayService.create_checkout_params(
-                    order_number=order_number,
-                    amount=amount,
-                    item_name=item_name,
-                    return_url=return_url,
-                    client_back_url=client_back_url,
-                )
-            )
-
-            return Response({
-                "order_number": order_number,
-                "amount": amount,
-                "points": points,
-                "checkout_url": checkout_data[
-                    "checkout_url"
-                ],
-                "ecpay_params": checkout_data[
-                    "params"
-                ],
-                "transaction_id": tran.id,
-            })
-
-        @action(
-            detail=False,
-            methods=["post"],
-            url_path="ecpay/simulate",
         )
-        @transaction.atomic
-        def ecpay_simulate(self, request):
-            user = (
-                Member.objects
+
+        return Response({
+            "order_number": order_number,
+            "amount": amount,
+            "points": points,
+            "checkout_url": checkout_data[
+                "checkout_url"
+            ],
+            "ecpay_params": checkout_data[
+                "params"
+            ],
+            "transaction_id": tran.id,
+        })
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path="ecpay/simulate",
+    )
+    @transaction.atomic
+    def ecpay_simulate(self, request):
+        user = (
+            Member.objects
+            .select_for_update()
+            .get(id=request.user.id)
+        )
+
+        try:
+            amount = int(
+                request.data.get("amount", 33)
+            )
+            points = int(
+                request.data.get("points", 160)
+            )
+        except (TypeError, ValueError):
+            amount, points = 33, 160
+
+        now_str = timezone.now().strftime(
+            "%Y%m%d%H%M%S"
+            )
+
+        import random
+
+        order_number = (
+            f"SIM{now_str}"
+            f"{random.randint(100, 999)}"
+        )
+
+        description = (
+            f"綠界科技 (ECPay測試) 儲值 "
+            f"NT${amount} 得 {points}點"
+        )
+
+        user.points += points
+        user.save(update_fields=["points"])
+
+        tran = PointTransaction.objects.create(
+            member=user,
+            points_changed=points,
+            tran_type="top_up",
+            description=description,
+            order_number=order_number,
+            status="completed",
+        )
+
+        return Response({
+            "message": (
+                f"綠界交易完成！"
+                f"已成功入帳 {points} 點"
+            ),
+            "new_balance": user.points,
+            "transaction": PointTransactionSerializer(
+                tran
+            ).data,
+        })
+
+    @action(
+        detail=False,
+        methods=["post"],
+        permission_classes=[AllowAny],
+        url_path="ecpay/callback",
+    )
+    @transaction.atomic
+    def ecpay_callback(self, request):
+        post_data = (
+            request.data.dict()
+            if hasattr(request.data, "dict")
+            else dict(request.data)
+        )
+
+        if not ECPayService.verify_check_mac_value(
+            post_data
+        ):
+            return Response(
+                "0|CheckMacValue Error",
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        order_number = post_data.get(
+            "MerchantTradeNo"
+        )
+
+        rtn_code = str(
+            post_data.get("RtnCode")
+        )
+
+        if rtn_code == "1":
+            tran = (
+                PointTransaction.objects
                 .select_for_update()
-                .get(id=request.user.id)
-            )
-
-            try:
-                amount = int(
-                    request.data.get("amount", 33)
+                .filter(
+                    order_number=order_number,
+                    status="pending",
                 )
-                points = int(
-                    request.data.get("points", 160)
-                )
-            except (TypeError, ValueError):
-                amount, points = 33, 160
-
-            now_str = timezone.now().strftime(
-                "%Y%m%d%H%M%S"
+                .first()
             )
 
-            import random
-
-            order_number = (
-                f"SIM{now_str}"
-                f"{random.randint(100, 999)}"
-            )
-
-            description = (
-                f"綠界科技 (ECPay測試) 儲值 "
-                f"NT${amount} 得 {points}點"
-            )
-
-            user.points += points
-            user.save(update_fields=["points"])
-
-            tran = PointTransaction.objects.create(
-                member=user,
-                points_changed=points,
-                tran_type="top_up",
-                description=description,
-                order_number=order_number,
-                status="completed",
-            )
-
-            return Response({
-                "message": (
-                    f"綠界交易完成！"
-                    f"已成功入帳 {points} 點"
-                ),
-                "new_balance": user.points,
-                "transaction": PointTransactionSerializer(
-                    tran
-                ).data,
-            })
-
-        @action(
-            detail=False,
-            methods=["post"],
-            permission_classes=[AllowAny],
-            url_path="ecpay/callback",
-        )
-        @transaction.atomic
-        def ecpay_callback(self, request):
-            post_data = (
-                request.data.dict()
-                if hasattr(request.data, "dict")
-                else dict(request.data)
-            )
-
-            if not ECPayService.verify_check_mac_value(
-                post_data
-            ):
-                return Response(
-                    "0|CheckMacValue Error",
-                    status=status.HTTP_400_BAD_REQUEST,
+            if tran:
+                tran.status = "completed"
+                tran.save(
+                    update_fields=["status"]
                 )
 
-            order_number = post_data.get(
-                "MerchantTradeNo"
-            )
-
-            rtn_code = str(
-                post_data.get("RtnCode")
-            )
-
-            if rtn_code == "1":
-                tran = (
-                    PointTransaction.objects
+                member = (
+                    Member.objects
                     .select_for_update()
-                    .filter(
-                        order_number=order_number,
-                        status="pending",
-                    )
-                    .first()
+                    .get(id=tran.member_id)
                 )
 
-                if tran:
-                    tran.status = "completed"
-                    tran.save(
-                        update_fields=["status"]
-                    )
+                member.points += tran.points_changed
 
-                    member = (
-                        Member.objects
-                        .select_for_update()
-                        .get(id=tran.member_id)
-                    )
+                member.save(
+                    update_fields=["points"]
+                )
 
-                    member.points += tran.points_changed
-
-                    member.save(
-                        update_fields=["points"]
-                    )
-
-            return Response("1|OK")
+        return Response("1|OK")
 
     @action(
         detail=False,
