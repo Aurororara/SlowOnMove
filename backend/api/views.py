@@ -15,6 +15,7 @@ from core.models import (
     PostLike, PostComment, PostReport, PoseAnalysis, PointTransaction,
     Task, MemberTask, Badge, MemberBadge, WorkoutMenu, WorkoutItem, PostTag,
     PostWorkoutPlan,
+    WorkoutMenuStep,
     PostWorkoutPlanStep,FriendRequest,
     Friendship, ChatMessage, RunInvitation,
     CommunityGroup, CommunityGroupMember, CommunityGroupInvitation,
@@ -1047,14 +1048,157 @@ class MemberBadgeViewSet(viewsets.ModelViewSet):
         return queryset
 
 class WorkoutMenuViewSet(viewsets.ModelViewSet):
-    queryset = WorkoutMenu.objects.all()
     serializer_class = WorkoutMenuSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
+    
+    def get_queryset(self):
+        return (
+            WorkoutMenu.objects
+            .filter(
+                Q(is_public=True) |
+                Q(member=self.request.user)
+            )
+            .order_by('-created_at')
+        )
+
+    def perform_create(self, serializer):
+        serializer.save(
+            member=self.request.user
+        )
+
+    @action(
+        detail=False,
+        methods=['post'],
+        url_path='apply',
+    )
+    def apply(self, request):
+        plan_id = request.data.get('post_workout_plan_id')
+
+        if not plan_id:
+            return Response(
+                {
+                    'error': '缺少 post_workout_plan_id',
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            plan = (
+                PostWorkoutPlan.objects
+                .prefetch_related('steps')
+                .get(id=plan_id)
+            )
+        except PostWorkoutPlan.DoesNotExist:
+            return Response(
+                {
+                    'error': '找不到運動計畫',
+                },
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        existing_menu = WorkoutMenu.objects.filter(
+            member=request.user,
+            source_plan=plan,
+        ).first()
+
+        if existing_menu:
+            return Response(
+                {
+                    'message': '此運動菜單已套用',
+                    'already_applied': True,
+                    'menu': self.get_serializer(
+                        existing_menu
+                    ).data,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        with transaction.atomic():
+            menu = WorkoutMenu.objects.create(
+                member=request.user,
+                source_plan=plan,
+                title=plan.title,
+                description=plan.summary,
+                difficulty=plan.difficulty,
+                total_minutes=plan.total_minutes,
+                is_public=False,
+            )
+
+            WorkoutMenuStep.objects.bulk_create([
+                WorkoutMenuStep(
+                    menu=menu,
+                    name=step.name,
+                    exercise_type=step.exercise_type,
+                    minutes=step.minutes,
+                    reps=step.reps,
+                    order=step.order,
+                )
+                for step in plan.steps.all()
+            ])
+
+            WorkoutItem.objects.create(
+                member=request.user,
+                menu=menu,
+            )
+
+        return Response(
+            {
+                'message': '運動菜單套用成功',
+                'already_applied': False,
+                'menu': self.get_serializer(
+                    menu
+                ).data,
+            },
+            status=status.HTTP_201_CREATED,
+        )
 
 class WorkoutItemViewSet(viewsets.ModelViewSet):
-    queryset = WorkoutItem.objects.all()
     serializer_class = WorkoutItemSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return (
+            WorkoutItem.objects
+            .filter(member=self.request.user)
+            .select_related('menu')
+            .order_by('-save_at')
+        )
+
+    def create(self, request, *args, **kwargs):
+        menu_id = request.data.get('menu')
+
+        if not menu_id:
+            return Response(
+                {
+                    'error': '缺少 menu',
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        exists = WorkoutItem.objects.filter(
+            member=request.user,
+            menu_id=menu_id,
+        ).exists()
+
+        if exists:
+            return Response(
+                {
+                    'message': '此運動菜單已套用',
+                    'already_applied': True,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        return super().create(
+            request,
+            *args,
+            **kwargs,
+        )
+
+    def perform_create(self, serializer):
+        serializer.save(
+            member=self.request.user
+        )
 
 class FriendViewSet(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]

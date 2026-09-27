@@ -181,6 +181,7 @@ class CommunityPost {
 // ============================================================
 
 class WorkoutPlanData {
+  final int? id;
   final String title;
   final String summary;
   final String difficulty;
@@ -188,6 +189,7 @@ class WorkoutPlanData {
   final List<WorkoutPlanStep> steps;
 
   const WorkoutPlanData({
+    this.id,
     required this.title,
     required this.summary,
     required this.difficulty,
@@ -199,6 +201,7 @@ class WorkoutPlanData {
     Map<String, dynamic> json,
   ) {
     return WorkoutPlanData(
+      id: (json['id'] as num?)?.toInt(),
       title: (json['title'] ?? '').toString(),
       summary: (json['summary'] ?? '').toString(),
       difficulty: (json['difficulty'] ?? '').toString(),

@@ -828,11 +828,78 @@ class WorkoutMenu(models.Model):
     member = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='workout_menus')
     title = models.CharField(max_length=255)
     description = models.CharField(max_length=255)
+    difficulty = models.CharField(max_length=50, default="中等")
+    total_minutes = models.IntegerField(default=0)
+    source_plan = models.ForeignKey(
+        'PostWorkoutPlan',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='applied_menus',
+    )
     is_public = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     update_at = models.DateTimeField(auto_now=True)
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['member', 'source_plan'],
+                name='unique_member_source_workout_plan',
+            ),
+        ]
 
 class WorkoutItem(models.Model):
     member = models.ForeignKey(Member, on_delete=models.CASCADE, related_name='workout_items')
     menu = models.ForeignKey(WorkoutMenu, on_delete=models.CASCADE, related_name='items')
     save_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=['member', 'menu'],
+                name='unique_member_workout_menu',
+            ),
+        ]
+
+
+class WorkoutMenuStep(models.Model):
+    EXERCISE_SLOW_JOGGING = "slow_jogging"
+    EXERCISE_SQUAT = "squat"
+
+    EXERCISE_TYPE_CHOICES = [
+        (EXERCISE_SLOW_JOGGING, "超慢跑"),
+        (EXERCISE_SQUAT, "深蹲"),
+    ]
+
+    menu = models.ForeignKey(
+        WorkoutMenu,
+        on_delete=models.CASCADE,
+        related_name="steps",
+    )
+
+    name = models.CharField(
+        max_length=255,
+    )
+
+    exercise_type = models.CharField(
+        max_length=30,
+        choices=EXERCISE_TYPE_CHOICES,
+        default=EXERCISE_SLOW_JOGGING,
+    )
+
+    minutes = models.IntegerField(
+        null=True,
+        blank=True,
+    )
+
+    reps = models.IntegerField(
+        null=True,
+        blank=True,
+    )
+
+    order = models.IntegerField(
+        default=0,
+    )
+
+    class Meta:
+        ordering = ["order"]

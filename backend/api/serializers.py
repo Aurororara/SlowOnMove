@@ -9,6 +9,7 @@ from core.models import (
     CommunityGroup, CommunityGroupMember, CommunityGroupInvitation,
     CommunityGroupActivity,
     CommunityGroupJoinRequest,
+    WorkoutMenuStep,
 )
 from rest_framework import serializers
 from core.models import Member
@@ -322,15 +323,58 @@ class MemberBadgeSerializer(serializers.ModelSerializer):
         model = MemberBadge
         fields = '__all__'
 
+class WorkoutMenuStepSerializer(
+    serializers.ModelSerializer
+):
+    class Meta:
+        model = WorkoutMenuStep
+        fields = [
+            "id",
+            "name",
+            "exercise_type",
+            "minutes",
+            "reps",
+            "order",
+        ]
+
 class WorkoutMenuSerializer(serializers.ModelSerializer):
+    steps = WorkoutMenuStepSerializer(
+        many=True,
+        read_only=True,
+    )
+
     class Meta:
         model = WorkoutMenu
-        fields = '__all__'
+        fields = [
+            "id",
+            "member",
+            "source_plan",
+            "title",
+            "description",
+            "difficulty",
+            "total_minutes",
+            "is_public",
+            "created_at",
+            "update_at",
+            "steps",
+        ]
+        read_only_fields = [
+            "id",
+            "member",
+            "source_plan",
+            "created_at",
+            "update_at",
+        ]
 
 class WorkoutItemSerializer(serializers.ModelSerializer):
     class Meta:
         model = WorkoutItem
         fields = '__all__'
+        read_only_fields = [
+            'id',
+            'member',
+            'save_at',
+        ]
 
 class FriendMemberSerializer(serializers.ModelSerializer):
     name = serializers.SerializerMethodField()

@@ -32,8 +32,17 @@ router.register(r'tasks', TaskViewSet)
 router.register(r'member-tasks', MemberTaskViewSet)
 router.register(r'badges', BadgeViewSet)
 router.register(r'member-badges', MemberBadgeViewSet)
-router.register(r'workout-menus', WorkoutMenuViewSet)
-router.register(r'workout-items', WorkoutItemViewSet)
+router.register(
+    r'workout-menus',
+    WorkoutMenuViewSet,
+    basename='workout-menu',
+)
+
+router.register(
+    r'workout-items',
+    WorkoutItemViewSet,
+    basename='workout-item',
+)
 
 urlpatterns = [
     path('auth/google/', GoogleLoginView.as_view(), name='auth-google'),
