@@ -923,3 +923,56 @@ class WorkoutMenuStep(models.Model):
 
     class Meta:
         ordering = ["order"]
+
+class WorkoutMenuSession(models.Model):
+    STATUS_IN_PROGRESS = "in_progress"
+    STATUS_COMPLETED = "completed"
+    STATUS_ABANDONED = "abandoned"
+
+    STATUS_CHOICES = [
+        (STATUS_IN_PROGRESS, "進行中"),
+        (STATUS_COMPLETED, "已完成"),
+        (STATUS_ABANDONED, "已中止"),
+    ]
+
+    member = models.ForeignKey(
+        Member,
+        on_delete=models.CASCADE,
+        related_name="workout_menu_sessions",
+    )
+
+    menu = models.ForeignKey(
+        WorkoutMenu,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sessions",
+    )
+
+    menu_title = models.CharField(
+        max_length=255,
+        blank=True,
+        default="",
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default=STATUS_IN_PROGRESS,
+    )
+
+    started_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+
+    completed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+    )
+
+    def __str__(self):
+        return (
+            f"{self.member_id} - "
+            f"{self.menu_id} - "
+            f"{self.status}"
+        )

@@ -72,4 +72,51 @@ class WorkoutMenuService {
       response.data,
     );
   }
+
+  Future<Map<String, dynamic>> createMenuSession(
+    int menuId,
+  ) async {
+    final response = await _api.dio.post(
+      'workout-menu-sessions/',
+      data: {
+        'menu': menuId,
+      },
+    );
+
+    return Map<String, dynamic>.from(
+      response.data,
+    );
+  }
+
+  Future<Map<String, dynamic>> completeMenuSession(
+    int sessionId,
+  ) async {
+    final response = await _api.dio.post(
+      'workout-menu-sessions/$sessionId/complete/',
+    );
+
+    return Map<String, dynamic>.from(
+      response.data,
+    );
+  }
+
+  Future<Map<String, dynamic>> abandonMenuSession(
+    int sessionId,
+  ) async {
+    final response = await _api.dio.post(
+      'workout-menu-sessions/$sessionId/abandon/',
+    );
+
+    return Map<String, dynamic>.from(
+      response.data,
+    );
+  }
+
+  Future<void> deleteWorkoutItem(
+    int itemId,
+  ) async {
+    await _api.dio.delete(
+      'workout-items/$itemId/',
+    );
+  }
 }

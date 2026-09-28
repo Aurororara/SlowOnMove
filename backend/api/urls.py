@@ -6,6 +6,7 @@ from .views import (
     PostLikeViewSet, PostCommentViewSet, PostReportViewSet, PoseAnalysisViewSet, PointTransactionViewSet,
     TaskViewSet, MemberTaskViewSet, BadgeViewSet, MemberBadgeViewSet, WorkoutMenuViewSet, WorkoutItemViewSet, FriendViewSet, ChatViewSet, RunInvitationViewSet, CommunityGroupViewSet, CommunityGroupInvitationViewSet,
     PointsViewSet, AdminAnalyticsView,
+    WorkoutMenuSessionViewSet,
 )
 from .auth_views import GoogleLoginView, FacebookLoginView, RegisterView, LoginView
 
@@ -42,6 +43,11 @@ router.register(
     r'workout-items',
     WorkoutItemViewSet,
     basename='workout-item',
+)
+router.register(
+    r"workout-menu-sessions",
+    WorkoutMenuSessionViewSet,
+    basename="workout-menu-session",
 )
 
 urlpatterns = [

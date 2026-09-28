@@ -10,6 +10,7 @@ from core.models import (
     CommunityGroupActivity,
     CommunityGroupJoinRequest,
     WorkoutMenuStep,
+    WorkoutMenuSession,
 )
 from rest_framework import serializers
 from core.models import Member
@@ -350,6 +351,8 @@ class WorkoutMenuSerializer(serializers.ModelSerializer):
         many=True,
         read_only=True,
     )
+    completed_count = serializers.SerializerMethodField()
+    last_completed_at = serializers.SerializerMethodField()
 
     class Meta:
         model = WorkoutMenu
@@ -365,6 +368,8 @@ class WorkoutMenuSerializer(serializers.ModelSerializer):
             "created_at",
             "update_at",
             "steps",
+            "completed_count",
+            "last_completed_at",
         ]
         read_only_fields = [
             "id",
@@ -372,7 +377,29 @@ class WorkoutMenuSerializer(serializers.ModelSerializer):
             "source_plan",
             "created_at",
             "update_at",
+            "completed_count",
+            "last_completed_at",
         ]
+    
+    def get_completed_count(self, obj):
+        return obj.sessions.filter(
+            status=WorkoutMenuSession.STATUS_COMPLETED,
+        ).count()
+
+    def get_last_completed_at(self, obj):
+        session = (
+            obj.sessions
+            .filter(
+                status=WorkoutMenuSession.STATUS_COMPLETED,
+            )
+            .order_by("-completed_at")
+            .first()
+        )
+
+        if session is None:
+            return None
+
+        return session.completed_at
 
 class WorkoutItemSerializer(serializers.ModelSerializer):
     menu_detail = WorkoutMenuSerializer(
@@ -393,6 +420,28 @@ class WorkoutItemSerializer(serializers.ModelSerializer):
             'id',
             'member',
             'save_at',
+        ]
+
+class WorkoutMenuSessionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WorkoutMenuSession
+        fields = [
+            "id",
+            "member",
+            "menu",
+            "menu_title",
+            "status",
+            "started_at",
+            "completed_at",
+        ]
+
+        read_only_fields = [
+            "id",
+            "member",
+            "menu_title",
+            "status",
+            "started_at",
+            "completed_at",
         ]
 
 class FriendMemberSerializer(serializers.ModelSerializer):

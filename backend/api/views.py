@@ -23,12 +23,13 @@ from core.models import (
     CommunityGroupActivityParticipant,
     CommunityGroupJoinRequest,
     FeatureUnlock,
+    WorkoutMenuSession,
 )
 from .serializers import (
     MemberSerializer, AdminMemberListSerializer,AdminPostReportSerializer, BodyRecordSerializer, BloodPressureRecordSerializer, BoardRankingSerializer,
     CommunityPostSerializer, FavoriteSerializer, TrainingLogSerializer,
     PostLikeSerializer, PostCommentSerializer, PostReportSerializer, PoseAnalysisSerializer, PointTransactionSerializer,
-    TaskSerializer, MemberTaskSerializer, BadgeSerializer, MemberBadgeSerializer, WorkoutMenuSerializer, WorkoutItemSerializer,FriendMemberSerializer,
+    TaskSerializer, MemberTaskSerializer, BadgeSerializer, MemberBadgeSerializer, WorkoutMenuSerializer, WorkoutMenuSessionSerializer, WorkoutItemSerializer,FriendMemberSerializer,
     FriendRequestSerializer,
     FriendSearchSerializer,
     ChatMessageSerializer,
@@ -1385,6 +1386,107 @@ class WorkoutItemViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(
             member=self.request.user
+        )
+
+class WorkoutMenuSessionViewSet(viewsets.ModelViewSet):
+    serializer_class = WorkoutMenuSessionSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return (
+            WorkoutMenuSession.objects
+            .filter(member=self.request.user)
+            .select_related("menu")
+            .order_by("-started_at")
+        )
+
+    def perform_create(self, serializer):
+        menu = serializer.validated_data["menu"]
+
+        serializer.save(
+            member=self.request.user,
+            menu_title=menu.title,
+            status=WorkoutMenuSession.STATUS_IN_PROGRESS,
+        )
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="complete",
+    )
+    def complete(self, request, pk=None):
+        session = self.get_object()
+
+        if session.status == WorkoutMenuSession.STATUS_COMPLETED:
+            return Response(
+                {
+                    "message": "此菜單訓練已完成",
+                    "session": self.get_serializer(session).data,
+                },
+                status=status.HTTP_200_OK,
+            )
+
+        session.status = WorkoutMenuSession.STATUS_COMPLETED
+        session.completed_at = timezone.now()
+
+        session.save(
+            update_fields=[
+                "status",
+                "completed_at",
+            ]
+        )
+
+        return Response(
+            {
+                "message": "菜單訓練完成",
+                "session": self.get_serializer(session).data,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="abandon",
+    )
+    def abandon(self, request, pk=None):
+        session = self.get_object()
+
+        if session.status == WorkoutMenuSession.STATUS_COMPLETED:
+            return Response(
+                {
+                    "error": "已完成的菜單訓練不能中止",
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        session.status = WorkoutMenuSession.STATUS_ABANDONED
+
+        session.save(
+            update_fields=[
+                "status",
+            ]
+        )
+
+        return Response(
+            {
+                "message": "已中止菜單訓練",
+                "session": self.get_serializer(session).data,
+            },
+            status=status.HTTP_200_OK,
+        )
+    
+    def destroy(self, request, *args, **kwargs):
+        item = self.get_object()
+        menu = item.menu
+
+        item.delete()
+
+        if menu.member_id == request.user.id:
+            menu.delete()
+
+        return Response(
+            status=status.HTTP_204_NO_CONTENT,
         )
 
 class FriendViewSet(viewsets.ViewSet):

@@ -25,6 +25,89 @@ class _MyWorkoutMenuScreenState extends State<MyWorkoutMenuScreen> {
     _loadMenus();
   }
 
+  Future<void> _confirmDeleteWorkoutItem(
+    Map<String, dynamic> item,
+  ) async {
+    final itemId = (item['id'] as num?)?.toInt();
+
+    if (itemId == null) {
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('刪除菜單'),
+          content: const Text(
+            '確定要刪除這份運動菜單嗎？',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(
+                  dialogContext,
+                  false,
+                );
+              },
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(
+                  dialogContext,
+                  true,
+                );
+              },
+              child: const Text(
+                '刪除',
+                style: TextStyle(
+                  color: Colors.redAccent,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    try {
+      await _service.deleteWorkoutItem(
+        itemId,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _items.removeWhere(
+          (element) => element['id'] == itemId,
+        );
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            '已刪除運動菜單',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            '刪除運動菜單失敗',
+          ),
+        ),
+      );
+    }
+  }
+
   Future<void> _loadMenus() async {
     setState(() {
       _isLoading = true;
@@ -166,6 +249,8 @@ class _MyWorkoutMenuScreenState extends State<MyWorkoutMenuScreen> {
 
     final int totalMinutes = (menu['total_minutes'] as num?)?.toInt() ?? 0;
 
+    final completedCount = (menu['completed_count'] as num?)?.toInt() ?? 0;
+
     final List<dynamic> steps = menu['steps'] is List
         ? List<dynamic>.from(
             menu['steps'],
@@ -203,6 +288,16 @@ class _MyWorkoutMenuScreenState extends State<MyWorkoutMenuScreen> {
                   ),
                 ),
               ),
+              IconButton(
+                onPressed: () {
+                  _confirmDeleteWorkoutItem(item);
+                },
+                icon: const Icon(
+                  Icons.delete_outline,
+                  color: Colors.redAccent,
+                ),
+                tooltip: '刪除菜單',
+              ),
             ],
           ),
           if (description.isNotEmpty) ...[
@@ -227,6 +322,27 @@ class _MyWorkoutMenuScreenState extends State<MyWorkoutMenuScreen> {
               _MenuPill(
                 icon: Icons.local_fire_department_outlined,
                 text: difficulty,
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Icon(
+                Icons.check_circle_outline,
+                size: 18,
+                color: completedCount == 0 ? Colors.grey : Colors.green,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                completedCount == 0 ? '尚未完成過' : '已完成 $completedCount 次',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: completedCount == 0
+                      ? Colors.grey.shade600
+                      : Colors.green.shade700,
+                ),
               ),
             ],
           ),
@@ -256,8 +372,8 @@ class _MyWorkoutMenuScreenState extends State<MyWorkoutMenuScreen> {
             child: FilledButton.icon(
               onPressed: steps.isEmpty
                   ? null
-                  : () {
-                      Navigator.push(
+                  : () async {
+                      final completed = await Navigator.push<bool>(
                         context,
                         MaterialPageRoute(
                           builder: (_) => WorkoutSessionScreen(
@@ -265,6 +381,10 @@ class _MyWorkoutMenuScreenState extends State<MyWorkoutMenuScreen> {
                           ),
                         ),
                       );
+
+                      if (completed == true) {
+                        await _loadMenus();
+                      }
                     },
               style: FilledButton.styleFrom(
                 backgroundColor: Colors.black87,
