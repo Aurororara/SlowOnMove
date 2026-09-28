@@ -1,5 +1,10 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:show_on_move/main_screen.dart';
+import 'package:show_on_move/config/api_config.dart';
+import 'package:show_on_move/services/user_session.dart';
 import 'login_screen.dart';
 
 class OnboardingSetupScreen extends StatefulWidget {
@@ -11,6 +16,7 @@ class OnboardingSetupScreen extends StatefulWidget {
 
 class _OnboardingSetupScreenState extends State<OnboardingSetupScreen> {
   int currentStep = 0;
+  bool _isSaving = false;
 
   String? selectedFrequency;
   List<String> selectedGoals = [];
@@ -48,23 +54,15 @@ class _OnboardingSetupScreenState extends State<OnboardingSetupScreen> {
 
   int get totalSteps => 4;
 
-  void nextStep() {
+  Future<void> nextStep() async {
     if (currentStep < totalSteps - 1) {
       setState(() {
         currentStep++;
       });
-    } else {
-      // 這裡決定了設定完後去哪裡。
-      // 如果 ExerciseSelectionScreen 就是你所謂的「舊版」，請將其替換為新版的 Class Name
-      if (mounted) {
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (context) => const MainScreen(),
-          ),
-        );
-      }
+      return;
     }
+
+    await _savePreferences();
   }
 
   void previousStep() {
@@ -84,6 +82,36 @@ class _OnboardingSetupScreenState extends State<OnboardingSetupScreen> {
     }
   }
 
+  String _mapGoalToBackend() {
+    if (selectedGoals.contains('增肌')) {
+      return 'muscle_gain';
+    }
+
+    if (selectedGoals.contains('減重')) {
+      return 'weight_loss';
+    }
+
+    return 'health';
+  }
+
+  String _mapFrequencyToBackend() {
+    switch (selectedFrequency) {
+      case '每週 1-2 次':
+      case '從不 / 剛開始':
+        return '1_2';
+
+      case '每週 3-4 次':
+        return '3_4';
+
+      case '每週 5-6 次':
+      case '每天':
+        return '5_plus';
+
+      default:
+        return '1_2';
+    }
+  }
+
   bool canContinue() {
     switch (currentStep) {
       case 0:
@@ -96,6 +124,60 @@ class _OnboardingSetupScreenState extends State<OnboardingSetupScreen> {
         return selectedTime.isNotEmpty;
       default:
         return false;
+    }
+  }
+
+  Future<void> _savePreferences() async {
+    setState(() {
+      _isSaving = true;
+    });
+
+    try {
+      final response = await http.patch(
+        Uri.parse(
+          '${ApiConfig.baseUrl}members/${UserSession.memberId}/',
+        ),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({
+          'exercise_goal': _mapGoalToBackend(),
+          'exercise_frequency': _mapFrequencyToBackend(),
+        }),
+      );
+
+      if (!mounted) return;
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => const MainScreen(),
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '儲存失敗：${response.statusCode}',
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('無法連線到伺服器：$e'),
+        ),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
     }
   }
 
@@ -156,7 +238,7 @@ class _OnboardingSetupScreenState extends State<OnboardingSetupScreen> {
               width: double.infinity,
               height: 56,
               child: ElevatedButton(
-                onPressed: canContinue() ? nextStep : null,
+                onPressed: canContinue() && !_isSaving ? nextStep : null,
                 style: ElevatedButton.styleFrom(
                   backgroundColor:
                       canContinue() ? Colors.black : Colors.grey.shade300,
@@ -166,13 +248,23 @@ class _OnboardingSetupScreenState extends State<OnboardingSetupScreen> {
                     borderRadius: BorderRadius.circular(18),
                   ),
                 ),
-                child: Text(
-                  currentStep == totalSteps - 1 ? '完成' : '繼續',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
+                child: _isSaving
+                    ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          valueColor:
+                              AlwaysStoppedAnimation<Color>(Colors.white),
+                        ),
+                      )
+                    : Text(
+                        currentStep == totalSteps - 1 ? '完成' : '繼續',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
               ),
             ),
           )

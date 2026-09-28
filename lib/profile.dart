@@ -39,6 +39,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int _badgeCount = 0;
   final ApiService _api = ApiService();
 
+  String _exerciseGoal = 'health';
+  String _exerciseFrequency = '1_2';
+
   String get _fullName => UserSession.displayName;
   String get _email => UserSession.email;
 
@@ -61,6 +64,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     var totalSteps = _totalSteps;
     var badgeCount = _badgeCount;
 
+    var exerciseGoal = _exerciseGoal;
+    var exerciseFrequency = _exerciseFrequency;
+
+    // 取得運動統計
     try {
       final response = await _api.dio.get(
         'training-logs/my-stats/',
@@ -80,10 +87,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
     }
 
+    // 取得會員資料與運動習慣
+    try {
+      final memberResponse = await _api.dio.get(
+        'members/$currentMemberId/',
+      );
+
+      if (memberResponse.statusCode == 200 && memberResponse.data != null) {
+        final memberData = Map<String, dynamic>.from(memberResponse.data);
+        exerciseGoal = memberData['exercise_goal'] ?? 'health';
+        exerciseFrequency = memberData['exercise_frequency'] ?? '1_2';
+      }
+    } catch (e) {
+      debugPrint('抓取運動習慣失敗: ${_api.getErrorMessage(e)}');
+    }
+
+    // 取得勳章數量
     try {
       final earnedDates = await BadgeProgressService().loadEarnedDates(
         memberId: currentMemberId,
       );
+
       badgeCount = earnedDates.length;
     } catch (e) {
       debugPrint('抓取勳章數量失敗: $e');
@@ -98,6 +122,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _totalCalories = totalCalories;
       _totalSteps = totalSteps;
       _badgeCount = badgeCount;
+      _exerciseGoal = exerciseGoal;
+      _exerciseFrequency = exerciseFrequency;
       _isLoading = false;
     });
   }
@@ -107,6 +133,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _fetchProfileData(),
       widget.store.loadSavedPosts(),
     ]);
+  }
+
+  String _goalLabel(String goal) {
+    switch (goal) {
+      case 'weight_loss':
+        return '減脂';
+
+      case 'muscle_gain':
+        return '增肌';
+
+      case 'health':
+      default:
+        return '維持健康';
+    }
+  }
+
+  String _frequencyLabel(String frequency) {
+    switch (frequency) {
+      case '3_4':
+        return '每週 3–4 次';
+
+      case '5_plus':
+        return '每週 5 次以上';
+
+      case '1_2':
+      default:
+        return '每週 1–2 次';
+    }
   }
 
   @override
@@ -135,11 +189,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             const SizedBox(height: 16),
+
+                            // 個人基本資料卡
                             _buildDarkProfileCard(context),
+
                             const SizedBox(height: 24),
+
+                            // 運動統計
                             _buildStatsGrid(),
+
                             const SizedBox(height: 32),
+
+                            // 我的資料與紀錄
                             _buildSectionTitle('我的資料與紀錄'),
+
                             _buildMenuButton(
                               icon: Icons.history,
                               title: '歷史紀錄',
@@ -155,6 +218,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 );
                               },
                             ),
+
                             _buildMenuButton(
                               icon: Icons.monitor_heart_outlined,
                               title: '健康紀錄',
@@ -169,6 +233,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 );
                               },
                             ),
+
                             _buildMenuButton(
                               icon: Icons.auto_awesome,
                               title: '月度回顧',
@@ -183,6 +248,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 );
                               },
                             ),
+
                             _buildMenuButton(
                               icon: Icons.shopping_bag_outlined,
                               title: '方案購買',
@@ -197,6 +263,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 );
                               },
                             ),
+
                             _buildMenuButton(
                               icon: Icons.favorite_border,
                               title: '我的珍藏',
@@ -215,6 +282,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 );
                               },
                             ),
+
                             _buildMenuButton(
                               icon: Icons.fitness_center,
                               title: '我的菜單',
@@ -229,21 +297,54 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 );
                               },
                             ),
+
                             const SizedBox(height: 32),
+
+                            // 個人資料
                             _buildSectionTitle('個人資料'),
+
                             const SizedBox(height: 16),
+
                             _buildInfoTile(
                               icon: Icons.person_outline,
                               label: '姓名',
                               value: _fullName,
                             ),
+
                             const SizedBox(height: 12),
+
                             _buildInfoTile(
                               icon: Icons.mail_outline,
                               label: 'Email',
                               value: _email,
                             ),
+
                             const SizedBox(height: 24),
+
+                            // 我的運動習慣
+                            _buildSectionTitle('我的運動習慣'),
+
+                            const SizedBox(height: 16),
+
+                            _buildInfoTile(
+                              icon: Icons.flag_outlined,
+                              label: '運動目標',
+                              value: _goalLabel(_exerciseGoal),
+                            ),
+
+                            const SizedBox(height: 12),
+
+                            _buildInfoTile(
+                              icon: Icons.calendar_month_outlined,
+                              label: '運動頻率',
+                              value: _frequencyLabel(
+                                _exerciseFrequency,
+                              ),
+                            ),
+
+                            const SizedBox(height: 24),
+
+                            // 管理後台
                             _buildMenuButton(
                               icon: Icons.admin_panel_settings,
                               title: '管理後台',
@@ -259,8 +360,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                 );
                               },
                             ),
+
                             const SizedBox(height: 32),
+
+                            // 登出
                             _buildLogOutButton(context),
+
                             const SizedBox(height: 40),
                           ],
                         ),
@@ -347,7 +452,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _buildDarkProfileCard(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(20, 8, 8, 32),
+      padding: const EdgeInsets.fromLTRB(
+        20,
+        8,
+        8,
+        32,
+      ),
       decoration: BoxDecoration(
         color: const Color(0xFF0F1522),
         borderRadius: BorderRadius.circular(24),
@@ -427,6 +537,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       builder: (_) => const BadgeCollectionScreen(),
                     ),
                   );
+
                   await _fetchProfileData();
                 },
               ),
@@ -552,24 +663,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
             color: const Color(0xFF4A5568),
           ),
           const SizedBox(width: 16),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: Color(0xFF718096),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF718096),
+                  ),
                 ),
-              ),
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),
@@ -724,7 +838,9 @@ class _SavedPostsScreenState extends State<SavedPostsScreen> {
     );
   }
 
-  Future<void> _toggleLike(CommunityPost post) async {
+  Future<void> _toggleLike(
+    CommunityPost post,
+  ) async {
     final success = await widget.store.toggleLikeByPostId(
       post.id,
     );
@@ -742,7 +858,9 @@ class _SavedPostsScreenState extends State<SavedPostsScreen> {
     );
   }
 
-  Future<void> _openComments(CommunityPost post) async {
+  Future<void> _openComments(
+    CommunityPost post,
+  ) async {
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -754,7 +872,9 @@ class _SavedPostsScreenState extends State<SavedPostsScreen> {
     );
   }
 
-  Future<void> _toggleSave(CommunityPost post) async {
+  Future<void> _toggleSave(
+    CommunityPost post,
+  ) async {
     final success = await widget.store.toggleSaveByPostId(
       post.id,
     );
@@ -772,7 +892,9 @@ class _SavedPostsScreenState extends State<SavedPostsScreen> {
     );
   }
 
-  void _openDetail(CommunityPost post) {
+  void _openDetail(
+    CommunityPost post,
+  ) {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => SavedPostDetailScreen(
@@ -851,7 +973,9 @@ class _SavedPostsScreenState extends State<SavedPostsScreen> {
                             ? ListView(
                                 physics: const AlwaysScrollableScrollPhysics(),
                                 children: [
-                                  const SizedBox(height: 160),
+                                  const SizedBox(
+                                    height: 160,
+                                  ),
                                   Text(
                                     _selectedIndex == 2
                                         ? '還沒有收藏的運動計畫'
@@ -870,8 +994,9 @@ class _SavedPostsScreenState extends State<SavedPostsScreen> {
                                 physics: const AlwaysScrollableScrollPhysics(),
                                 padding: const EdgeInsets.all(16),
                                 itemCount: posts.length,
-                                separatorBuilder: (_, __) =>
-                                    const SizedBox(height: 12),
+                                separatorBuilder: (_, __) => const SizedBox(
+                                  height: 12,
+                                ),
                                 itemBuilder: (context, index) {
                                   final post = posts[index];
 
@@ -968,7 +1093,9 @@ class _SavedPostDetailScreenState extends State<SavedPostDetailScreen> {
     return null;
   }
 
-  Future<void> _openShare(CommunityPost post) async {
+  Future<void> _openShare(
+    CommunityPost post,
+  ) async {
     await showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -1028,8 +1155,6 @@ class _SavedPostDetailScreenState extends State<SavedPostDetailScreen> {
       return;
     }
 
-    // 在「我的珍藏」詳細頁取消收藏後，
-    // 該貼文已經不屬於收藏內容，所以返回上一頁。
     if (_findPost() == null) {
       Navigator.of(context).pop();
     }
@@ -1057,7 +1182,9 @@ class _SavedPostDetailScreenState extends State<SavedPostDetailScreen> {
           ),
           body: post == null
               ? const Center(
-                  child: Text('這則內容已從收藏移除'),
+                  child: Text(
+                    '這則內容已從收藏移除',
+                  ),
                 )
               : SingleChildScrollView(
                   padding: const EdgeInsets.all(16),

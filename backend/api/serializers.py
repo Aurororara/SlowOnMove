@@ -28,7 +28,15 @@ class AdminMemberListSerializer(serializers.ModelSerializer):
 class MemberSerializer(serializers.ModelSerializer):
     class Meta:
         model = Member
-        fields = ['id', 'username', 'email', 'points', 'date_joined',]
+        fields = [
+            'id',
+            'username',
+            'email',
+            'points',
+            'date_joined',
+            'exercise_goal',
+            'exercise_frequency',
+        ]
         read_only_fields = ['id', 'date_joined']
 
 

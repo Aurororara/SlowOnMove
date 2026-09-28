@@ -8,6 +8,26 @@ class Member(AbstractUser):
     provider_id = models.CharField(max_length=100, blank=True, null=True)
     points = models.IntegerField(default=0)
 
+    exercise_goal = models.CharField(
+        max_length=30,
+        choices=[
+            ("weight_loss", "減脂"),
+            ("muscle_gain", "增肌"),
+            ("health", "維持健康"),
+        ],
+        default="health",
+    )
+
+    exercise_frequency = models.CharField(
+        max_length=20,
+        choices=[
+            ("1_2", "每週 1–2 次"),
+            ("3_4", "每週 3–4 次"),
+            ("5_plus", "每週 5 次以上"),
+        ],
+        default="1_2",
+    )
+
 class FriendRequest(models.Model):
     STATUS_PENDING = "pending"
     STATUS_ACCEPTED = "accepted"
