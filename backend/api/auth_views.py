@@ -30,6 +30,15 @@ def get_google_client_ids():
 def create_jwt_response(user, created, message):
     refresh = RefreshToken.for_user(user)
 
+    # 判斷是否為管理員 (1 = 管理員, 0 = 一般會員)
+    # 如果 user 本身有 role 欄位就讀 role，如果沒有就看 is_staff 或 is_superuser
+    if hasattr(user, 'role'):
+        role_val = int(user.role)
+    elif user.is_staff or user.is_superuser:
+        role_val = 1
+    else:
+        role_val = 0
+
     return Response({
         "message": message,
         "access": str(refresh.access_token),
@@ -39,10 +48,11 @@ def create_jwt_response(user, created, message):
             "email": user.email,
             "name": user.first_name,
             "avatar": getattr(user, "avatar", ""),
+            "role": role_val,                 # 0 或 1
+            "is_staff": (role_val == 1),       # True 或 False
         },
         "is_new_user": created,
     }, status=status.HTTP_200_OK)
-
 
 class GoogleLoginView(APIView):
     permission_classes = [AllowAny]

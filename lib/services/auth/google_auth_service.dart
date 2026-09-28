@@ -73,6 +73,8 @@ class GoogleAuthService {
           newName: userData['name'] ?? '',
           newEmail: userData['email'] ?? '',
           newAvatar: userData['avatar'] ?? '',
+          newRole: (userData['role'] as num?)?.toInt() ??
+              (userData['is_staff'] == true ? 1 : 0),
         );
 
         return data['is_new_user'] == true;

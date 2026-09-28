@@ -73,6 +73,8 @@ class FacebookAuthService {
           newName: userData['name'] ?? '',
           newEmail: userData['email'] ?? '',
           newAvatar: userData['avatar'] ?? avatarUrl ?? '',
+          newRole: (userData['role'] as num?)?.toInt() ??
+              (userData['is_staff'] == true ? 1 : 0),
         );
 
         print('Facebook 登入成功');

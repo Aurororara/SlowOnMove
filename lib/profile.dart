@@ -344,22 +344,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                             const SizedBox(height: 24),
 
-                            // 管理後台
-                            _buildMenuButton(
-                              icon: Icons.admin_panel_settings,
-                              title: '管理後台',
-                              subtitle: 'Slow On Move 系統監控與管理',
-                              iconColor: Colors.black,
-                              onTap: () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) =>
-                                        const AdminDashboardScreen(),
-                                  ),
-                                );
-                              },
-                            ),
+                            // 管理後台 (只對管理員開放)
+                            if (UserSession.isAdmin) ...[
+                              _buildMenuButton(
+                                icon: Icons.admin_panel_settings,
+                                title: '管理後台',
+                                subtitle: 'Slow On Move 系統監控與管理',
+                                iconColor: Colors.black,
+                                onTap: () {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          const AdminDashboardScreen(),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ],
 
                             const SizedBox(height: 32),
 

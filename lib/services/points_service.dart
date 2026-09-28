@@ -61,4 +61,24 @@ class PointsService {
 
     return [];
   }
+
+  // 管理員查詢全平台點數交易
+  Future<List<Map<String, dynamic>>> getAdminTransactions(
+      {String? type}) async {
+    final Map<String, dynamic> params = {'all': 'true'};
+    if (type != null && type != 'all') {
+      params['type'] = type;
+    }
+
+    final response = await _api.dio.get(
+      'points/transactions/',
+      queryParameters: params,
+    );
+
+    final data = response.data;
+    if (data is List) {
+      return data.map((item) => Map<String, dynamic>.from(item)).toList();
+    }
+    return [];
+  }
 }

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../config/api_config.dart';
+import 'admin_points_screen.dart';
 
 class AdminAnalyticsScreen extends StatefulWidget {
   const AdminAnalyticsScreen({super.key});
@@ -113,7 +114,7 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
                     _buildPainAnalyticsSection(),
                     const SizedBox(height: 20),
 
-                    // 6. 點數與綠界營收區塊
+                    // 6. 點數與綠界營收區塊 (內含明細查詢按鈕)
                     _buildPointsRevenueSection(),
                     const SizedBox(height: 24),
                   ],
@@ -409,7 +410,6 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
             ],
           ),
           const SizedBox(height: 16),
-
           const Text(
             '登入方式分佈 (Login Providers)',
             style: TextStyle(
@@ -620,7 +620,6 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
     final painData = _analyticsData?['pain_analytics'] ?? {};
     final int totalReports = painData['total_pain_reports'] ?? 0;
 
-    // 部位分佈字典，例如: {'左腿/膝蓋': 8, '右腿/膝蓋': 5}
     final Map<String, dynamic> partsMap =
         Map<String, dynamic>.from(painData['top_pain_parts'] ?? {});
 
@@ -701,7 +700,7 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
     );
   }
 
-  // 6. 點數與綠界營收區塊
+  // 6. 點數與綠界營收區塊 (包含點數明細跳轉按鈕)
   Widget _buildPointsRevenueSection() {
     final pData = _analyticsData?['points_analytics'] ?? {};
     final tTypes = pData['transaction_types'] ?? {};
@@ -725,6 +724,34 @@ class _AdminAnalyticsScreenState extends State<AdminAnalyticsScreen> {
           _buildSectionHeader(
             icon: Icons.payments_outlined,
             title: '點數與綠界 (ECPay) 金流營收 (Points & Financials)',
+          ),
+          const SizedBox(height: 12),
+
+          // 查詢交易明細按鈕
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const AdminPointsScreen()),
+                );
+              },
+              icon: const Icon(Icons.receipt_long,
+                  size: 18, color: Colors.black87),
+              label: const Text(
+                '查詢全平台點數交易明細',
+                style: TextStyle(
+                    color: Colors.black87, fontWeight: FontWeight.bold),
+              ),
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: Colors.grey.shade300),
+                backgroundColor: const Color(0xFFF9FAFB),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
           ),
           const SizedBox(height: 14),
 

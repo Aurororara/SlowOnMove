@@ -5,6 +5,12 @@ class UserSession {
   static String displayName = 'Lamei';
   static String email = 'lamei@example.com';
   static String avatar = '';
+  // 新增：角色標記 (0: 一般使用者, 1: 管理員)
+  static int role = 0;
+
+  // 判斷是否為管理員
+  static bool get isAdmin => role == 1;
+
   static final ValueNotifier<double> walletBalanceNotifier =
       ValueNotifier<double>(1200.0);
   static final Set<String> _dailyRewardClaimedDates = <String>{};
@@ -14,11 +20,13 @@ class UserSession {
     required String newName,
     required String newEmail,
     String newAvatar = '',
+    int newRole = 0, // 支援傳入 role
   }) {
     memberId = newMemberId;
     displayName = newName;
     email = newEmail;
     avatar = newAvatar;
+    role = newRole;
   }
 
   static void clearSession() {
@@ -26,6 +34,7 @@ class UserSession {
     displayName = '';
     email = '';
     avatar = '';
+    role = 0;
     walletBalanceNotifier.value = 1200.0;
     _dailyRewardClaimedDates.clear();
   }

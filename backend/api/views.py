@@ -3422,11 +3422,21 @@ class PointsViewSet(viewsets.ViewSet):
 
     @action(detail=False, methods=["get"], url_path="transactions")
     def transactions(self, request):
-        transactions = (
-            PointTransaction.objects
-            .filter(member=request.user)
-            .order_by("-created_at")
-        )
+        user = request.user
+        is_all = request.query_params.get("all") == "true"
+        tran_type = request.query_params.get("type")
+
+        # 如果帶有 all=true 且具有工作人員身份，就查全平台；否則只查自己
+        if is_all and (getattr(user, "is_staff", False) or user.is_superuser):
+            queryset = PointTransaction.objects.all().select_related("member")
+        else:
+            queryset = PointTransaction.objects.filter(member=user)
+
+        # 支援類型篩選 (top_up, spend, reward)
+        if tran_type and tran_type != "all":
+            queryset = queryset.filter(tran_type=tran_type)
+
+        transactions = queryset.order_by("-created_at")[:100]
 
         serializer = PointTransactionSerializer(
             transactions,
