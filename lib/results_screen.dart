@@ -359,7 +359,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
     final bool isSquat = widget.exerciseTitle == '深蹲';
     final int totalMins = widget.timeSeconds ~/ 60;
     final int fixedCalories = caloriesBurned;
-    final int fixedSteps = isSquat ? 0 : widget.stepCount;
+    final int fixedSteps = widget.stepCount; // 讓深蹲的次數也存進資料庫
 
     final List<String> painList =
         _recordedPainParts.map((e) => e.label).toList();
@@ -625,7 +625,14 @@ class _ResultsScreenState extends State<ResultsScreen> {
                           ),
                         )
                       else
-                        Expanded(child: Container()),
+                        Expanded(
+                          child: _buildStatCard(
+                            '完成次數',
+                            '${widget.stepCount} 次',
+                            Icons.fitness_center_outlined,
+                            Colors.deepOrangeAccent,
+                          ),
+                        ),
                     ],
                   ),
 
