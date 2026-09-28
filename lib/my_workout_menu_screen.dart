@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-
+import 'workout_session_screen.dart';
 import 'services/workout_menu_service.dart';
 
 class MyWorkoutMenuScreen extends StatefulWidget {
@@ -250,6 +250,46 @@ class _MyWorkoutMenuScreenState extends State<MyWorkoutMenuScreen> {
               },
             ),
           ],
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: steps.isEmpty
+                  ? null
+                  : () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => WorkoutSessionScreen(
+                            menu: menu,
+                          ),
+                        ),
+                      );
+                    },
+              style: FilledButton.styleFrom(
+                backgroundColor: Colors.black87,
+                foregroundColor: Colors.white,
+                disabledBackgroundColor: Colors.grey.shade300,
+                disabledForegroundColor: Colors.grey.shade600,
+                padding: const EdgeInsets.symmetric(
+                  vertical: 16,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+              icon: const Icon(
+                Icons.play_arrow_rounded,
+              ),
+              label: const Text(
+                '開始訓練',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );

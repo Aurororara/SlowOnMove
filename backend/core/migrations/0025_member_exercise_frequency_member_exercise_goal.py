@@ -6,7 +6,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('core', '0019_traininglog_pain_parts'),
+        ('core', '0024_workoutmenu_source_plan_and_more'),
     ]
 
     operations = [

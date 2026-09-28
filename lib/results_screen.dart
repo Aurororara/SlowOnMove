@@ -1,8 +1,6 @@
-import 'dart:convert';
 import 'dart:math';
 import 'package:confetti/confetti.dart';
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'body_pain_picker.dart';
 import 'config/api_config.dart';
 import 'services/user_session.dart';
@@ -16,6 +14,7 @@ class ResultsScreen extends StatefulWidget {
   final int stepCount;
   final List<String> finalFeedback;
   final String exerciseTitle;
+  final bool fromWorkoutMenu;
 
   const ResultsScreen({
     super.key,
@@ -24,6 +23,7 @@ class ResultsScreen extends StatefulWidget {
     required this.stepCount,
     required this.finalFeedback,
     this.exerciseTitle = '超慢跑',
+    this.fromWorkoutMenu = false,
   });
 
   @override
@@ -726,7 +726,16 @@ class _ResultsScreenState extends State<ResultsScreen> {
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
-                      onPressed: () => Navigator.pop(context),
+                      onPressed: () {
+                        if (widget.fromWorkoutMenu) {
+                          Navigator.pop(
+                            context,
+                            true,
+                          );
+                        } else {
+                          Navigator.pop(context);
+                        }
+                      },
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.black87,
                         padding: const EdgeInsets.symmetric(vertical: 16),
@@ -734,11 +743,14 @@ class _ResultsScreenState extends State<ResultsScreen> {
                           borderRadius: BorderRadius.circular(30),
                         ),
                       ),
-                      child: const Text('回到主頁',
-                          style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white)),
+                      child: Text(
+                        widget.fromWorkoutMenu ? '完成此項訓練' : '回到主頁',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
                     ),
                   ),
                 ],

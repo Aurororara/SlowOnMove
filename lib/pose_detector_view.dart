@@ -13,7 +13,20 @@ import 'results_screen.dart';
 
 class PoseDetectorView extends StatefulWidget {
   final String exerciseTitle;
-  const PoseDetectorView({super.key, this.exerciseTitle = '超慢跑'});
+  // 是否由「我的菜單」進入
+  final bool fromWorkoutMenu;
+
+  // 菜單目標，下一階段會拿來顯示進度
+  final int? targetMinutes;
+  final int? targetReps;
+
+  const PoseDetectorView({
+    super.key,
+    this.exerciseTitle = '超慢跑',
+    this.fromWorkoutMenu = false,
+    this.targetMinutes,
+    this.targetReps,
+  });
 
   @override
   State<StatefulWidget> createState() => _PoseDetectorViewState();
@@ -192,14 +205,26 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
       _timer?.cancel();
       _pauseOrStopBpmSound();
       if (_cameraController!.value.isStreamingImages) {
-        _cameraController?.stopImageStream();
+        _cameraController?.stopImageStream().catchError((e) {
+          debugPrint(
+            'Lifecycle 停止串流略過: $e',
+          );
+        });
       }
     } else if (state == AppLifecycleState.resumed) {
       _canProcess = true;
       if (_supportsPoseDetectionPlatform &&
           !kIsWeb &&
           !_cameraController!.value.isStreamingImages) {
-        _cameraController?.startImageStream(_processCameraImage);
+        _cameraController
+            ?.startImageStream(
+          _processCameraImage,
+        )
+            .catchError((e) {
+          debugPrint(
+            'Lifecycle 啟動串流略過: $e',
+          );
+        });
       }
       _startTimer();
       _startOrResumeBpmSound();
@@ -328,9 +353,8 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
 
     // 🚨 當姿勢分析回傳錯誤提醒時，觸發 5 秒自動消失的彈跳視窗
     if (analysisResult.feedback.isNotEmpty) {
-      final postureErrors = analysisResult.feedback
-          .where((msg) => msg != '請站在鏡頭前')
-          .toList();
+      final postureErrors =
+          analysisResult.feedback.where((msg) => msg != '請站在鏡頭前').toList();
       if (postureErrors.isNotEmpty) {
         _showPostureErrorPopup(postureErrors.first);
       }
@@ -457,16 +481,178 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
     );
   }
 
-  Widget _buildDetectionOverlay() {
-    final String minutes = (_elapsedSeconds ~/ 60).toString().padLeft(2, '0');
-    final String seconds = (_elapsedSeconds % 60).toString().padLeft(2, '0');
+  int? get _targetSeconds {
+    if (!widget.fromWorkoutMenu) {
+      return null;
+    }
 
+    final targetMinutes = widget.targetMinutes;
+
+    if (targetMinutes == null || targetMinutes <= 0) {
+      return null;
+    }
+
+    return targetMinutes * 60;
+  }
+
+  String get _elapsedTimeText {
+    final minutes = (_elapsedSeconds ~/ 60).toString().padLeft(2, '0');
+
+    final seconds = (_elapsedSeconds % 60).toString().padLeft(2, '0');
+
+    return '$minutes:$seconds';
+  }
+
+  String get _workoutProgressText {
+    // 一般運動模式：完全維持原本顯示
+    if (!widget.fromWorkoutMenu) {
+      return _elapsedTimeText;
+    }
+
+    // 菜單模式：深蹲
+    if (widget.exerciseTitle == '深蹲') {
+      final targetReps = widget.targetReps;
+
+      if (targetReps == null || targetReps <= 0) {
+        return '$_stepCount 下';
+      }
+
+      return '$_stepCount / $targetReps 下';
+    }
+
+    // 菜單模式：超慢跑
+    final targetSeconds = _targetSeconds;
+
+    if (targetSeconds == null) {
+      return _elapsedTimeText;
+    }
+
+    final targetMinutes = (targetSeconds ~/ 60).toString().padLeft(2, '0');
+
+    final targetRemainSeconds = (targetSeconds % 60).toString().padLeft(2, '0');
+
+    return '$_elapsedTimeText / '
+        '$targetMinutes:$targetRemainSeconds';
+  }
+
+  double? get _workoutTargetProgress {
+    if (!widget.fromWorkoutMenu) {
+      return null;
+    }
+
+    if (widget.exerciseTitle == '深蹲') {
+      final targetReps = widget.targetReps;
+
+      if (targetReps == null || targetReps <= 0) {
+        return null;
+      }
+
+      return (_stepCount / targetReps).clamp(0.0, 1.0).toDouble();
+    }
+
+    final targetSeconds = _targetSeconds;
+
+    if (targetSeconds == null || targetSeconds <= 0) {
+      return null;
+    }
+
+    return (_elapsedSeconds / targetSeconds).clamp(0.0, 1.0).toDouble();
+  }
+
+  bool get _isWorkoutTargetReached {
+    if (!widget.fromWorkoutMenu) {
+      return false;
+    }
+
+    if (widget.exerciseTitle == '深蹲') {
+      final targetReps = widget.targetReps;
+
+      if (targetReps == null || targetReps <= 0) {
+        return false;
+      }
+
+      return _stepCount >= targetReps;
+    }
+
+    final targetSeconds = _targetSeconds;
+
+    if (targetSeconds == null || targetSeconds <= 0) {
+      return false;
+    }
+
+    return _elapsedSeconds >= targetSeconds;
+  }
+
+  Future<void> _finishExercise() async {
+    _timer?.cancel();
+    _canProcess = false;
+
+    await _audioPlayer.stop();
+
+    final controller = _cameraController;
+
+    if (controller != null) {
+      try {
+        if (controller.value.isInitialized &&
+            controller.value.isStreamingImages) {
+          await controller.stopImageStream();
+        }
+      } catch (e) {
+        debugPrint(
+          '停止相機串流時略過錯誤: $e',
+        );
+      }
+
+      try {
+        await controller.dispose();
+      } catch (e) {
+        debugPrint(
+          '釋放相機時略過錯誤: $e',
+        );
+      }
+
+      _cameraController = null;
+    }
+
+    final double avgAcc =
+        _accuracySamples > 0 ? _totalAccuracySum / _accuracySamples : 0.0;
+
+    if (!mounted) return;
+
+    final bool? completed = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => ResultsScreen(
+          timeSeconds: _elapsedSeconds,
+          averageAccuracy: avgAcc,
+          stepCount: _stepCount,
+          finalFeedback: _feedback,
+          exerciseTitle: widget.exerciseTitle,
+          fromWorkoutMenu: widget.fromWorkoutMenu,
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+
+    if (widget.fromWorkoutMenu && completed == true) {
+      Navigator.pop(
+        context,
+        true,
+      );
+    }
+  }
+
+  Widget _buildDetectionOverlay() {
     return Positioned(
       top: 50,
       left: 16,
       right: 16,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        padding: const EdgeInsets.symmetric(
+          horizontal: 20,
+          vertical: 16,
+        ),
         decoration: BoxDecoration(
           color: Colors.black.withOpacity(0.7),
           borderRadius: BorderRadius.circular(20),
@@ -478,120 +664,199 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
             ),
           ],
         ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
+            Row(
               children: [
-                Text(
-                  widget.exerciseTitle,
-                  style: const TextStyle(color: Colors.white70, fontSize: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text(
+                        widget.exerciseTitle,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          _workoutProgressText,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: widget.fromWorkoutMenu ? 21 : 28,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  '$minutes:$seconds',
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold),
+                Container(
+                  width: 1,
+                  height: 40,
+                  color: Colors.white24,
                 ),
-              ],
-            ),
-            Container(width: 1, height: 40, color: Colors.white24),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                const Text('準確率',
-                    style: TextStyle(color: Colors.white70, fontSize: 14)),
-                const SizedBox(height: 4),
-                Text(
-                  '${_accuracyRate.toStringAsFixed(1)}%',
-                  style: TextStyle(
-                    color: _accuracyRate > 80
-                        ? Colors.greenAccent
-                        : Colors.orangeAccent,
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      const Text(
+                        '準確率',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          '${_accuracyRate.toStringAsFixed(1)}%',
+                          style: TextStyle(
+                            color: _accuracyRate > 80
+                                ? Colors.greenAccent
+                                : Colors.orangeAccent,
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (widget.exerciseTitle == '超慢跑') ...[
+                  Container(
+                    width: 1,
+                    height: 40,
+                    color: Colors.white24,
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                    ),
+                    child: GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _isBpmSoundEnabled = !_isBpmSoundEnabled;
+
+                          if (_isBpmSoundEnabled) {
+                            _startOrResumeBpmSound();
+                          } else {
+                            _pauseOrStopBpmSound();
+                          }
+                        });
+                      },
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            _isBpmSoundEnabled
+                                ? Icons.volume_up_rounded
+                                : Icons.volume_off_rounded,
+                            color: _isBpmSoundEnabled
+                                ? Colors.amberAccent
+                                : Colors.white38,
+                            size: 26,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _isBpmSoundEnabled ? '180 BPM' : '靜音',
+                            style: TextStyle(
+                              color: _isBpmSoundEnabled
+                                  ? Colors.amberAccent
+                                  : Colors.white38,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+                Container(
+                  width: 1,
+                  height: 40,
+                  color: Colors.white24,
+                ),
+                Padding(
+                  padding: const EdgeInsets.only(
+                    left: 10,
+                  ),
+                  child: GestureDetector(
+                    onTap: _finishExercise,
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: const BoxDecoration(
+                        color: Colors.redAccent,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.stop_rounded,
+                        color: Colors.white,
+                        size: 28,
+                      ),
+                    ),
                   ),
                 ),
               ],
             ),
-            if (widget.exerciseTitle == '超慢跑') ...[
-              Container(width: 1, height: 40, color: Colors.white24),
-              GestureDetector(
-                onTap: () {
-                  setState(() {
-                    _isBpmSoundEnabled = !_isBpmSoundEnabled;
-                    if (_isBpmSoundEnabled) {
-                      _startOrResumeBpmSound();
-                    } else {
-                      _pauseOrStopBpmSound();
-                    }
-                  });
-                },
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
+
+            // 注意：進度條一定要在 Row 外面
+            if (_workoutTargetProgress != null) ...[
+              const SizedBox(height: 12),
+              LinearProgressIndicator(
+                value: _workoutTargetProgress,
+                minHeight: 6,
+                backgroundColor: Colors.white24,
+                valueColor: const AlwaysStoppedAnimation<Color>(
+                  Colors.greenAccent,
+                ),
+                borderRadius: BorderRadius.circular(999),
+              ),
+            ],
+
+            if (_isWorkoutTargetReached) ...[
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 9,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.greenAccent.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: Colors.greenAccent.withOpacity(0.8),
+                  ),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(
-                      _isBpmSoundEnabled
-                          ? Icons.volume_up_rounded
-                          : Icons.volume_off_rounded,
-                      color: _isBpmSoundEnabled
-                          ? Colors.amberAccent
-                          : Colors.white38,
-                      size: 26,
+                      Icons.check_circle_rounded,
+                      color: Colors.greenAccent,
+                      size: 20,
                     ),
-                    const SizedBox(height: 4),
+                    SizedBox(width: 7),
                     Text(
-                      _isBpmSoundEnabled ? '180 BPM' : '靜音',
+                      '目標已達成，可以結束這項訓練',
                       style: TextStyle(
-                        color: _isBpmSoundEnabled
-                            ? Colors.amberAccent
-                            : Colors.white38,
-                        fontSize: 12,
+                        color: Colors.greenAccent,
                         fontWeight: FontWeight.bold,
+                        fontSize: 13,
                       ),
                     ),
                   ],
                 ),
               ),
             ],
-            Container(width: 1, height: 40, color: Colors.white24),
-            GestureDetector(
-              onTap: () async {
-                _timer?.cancel();
-                _audioPlayer.stop();
-                if (_supportsPoseDetectionPlatform) _poseDetector.close();
-                _cameraController?.dispose();
-
-                double avgAcc = _accuracySamples > 0
-                    ? (_totalAccuracySum / _accuracySamples)
-                    : 0.0;
-                // 導向結果頁
-                if (mounted) {
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => ResultsScreen(
-                        timeSeconds: _elapsedSeconds,
-                        averageAccuracy: avgAcc,
-                        stepCount: _stepCount,
-                        finalFeedback: _feedback,
-                        exerciseTitle: widget.exerciseTitle,
-                      ),
-                    ),
-                  );
-                }
-              },
-              child: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: const BoxDecoration(
-                    color: Colors.redAccent, shape: BoxShape.circle),
-                child: const Icon(Icons.stop_rounded,
-                    color: Colors.white, size: 28),
-              ),
-            ),
           ],
         ),
       ),
