@@ -46,6 +46,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
   CustomPaint? _customPaint;
   CameraController? _cameraController;
   int _cameraIndex = -1;
+  bool _isDisposingCamera = false;
 
   Timer? _timer;
   int _elapsedSeconds = 0;
@@ -183,41 +184,59 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
     _popupDismissTimer?.cancel();
     _popupProgressController.dispose();
     _canProcess = false;
+    _isDisposingCamera = true;
+
     _audioPlayer.stop();
     _audioPlayer.dispose();
     if (_supportsPoseDetectionPlatform) {
       _poseDetector.close();
     }
-    _cameraController?.dispose();
+    final controller = _cameraController;
+    _cameraController = null;
+
+    controller?.dispose();
     super.dispose();
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
+  void didChangeAppLifecycleState(
+    AppLifecycleState state,
+  ) {
     super.didChangeAppLifecycleState(state);
-    if (_cameraController == null || !_cameraController!.value.isInitialized) {
+
+    if (_isDisposingCamera) {
       return;
     }
+
+    final controller = _cameraController;
+
+    if (controller == null || !controller.value.isInitialized) {
+      return;
+    }
+
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused) {
-      // 進入背景時暫停 AI 偵測與相機串流，避免背景持續發熱與耗電
       _canProcess = false;
       _timer?.cancel();
       _pauseOrStopBpmSound();
-      if (_cameraController!.value.isStreamingImages) {
-        _cameraController?.stopImageStream().catchError((e) {
+
+      if (controller.value.isStreamingImages) {
+        controller.stopImageStream().catchError((e) {
           debugPrint(
             'Lifecycle 停止串流略過: $e',
           );
         });
       }
     } else if (state == AppLifecycleState.resumed) {
+      if (_isDisposingCamera) {
+        return;
+      }
+
       _canProcess = true;
-      if (_supportsPoseDetectionPlatform &&
-          !kIsWeb &&
-          !_cameraController!.value.isStreamingImages) {
-        _cameraController
-            ?.startImageStream(
+
+      if (!controller.value.isStreamingImages) {
+        controller
+            .startImageStream(
           _processCameraImage,
         )
             .catchError((e) {
@@ -226,6 +245,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
           );
         });
       }
+
       _startTimer();
       _startOrResumeBpmSound();
     }
@@ -247,13 +267,29 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
     );
 
     _cameraController?.initialize().then((_) {
-      if (!mounted) return;
+      if (!mounted || _isDisposingCamera || _cameraController == null) {
+        return;
+      }
       // ⭐ 只有非網頁版才去跑影像串流偵測，因為網頁版跑不動 ML Kit
-      if (!kIsWeb) {
-        _cameraController?.startImageStream(_processCameraImage);
+      if (!kIsWeb && !_cameraController!.value.isStreamingImages) {
+        _cameraController
+            ?.startImageStream(
+          _processCameraImage,
+        )
+            .catchError((e) {
+          debugPrint(
+            '啟動 Camera stream 略過: $e',
+          );
+        });
       }
       _startOrResumeBpmSound();
-      setState(() {});
+      if (mounted) {
+        setState(() {});
+      }
+    }).catchError((e) {
+      debugPrint(
+        'Camera initialize 失敗: $e',
+      );
     });
   }
 
@@ -585,41 +621,46 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
 
   Future<void> _finishExercise() async {
     _timer?.cancel();
-    _canProcess = false;
 
     await _audioPlayer.stop();
 
-    final controller = _cameraController;
-
-    if (controller != null) {
-      try {
-        if (controller.value.isInitialized &&
-            controller.value.isStreamingImages) {
-          await controller.stopImageStream();
-        }
-      } catch (e) {
-        debugPrint(
-          '停止相機串流時略過錯誤: $e',
-        );
-      }
-
-      try {
-        await controller.dispose();
-      } catch (e) {
-        debugPrint(
-          '釋放相機時略過錯誤: $e',
-        );
-      }
-
-      _cameraController = null;
-    }
+    await _disposeCameraSafely();
 
     final double avgAcc =
         _accuracySamples > 0 ? _totalAccuracySum / _accuracySamples : 0.0;
 
     if (!mounted) return;
 
-    final bool? completed = await Navigator.push<bool>(
+    // 菜單模式
+    if (widget.fromWorkoutMenu) {
+      final bool? completed = await Navigator.push<bool>(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ResultsScreen(
+            timeSeconds: _elapsedSeconds,
+            averageAccuracy: avgAcc,
+            stepCount: _stepCount,
+            finalFeedback: _feedback,
+            exerciseTitle: widget.exerciseTitle,
+            fromWorkoutMenu: true,
+          ),
+        ),
+      );
+
+      if (!mounted) return;
+
+      if (completed == true) {
+        Navigator.pop(
+          context,
+          true,
+        );
+      }
+
+      return;
+    }
+
+    // 一般運動模式
+    Navigator.pushReplacement(
       context,
       MaterialPageRoute(
         builder: (_) => ResultsScreen(
@@ -628,17 +669,52 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
           stepCount: _stepCount,
           finalFeedback: _feedback,
           exerciseTitle: widget.exerciseTitle,
-          fromWorkoutMenu: widget.fromWorkoutMenu,
+          fromWorkoutMenu: false,
         ),
       ),
     );
+  }
 
-    if (!mounted) return;
+  Future<void> _disposeCameraSafely() async {
+    if (_isDisposingCamera) {
+      return;
+    }
 
-    if (widget.fromWorkoutMenu && completed == true) {
-      Navigator.pop(
-        context,
-        true,
+    _isDisposingCamera = true;
+    _canProcess = false;
+
+    final controller = _cameraController;
+
+    // 很重要：
+    // 先讓 UI 不再使用這個 controller
+    if (mounted) {
+      setState(() {
+        _cameraController = null;
+      });
+    } else {
+      _cameraController = null;
+    }
+
+    if (controller == null) {
+      return;
+    }
+
+    try {
+      if (controller.value.isInitialized &&
+          controller.value.isStreamingImages) {
+        await controller.stopImageStream();
+      }
+    } catch (e) {
+      debugPrint(
+        '停止 Camera stream 略過: $e',
+      );
+    }
+
+    try {
+      await controller.dispose();
+    } catch (e) {
+      debugPrint(
+        'Camera dispose 略過: $e',
       );
     }
   }
