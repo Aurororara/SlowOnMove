@@ -3535,7 +3535,7 @@ class PointsViewSet(viewsets.ViewSet):
             f"{random.randint(100, 999)}"
         )
 
-        item_name = f"ShowOnMove {points}點儲值方案"
+        item_name = f"SlowOnMove {points}點儲值方案"
 
         description = (
             f"綠界金流儲值 "

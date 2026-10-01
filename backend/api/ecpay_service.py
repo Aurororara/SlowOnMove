@@ -49,7 +49,7 @@ class ECPayService:
             "MerchantTradeDate": now_str,
             "PaymentType": "aio",
             "TotalAmount": str(int(amount)),
-            "TradeDesc": "ShowOnMove Points Topup",
+            "TradeDesc": "SlowOnMove Points Topup",
             "ItemName": str(item_name),
             "ReturnURL": str(return_url),
             "ChoosePayment": "ALL",
