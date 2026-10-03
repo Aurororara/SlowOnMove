@@ -10,12 +10,11 @@ from django.views.decorators.csrf import csrf_exempt
 from linebot import LineBotApi, WebhookParser
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
-from google import genai
-from google.genai import types
+from openai import OpenAI
 
 line_bot_api = LineBotApi(os.getenv('LINE_CHANNEL_ACCESS_TOKEN', 'YOUR_LINE_TOKEN'))
 parser = WebhookParser(os.getenv('LINE_CHANNEL_SECRET', 'YOUR_LINE_SECRET'))
-gemini_client = genai.Client(api_key=os.getenv('GEMINI_API_KEY'))
+openai_client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
 
 from django.utils import timezone
 from django.db import transaction
@@ -4066,17 +4065,17 @@ def line_webhook(request):
                 user_msg = event.message.text
                 
                 try:
-                    # 1. 假裝是 Gemini (因為 API Key 被拒絕)
-                    import random
-                    fake_replies = [
-                        "你現在傳訊息給我是跑完了嗎？還沒跑完就不要偷懶滑手機！快去動起來！",
-                        "才跑那麼幾步就想休息？我的阿嬤都跑得比你快！",
-                        "這點成績就想來跟我炫耀？明天給我多加一公里！",
-                        "別光說不練，今天的步數達標了嗎？我看是沒有吧！"
-                    ]
-                    ai_reply = random.choice(fake_replies)
-                    if "嗨" in user_msg:
-                        ai_reply = "嗨什麼嗨？你今天的進度落後了，還不快去換上跑鞋！"
+                    # 1. 傳給 OpenAI
+                    response = openai_client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {"role": "system", "content": "你是一個毒舌但是很關心學生的超慢跑教練，請用繁體中文簡短、幽默地回覆。"},
+                            {"role": "user", "content": user_msg}
+                        ],
+                        max_tokens=150,
+                        temperature=0.7,
+                    )
+                    ai_reply = response.choices[0].message.content.strip()
 
                     # 2. 透過 LINE 回傳
                     line_bot_api.reply_message(
