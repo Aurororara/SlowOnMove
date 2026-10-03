@@ -2650,11 +2650,6 @@ class _FriendsPanelState extends State<_FriendsPanel> {
                   ),
                   child: _RunningBuddyCard(
                     friend: friend,
-
-                    // v1 尚未串 TrainingLog 統計
-                    runsTogether: 0,
-                    streak: 0,
-                    lastRun: '尚無資料',
                     unreadCount: widget.chatStore.unreadCountFor(friend.id) +
                         widget.runInvitationStore.pendingCountFor(friend.id),
                     onInviteTap: widget.onInviteTap,
@@ -2865,9 +2860,6 @@ class _FriendSearchResultTile extends StatelessWidget {
 
 class _RunningBuddyCard extends StatelessWidget {
   final CommunityFriend friend;
-  final int runsTogether;
-  final int streak;
-  final String lastRun;
   final int unreadCount;
   final ValueChanged<CommunityFriend>? onInviteTap;
   final ValueChanged<CommunityFriend>? onMessageTap;
@@ -2875,9 +2867,6 @@ class _RunningBuddyCard extends StatelessWidget {
 
   const _RunningBuddyCard({
     required this.friend,
-    required this.runsTogether,
-    required this.streak,
-    required this.lastRun,
     required this.unreadCount,
     this.onInviteTap,
     this.onMessageTap,
@@ -2905,32 +2894,6 @@ class _RunningBuddyCard extends StatelessWidget {
                     fontSize: 15,
                     fontWeight: FontWeight.w900,
                   ),
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    const Icon(Icons.directions_run,
-                        color: Color(0xFF718096), size: 14),
-                    const SizedBox(width: 4),
-                    Text(
-                      '一起運動 $runsTogether 次',
-                      style: communityMetaStyle,
-                    ),
-                    const SizedBox(width: 18),
-                    const Icon(Icons.emoji_events_outlined,
-                        color: Color(0xFFD69E2E), size: 14),
-                    const SizedBox(width: 4),
-                    Text('連續 $streak 天', style: communityMetaStyle),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    const Icon(Icons.calendar_today_outlined,
-                        color: Color(0xFF718096), size: 14),
-                    const SizedBox(width: 5),
-                    Text('最後一次跑步：$lastRun', style: communityMetaStyle),
-                  ],
                 ),
                 const SizedBox(height: 12),
                 Row(
@@ -3178,7 +3141,7 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
   Future<void> _pickDate() async {
     final pickedDate = await showDatePicker(
       context: context,
-      initialDate: DateTime(2026, 4, 27),
+      initialDate: DateTime.now(),
       firstDate: DateTime(2024),
       lastDate: DateTime(2030),
     );
@@ -3263,11 +3226,6 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
                             fontWeight: FontWeight.w900,
                           ),
                         ),
-                        const SizedBox(height: 4),
-                        const Text(
-                          '一起運動 0 次',
-                          style: communityMetaStyle,
-                        ),
                       ],
                     ),
                   ),
@@ -3282,15 +3240,6 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
                   color: const Color(0xFFF8FAFC),
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(color: const Color(0xFFE2E8F0)),
-                ),
-                child: const Text(
-                  '最近一次一起運動：尚無資料',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Color(0xFF4A5568),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                  ),
                 ),
               ),
             ],
