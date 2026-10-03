@@ -4065,17 +4065,38 @@ def line_webhook(request):
                 user_msg = event.message.text
                 
                 try:
-                    # 1. 傳給 OpenAI
+                    # 1. 傳給 OpenAI 並要求回傳 JSON
+                    import json
+                    from core.models import LineUser, AICoachNote
+
+                    # 取得或建立這個 LINE 帳號的使用者資料
+                    line_user, _ = LineUser.objects.get_or_create(line_id=event.source.user_id)
+
+                    sys_prompt = """
+                    你是一個毒舌但是很關心學生的超慢跑教練。
+                    請用繁體中文簡短、幽默地回覆。如果使用者提到任何身體狀況、疼痛、想改善的目標或習慣，請幫我記錄下來。
+                    必須回傳 JSON 格式，包含兩個欄位：
+                    "reply": 你的毒舌回覆內容
+                    "note": 要記錄的重點(如果沒有就給空字串)
+                    """
+
                     response = openai_client.chat.completions.create(
                         model="gpt-4o-mini",
+                        response_format={ "type": "json_object" },
                         messages=[
-                            {"role": "system", "content": "你是一個毒舌但是很關心學生的超慢跑教練，請用繁體中文簡短、幽默地回覆。"},
+                            {"role": "system", "content": sys_prompt},
                             {"role": "user", "content": user_msg}
                         ],
-                        max_tokens=150,
+                        max_tokens=250,
                         temperature=0.7,
                     )
-                    ai_reply = response.choices[0].message.content.strip()
+                    
+                    data = json.loads(response.choices[0].message.content)
+                    ai_reply = data.get("reply", "收到！")
+                    note_str = data.get("note", "")
+
+                    if note_str:
+                        AICoachNote.objects.create(line_user=line_user, note=note_str)
 
                     # 2. 透過 LINE 回傳
                     line_bot_api.reply_message(

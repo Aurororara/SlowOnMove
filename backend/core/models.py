@@ -801,6 +801,16 @@ class PostReport(models.Model):
     status = models.CharField(max_length=50)
     created_at = models.DateTimeField(auto_now_add=True)
 
+class LineUser(models.Model):
+    line_id = models.CharField(max_length=100, unique=True)
+    member = models.ForeignKey(Member, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+class AICoachNote(models.Model):
+    line_user = models.ForeignKey(LineUser, on_delete=models.CASCADE, related_name='notes')
+    note = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
 class PoseAnalysis(models.Model):
     log = models.ForeignKey(TrainingLog, on_delete=models.CASCADE, related_name='pose_analyses')
     status = models.CharField(max_length=255)
