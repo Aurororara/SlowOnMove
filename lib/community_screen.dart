@@ -1340,7 +1340,6 @@ class _CommunityScreenState extends State<CommunityScreen> {
                             friend: _inviteFriend!,
                             onSendInvitation: ({
                               required scheduledAt,
-                              targetDistanceKm,
                               targetDurationMinutes,
                               required notes,
                             }) async {
@@ -1354,7 +1353,7 @@ class _CommunityScreenState extends State<CommunityScreen> {
                                   await _runInvitationStore.sendInvitation(
                                 inviteeId: friend.id,
                                 scheduledAt: scheduledAt,
-                                targetDistanceKm: targetDistanceKm,
+                                targetDistanceKm: null,
                                 targetDurationMinutes: targetDurationMinutes,
                                 notes: notes,
                               );
@@ -3071,7 +3070,6 @@ class _InviteToRunPanel extends StatefulWidget {
 
   final Future<bool> Function({
     required DateTime scheduledAt,
-    double? targetDistanceKm,
     int? targetDurationMinutes,
     required String notes,
   }) onSendInvitation;
@@ -3087,19 +3085,6 @@ class _InviteToRunPanel extends StatefulWidget {
 }
 
 class _InviteToRunPanelState extends State<_InviteToRunPanel> {
-  static const List<String> _timeOptions = [
-    '06:00 AM',
-    '07:00 AM',
-    '08:00 AM',
-    '06:00 PM',
-    '07:00 PM',
-  ];
-  static const List<String> _distanceOptions = [
-    '1 km',
-    '3 km',
-    '5 km',
-    '10 km',
-  ];
   static const List<String> _durationOptions = [
     '15 分鐘',
     '30 分鐘',
@@ -3110,7 +3095,6 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
   final TextEditingController _dateController = TextEditingController();
   final TextEditingController _notesController = TextEditingController();
   String? _selectedTime;
-  String? _selectedDistance;
   String? _selectedDuration;
   bool _isSending = false;
 
@@ -3129,7 +3113,7 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
     );
 
     final timeMatch = RegExp(
-      r'^(\d{2}):(\d{2})\s*(AM|PM)$',
+      r'^(\d{2}):(\d{2})$',
     ).firstMatch(
       _selectedTime ?? '',
     );
@@ -3142,17 +3126,8 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
     final month = int.parse(dateMatch.group(2)!);
     final day = int.parse(dateMatch.group(3)!);
 
-    var hour = int.parse(timeMatch.group(1)!);
+    final hour = int.parse(timeMatch.group(1)!);
     final minute = int.parse(timeMatch.group(2)!);
-    final period = timeMatch.group(3)!;
-
-    if (period == 'PM' && hour != 12) {
-      hour += 12;
-    }
-
-    if (period == 'AM' && hour == 12) {
-      hour = 0;
-    }
 
     return DateTime(
       year,
@@ -3160,18 +3135,6 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
       day,
       hour,
       minute,
-    );
-  }
-
-  double? _buildDistanceKm() {
-    final value = _selectedDistance;
-
-    if (value == null) {
-      return null;
-    }
-
-    return double.tryParse(
-      value.replaceAll('km', '').trim(),
     );
   }
 
@@ -3184,6 +3147,31 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
 
     return int.tryParse(
       value.replaceAll('分鐘', '').trim(),
+    );
+  }
+
+  Future<void> _pickTime() async {
+    final now = TimeOfDay.now();
+
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: _selectedTime != null ? _parseTime(_selectedTime!) : now,
+    );
+
+    if (picked == null) return;
+
+    setState(() {
+      _selectedTime = '${picked.hour.toString().padLeft(2, '0')}:'
+          '${picked.minute.toString().padLeft(2, '0')}';
+    });
+  }
+
+  TimeOfDay _parseTime(String value) {
+    final parts = value.split(':');
+
+    return TimeOfDay(
+      hour: int.parse(parts[0]),
+      minute: int.parse(parts[1]),
     );
   }
 
@@ -3221,7 +3209,6 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
 
     final success = await widget.onSendInvitation(
       scheduledAt: scheduledAt,
-      targetDistanceKm: _buildDistanceKm(),
       targetDurationMinutes: _buildDurationMinutes(),
       notes: _notesController.text.trim(),
     );
@@ -3358,93 +3345,41 @@ class _InviteToRunPanelState extends State<_InviteToRunPanel> {
                 text: '選擇時間',
               ),
               const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _timeOptions.map((time) {
-                  final isSelected = _selectedTime == time;
-                  return ChoiceChip(
-                    label: Text(time),
-                    selected: isSelected,
-                    onSelected: (_) {
-                      setState(() {
-                        _selectedTime = time;
-                      });
-                    },
-                    labelStyle: TextStyle(
-                      color:
-                          isSelected ? Colors.white : const Color(0xFF4A5568),
-                      fontWeight: FontWeight.w800,
-                      fontSize: 12,
+              InkWell(
+                onTap: _pickTime,
+                borderRadius: BorderRadius.circular(14),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: const Color(0xFFE2E8F0),
                     ),
-                    selectedColor: Colors.black,
-                    backgroundColor: const Color(0xFFF1F5F9),
-                    side: BorderSide.none,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 10),
-              Container(
-                width: double.infinity,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: const Color(0xFFE2E8F0)),
-                ),
-                child: Row(
-                  children: [
-                    Text(
-                      _selectedTime ?? '--:--',
-                      style: TextStyle(
-                        color: _selectedTime == null
-                            ? const Color(0xFF6B7280)
-                            : Colors.black,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
+                  ),
+                  child: Row(
+                    children: [
+                      Text(
+                        _selectedTime ?? '--:--',
+                        style: TextStyle(
+                          color: _selectedTime == null
+                              ? const Color(0xFF6B7280)
+                              : Colors.black,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
-                    ),
-                    const Spacer(),
-                    const Icon(Icons.access_time_outlined, size: 18),
-                  ],
+                      const Spacer(),
+                      const Icon(
+                        Icons.access_time_outlined,
+                        size: 18,
+                      ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 18),
-              const CommunityFieldLabel(
-                icon: Icons.straighten_outlined,
-                text: '跑多遠（選填）',
-              ),
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _distanceOptions.map((distance) {
-                  final isSelected = _selectedDistance == distance;
-                  return ChoiceChip(
-                    label: Text(distance),
-                    selected: isSelected,
-                    onSelected: (_) {
-                      setState(() {
-                        _selectedDistance = isSelected ? null : distance;
-                      });
-                    },
-                    labelStyle: TextStyle(
-                      color:
-                          isSelected ? Colors.white : const Color(0xFF4A5568),
-                      fontWeight: FontWeight.w800,
-                      fontSize: 12,
-                    ),
-                    selectedColor: Colors.black,
-                    backgroundColor: const Color(0xFFF1F5F9),
-                    side: BorderSide.none,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  );
-                }).toList(),
               ),
               const SizedBox(height: 18),
               const CommunityFieldLabel(
