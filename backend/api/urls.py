@@ -7,6 +7,7 @@ from .views import (
     TaskViewSet, MemberTaskViewSet, BadgeViewSet, MemberBadgeViewSet, WorkoutMenuViewSet, WorkoutItemViewSet, FriendViewSet, ChatViewSet, RunInvitationViewSet, CommunityGroupViewSet, CommunityGroupInvitationViewSet,
     PointsViewSet, AdminAnalyticsView,
     WorkoutMenuSessionViewSet,
+    line_webhook,
 )
 from .auth_views import GoogleLoginView, FacebookLoginView, RegisterView, LoginView
 
@@ -56,5 +57,6 @@ urlpatterns = [
     path('auth/register/', RegisterView.as_view(), name='auth-register'),
     path('auth/login/', LoginView.as_view(), name='auth-login'),
     path('admin/analytics/', AdminAnalyticsView.as_view(), name='admin-analytics'),
+    path('line_webhook/', line_webhook, name='line_webhook'),
     path('', include(router.urls)),
 ]
