@@ -1,0 +1,314 @@
+erDiagram
+    member_groups {
+        BigAutoField id
+    }
+    member ||--o{ member_groups : "member"
+    group ||--o{ member_groups : "group"
+    member_user_permissions {
+        BigAutoField id
+    }
+    member ||--o{ member_user_permissions : "member"
+    permission ||--o{ member_user_permissions : "permission"
+    member {
+        BigAutoField id
+        CharField password
+        DateTimeField last_login
+        BooleanField is_superuser
+        CharField username
+        CharField first_name
+        CharField last_name
+        EmailField email
+        BooleanField is_staff
+        BooleanField is_active
+        DateTimeField date_joined
+        URLField avatar
+        CharField login_provider
+        CharField provider_id
+        IntegerField points
+        CharField exercise_goal
+        CharField exercise_frequency
+    }
+    friendrequest {
+        BigAutoField id
+        CharField status
+        DateTimeField created_at
+        DateTimeField updated_at
+    }
+    member ||--o{ friendrequest : "sender"
+    member ||--o{ friendrequest : "receiver"
+    friendship {
+        BigAutoField id
+        DateTimeField created_at
+    }
+    member ||--o{ friendship : "member1"
+    member ||--o{ friendship : "member2"
+    chatmessage {
+        BigAutoField id
+        TextField content
+        BooleanField is_read
+        DateTimeField created_at
+    }
+    member ||--o{ chatmessage : "sender"
+    member ||--o{ chatmessage : "receiver"
+    runinvitation {
+        BigAutoField id
+        DateTimeField scheduled_at
+        DecimalField target_distance_km
+        PositiveIntegerField target_duration_minutes
+        TextField notes
+        CharField status
+        DateTimeField created_at
+        DateTimeField updated_at
+        DateTimeField responded_at
+    }
+    member ||--o{ runinvitation : "inviter"
+    member ||--o{ runinvitation : "invitee"
+    communitygroup {
+        BigAutoField id
+        CharField name
+        TextField description
+        BooleanField is_private
+        CharField exercise_type
+        PositiveIntegerField weekly_goal_target
+        DateTimeField created_at
+        DateTimeField updated_at
+    }
+    member ||--o{ communitygroup : "owner"
+    communitygroupmember {
+        BigAutoField id
+        DateTimeField joined_at
+    }
+    communitygroup ||--o{ communitygroupmember : "group"
+    member ||--o{ communitygroupmember : "member"
+    communitygroupactivity {
+        BigAutoField id
+        CharField title
+        CharField exercise_type
+        DateTimeField scheduled_at
+        TextField notes
+        DateTimeField created_at
+        DateTimeField updated_at
+    }
+    communitygroup ||--o{ communitygroupactivity : "group"
+    member ||--o{ communitygroupactivity : "creator"
+    communitygroupactivityparticipant {
+        BigAutoField id
+        DateTimeField joined_at
+    }
+    communitygroupactivity ||--o{ communitygroupactivityparticipant : "activity"
+    member ||--o{ communitygroupactivityparticipant : "member"
+    communitygroupjoinrequest {
+        BigAutoField id
+        CharField status
+        DateTimeField created_at
+        DateTimeField updated_at
+        DateTimeField responded_at
+    }
+    communitygroup ||--o{ communitygroupjoinrequest : "group"
+    member ||--o{ communitygroupjoinrequest : "requester"
+    communitygroupinvitation {
+        BigAutoField id
+        CharField status
+        DateTimeField created_at
+        DateTimeField updated_at
+        DateTimeField responded_at
+    }
+    communitygroup ||--o{ communitygroupinvitation : "group"
+    member ||--o{ communitygroupinvitation : "inviter"
+    member ||--o{ communitygroupinvitation : "invitee"
+    bodyrecord {
+        BigAutoField id
+        DateField record_date
+        IntegerField height
+        IntegerField weight
+        DateTimeField created_at
+    }
+    member ||--o{ bodyrecord : "member"
+    bloodpressurerecord {
+        BigAutoField id
+        IntegerField systolic
+        IntegerField diastolic
+        IntegerField pulse
+        DateField record_date
+        DateTimeField created_at
+    }
+    member ||--o{ bloodpressurerecord : "member"
+    boardranking {
+        BigAutoField id
+        CharField category
+        CharField period_type
+        IntegerField rank_position
+    }
+    member ||--o{ boardranking : "member"
+    communitypost {
+        BigAutoField id
+        CharField post_type
+        TextField content
+        CharField image
+        DateTimeField created_at
+        DateTimeField updated_at
+    }
+    postworkoutplan ||--|| communitypost : "workout_plan"
+    member ||--o{ communitypost : "member"
+    posttag {
+        BigAutoField id
+        CharField name
+    }
+    communitypost ||--o{ posttag : "post"
+    postworkoutplan {
+        BigAutoField id
+        CharField title
+        TextField summary
+        CharField difficulty
+        IntegerField total_minutes
+    }
+    communitypost ||--|| postworkoutplan : "post"
+    featureunlock {
+        BigAutoField id
+        CharField feature_code
+        CharField reference_id
+        DateTimeField unlocked_at
+    }
+    member ||--o{ featureunlock : "member"
+    postworkoutplanstep {
+        BigAutoField id
+        CharField name
+        CharField exercise_type
+        IntegerField minutes
+        IntegerField reps
+        IntegerField order
+    }
+    postworkoutplan ||--o{ postworkoutplanstep : "plan"
+    favorite {
+        BigAutoField id
+        DateTimeField created_at
+    }
+    member ||--o{ favorite : "member"
+    communitypost ||--o{ favorite : "post"
+    traininglog {
+        BigAutoField id
+        DateTimeField start_time
+        DateTimeField end_time
+        IntegerField total_mins
+        JSONField pain_parts
+        CharField exercise_type
+        IntegerField posture_score
+        IntegerField calories
+        IntegerField step_count
+        DateTimeField created_at
+    }
+    member ||--o{ traininglog : "member"
+    postlike {
+        BigAutoField id
+        DateTimeField created_at
+    }
+    member ||--o{ postlike : "member"
+    communitypost ||--o{ postlike : "post"
+    postcomment {
+        BigAutoField id
+        CharField content
+        DateTimeField created_at
+    }
+    member ||--o{ postcomment : "member"
+    communitypost ||--o{ postcomment : "post"
+    postreport {
+        BigAutoField id
+        CharField reason
+        CharField status
+        DateTimeField created_at
+    }
+    member ||--o{ postreport : "member"
+    communitypost ||--o{ postreport : "post"
+    lineuser {
+        BigAutoField id
+        CharField line_id
+        DateTimeField created_at
+    }
+    member ||--o{ lineuser : "member"
+    aicoachnote {
+        BigAutoField id
+        TextField note
+        DateTimeField created_at
+    }
+    lineuser ||--o{ aicoachnote : "line_user"
+    poseanalysis {
+        BigAutoField id
+        CharField status
+        IntegerField error_time
+    }
+    traininglog ||--o{ poseanalysis : "log"
+    pointtransaction {
+        BigAutoField id
+        IntegerField points_changed
+        CharField tran_type
+        CharField description
+        CharField reference_key
+        CharField order_number
+        CharField status
+        DateTimeField created_at
+    }
+    member ||--o{ pointtransaction : "member"
+    task {
+        BigAutoField id
+        CharField status
+        IntegerField current
+        DateTimeField completed_at
+    }
+    member ||--o{ task : "member"
+    membertask {
+        BigAutoField id
+        CharField status
+        IntegerField current
+        DateTimeField completed
+    }
+    member ||--o{ membertask : "member"
+    task ||--o{ membertask : "task"
+    badge {
+        BigAutoField id
+        CharField badge_name
+        CharField description
+        CharField badge_icon
+        DateTimeField created_at
+    }
+    memberbadge {
+        BigAutoField id
+        DateTimeField earn_at
+    }
+    member ||--o{ memberbadge : "member"
+    badge ||--o{ memberbadge : "badge"
+    workoutmenu {
+        BigAutoField id
+        CharField title
+        CharField description
+        CharField difficulty
+        IntegerField total_minutes
+        BooleanField is_public
+        DateTimeField created_at
+        DateTimeField update_at
+    }
+    member ||--o{ workoutmenu : "member"
+    postworkoutplan ||--o{ workoutmenu : "source_plan"
+    workoutitem {
+        BigAutoField id
+        DateTimeField save_at
+    }
+    member ||--o{ workoutitem : "member"
+    workoutmenu ||--o{ workoutitem : "menu"
+    workoutmenustep {
+        BigAutoField id
+        CharField name
+        CharField exercise_type
+        IntegerField minutes
+        IntegerField reps
+        IntegerField order
+    }
+    workoutmenu ||--o{ workoutmenustep : "menu"
+    workoutmenusession {
+        BigAutoField id
+        CharField menu_title
+        CharField status
+        DateTimeField started_at
+        DateTimeField completed_at
+    }
+    member ||--o{ workoutmenusession : "member"
+    workoutmenu ||--o{ workoutmenusession : "menu"

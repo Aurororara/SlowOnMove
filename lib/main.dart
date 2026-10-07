@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter_facebook_auth/flutter_facebook_auth.dart';
+import 'package:flutter_line_sdk/flutter_line_sdk.dart';
 
 import 'login_screen.dart';
 
@@ -25,6 +26,18 @@ Future<void> main() async {
       xfbml: true,
       version: 'v19.0',
     );
+  }
+
+  // LINE Login 初始化（僅支援 Android / iOS）
+  if (!kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS)) {
+    try {
+      await LineSDK.instance.setup('2011921761');
+      debugPrint('--- LineSDK Prepared ---');
+    } catch (e) {
+      debugPrint('LineSDK setup error: $e');
+    }
   }
 
   if (_supportsCameraInitialization) {

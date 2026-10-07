@@ -47,6 +47,7 @@ dependencies:
   google_sign_in: ^6.2.1
   flutter_facebook_auth: ^7.0.0
   audioplayers: ^6.4.0
+  flutter_line_sdk: ^3.0.0
 
 
 dev_dependencies:

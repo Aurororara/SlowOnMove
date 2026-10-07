@@ -1,4 +1,7 @@
+import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:show_on_move/admin/admin_dashboard_screen.dart';
 
@@ -17,6 +20,7 @@ import 'purchase_screen.dart';
 import 'services/api_service.dart';
 import 'services/badge_progress_service.dart';
 import 'services/user_session.dart';
+import 'services/line_binding_service.dart';
 import 'my_workout_menu_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -42,6 +46,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String _exerciseGoal = 'health';
   String _exerciseFrequency = '1_2';
 
+  // LINE 綁定狀態
+  bool _lineBound = false;
+  bool _lineBusy = false;
+
+  // LINE SDK 只支援 Android / iOS
+  bool get _lineSupported =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
+
   String get _fullName => UserSession.displayName;
   String get _email => UserSession.email;
 
@@ -50,6 +64,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.initState();
 
     _fetchProfileData();
+    _loadLineBindingStatus();
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       widget.store.loadSavedPosts();
@@ -365,6 +380,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
                             const SizedBox(height: 32),
 
+                            // LINE 機器人綁定
+                            if (_lineSupported)
+                              _buildMenuButton(
+                                icon: Icons.chat_bubble_outline,
+                                title: _lineBound
+                                    ? 'LINE 機器人：已綁定'
+                                    : '綁定 LINE 機器人',
+                                subtitle: _lineBound
+                                    ? '點擊可解除綁定'
+                                    : '綁定後可在 LINE 收到教練提醒',
+                                iconColor: const Color(0xFF06C755),
+                                onTap: _onLineTap,
+                              ),
+
                             // 登出
                             _buildLogOutButton(context),
 
@@ -378,6 +407,85 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
       },
     );
+  }
+
+  Future<void> _loadLineBindingStatus() async {
+    if (!_lineSupported) return;
+
+    try {
+      final bound = await LineBindingService.isBound();
+      if (!mounted) return;
+      setState(() => _lineBound = bound);
+    } catch (e) {
+      debugPrint('查詢 LINE 綁定狀態失敗: ${_api.getErrorMessage(e)}');
+    }
+  }
+
+  void _showLineMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
+  /// 優先讀取後端回傳的 error 訊息（例如「此 LINE 帳號已綁定其他 App 帳號」）
+  String _lineErrorMessage(Object e) {
+    if (e is DioException) {
+      final data = e.response?.data;
+      if (data is Map && data['error'] is String) {
+        return data['error'] as String;
+      }
+    }
+    return _api.getErrorMessage(e);
+  }
+
+  Future<void> _onLineTap() async {
+    if (_lineBusy) return;
+    setState(() => _lineBusy = true);
+
+    try {
+      if (_lineBound) {
+        final confirmed = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('解除 LINE 綁定？'),
+            content: const Text('解除後將不再收到 LINE 機器人的個人化提醒。'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, false),
+                child: const Text('取消'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(ctx, true),
+                child: const Text('解除綁定'),
+              ),
+            ],
+          ),
+        );
+
+        if (confirmed != true) return;
+
+        await LineBindingService.unbind();
+        if (!mounted) return;
+        setState(() => _lineBound = false);
+        _showLineMessage('已解除 LINE 綁定');
+      } else {
+        final name = await LineBindingService.loginAndBind();
+        if (!mounted) return;
+        setState(() => _lineBound = true);
+        _showLineMessage(
+          name == null ? 'LINE 綁定成功' : 'LINE 綁定成功：$name',
+        );
+      }
+    } on PlatformException catch (e) {
+      // 使用者取消登入或 LINE SDK 錯誤
+      debugPrint('LINE SDK 錯誤: ${e.code} ${e.message}');
+      _showLineMessage('LINE 登入已取消或失敗');
+    } catch (e) {
+      _showLineMessage(_lineErrorMessage(e));
+    } finally {
+      if (mounted) setState(() => _lineBusy = false);
+    }
   }
 
   Widget _buildMenuButton({

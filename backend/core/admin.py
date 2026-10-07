@@ -90,3 +90,15 @@ class WorkoutMenuAdmin(admin.ModelAdmin):
 @admin.register(WorkoutItem)
 class WorkoutItemAdmin(admin.ModelAdmin):
     list_display = ('member', 'menu', 'save_at')
+
+# ==========================================
+# 自動註冊剩下尚未註冊的所有資料表
+# ==========================================
+from django.apps import apps
+app = apps.get_app_config('core')
+
+for model_name, model in app.models.items():
+    try:
+        admin.site.register(model)
+    except admin.sites.AlreadyRegistered:
+        pass
