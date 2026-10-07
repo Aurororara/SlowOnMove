@@ -1019,7 +1019,7 @@ class FavoriteViewSet(viewsets.ModelViewSet):
 class TrainingLogViewSet(viewsets.ModelViewSet):
     queryset = TrainingLog.objects.all()
     serializer_class = TrainingLogSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]  
     # 個人運動數據加總 API
     @action(detail=False, methods=['get'], url_path='my-stats')
     def my_stats(self, request):
