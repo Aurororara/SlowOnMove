@@ -11,10 +11,13 @@ from linebot import LineBotApi, WebhookParser
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
 from openai import OpenAI
+from dotenv import load_dotenv
+load_dotenv()
 
 line_bot_api = LineBotApi(os.getenv('LINE_CHANNEL_ACCESS_TOKEN', 'YOUR_LINE_TOKEN'))
 parser = WebhookParser(os.getenv('LINE_CHANNEL_SECRET', 'YOUR_LINE_SECRET'))
-openai_client = OpenAI(api_key=os.getenv('OPENAI_API_KEY'))
+api_key = os.getenv('OPENAI_API_KEY')
+openai_client = OpenAI(api_key=api_key) if api_key else None
 
 from django.utils import timezone
 from django.db import transaction

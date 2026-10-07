@@ -1,6 +1,6 @@
 from django.contrib import admin
 from .models import (
-    Member, BodyRecord, BoardRanking, CommunityPost, Favorite, TrainingLog,
+    Member, BodyRecord, BloodPressureRecord, BoardRanking, CommunityPost, Favorite, TrainingLog,
     PostLike, PostComment, PostReport, PoseAnalysis, PointTransaction,
     Task, MemberTask, Badge, MemberBadge, WorkoutMenu, WorkoutItem
 )
@@ -12,6 +12,12 @@ class MemberAdmin(admin.ModelAdmin):
 @admin.register(BodyRecord)
 class BodyRecordAdmin(admin.ModelAdmin):
     list_display = ('member', 'record_date', 'height', 'weight')
+
+@admin.register(BloodPressureRecord)
+class BloodPressureRecordAdmin(admin.ModelAdmin):
+    list_display = ('id', 'member', 'systolic', 'diastolic', 'pulse', 'record_date', 'created_at')
+    list_filter = ('record_date', 'member')
+    search_fields = ('member__username',)
 
 @admin.register(BoardRanking)
 class BoardRankingAdmin(admin.ModelAdmin):

@@ -73,7 +73,7 @@ class BodyRecordSerializer(serializers.ModelSerializer):
 class BloodPressureRecordSerializer(serializers.ModelSerializer):
     class Meta:
         model = BloodPressureRecord
-        fields = '__all__'
+        fields = '__all__'  # 保持這樣，不要加 read_only_fields
 
 
 class BoardRankingSerializer(serializers.ModelSerializer):
