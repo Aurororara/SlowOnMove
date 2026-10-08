@@ -47,7 +47,9 @@ dependencies:
   google_sign_in: ^6.2.1
   flutter_facebook_auth: ^7.0.0
   audioplayers: ^6.4.0
-  flutter_line_sdk: ^3.0.0
+  flutter_line_sdk: ^2.7.2
+  shared_preferences: ^2.5.3
+  video_player: ^2.10.1
 
 
 dev_dependencies:
@@ -71,6 +73,7 @@ flutter:
     - assets/badges/
     # - assets/models/
     - assets/audio/
+    - assets/videos/
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in
