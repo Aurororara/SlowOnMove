@@ -55,6 +55,165 @@ from .serializers import (
     CommunityGroupJoinRequestSerializer,
 )
 from .ecpay_service import ECPayService
+# ==================== 管理後台統計核心函式 ====================
+def compute_admin_analytics(timeframe="all"):
+    from datetime import timedelta
+    from django.db.models import Sum, Count, Q
+    from django.db.models.functions import TruncDate
+    from django.utils import timezone
+    from core.models import Member, TrainingLog, CommunityPost, PostLike, PostComment, PostReport, PointTransaction
+
+    now = timezone.now()
+    if timeframe == "7d":
+        start_date = now - timedelta(days=7)
+    elif timeframe == "30d":
+        start_date = now - timedelta(days=30)
+    else:
+        start_date = None
+
+    members_qs = Member.objects.all()
+    total_users = members_qs.count()
+    thirty_days_ago = now - timedelta(days=30)
+    seven_days_ago = now - timedelta(days=7)
+    new_users_30d = members_qs.filter(date_joined__gte=thirty_days_ago).count()
+    active_users_7d = members_qs.filter(
+        Q(training_logs__created_at__gte=seven_days_ago) |
+        Q(posts__created_at__gte=seven_days_ago)
+    ).distinct().count()
+
+    providers = members_qs.values('login_provider').annotate(count=Count('id'))
+    provider_dict = {'email': 0, 'google': 0, 'facebook': 0}
+    for item in providers:
+        prov = item['login_provider'] or 'email'
+        if prov in provider_dict:
+            provider_dict[prov] += item['count']
+        else:
+            provider_dict[prov] = item['count']
+
+    reg_start = now - timedelta(days=14)
+    reg_trend_qs = members_qs.filter(date_joined__gte=reg_start)\
+        .annotate(date=TruncDate('date_joined'))\
+        .values('date')\
+        .annotate(count=Count('id'))\
+        .order_by('date')
+    reg_trend = [{'date': item['date'].strftime('%m/%d'), 'count': item['count']} for item in reg_trend_qs if item.get('date')]
+
+    tlog_qs = TrainingLog.objects.all()
+    tlog_qs_filtered = tlog_qs.filter(created_at__gte=start_date) if start_date else tlog_qs
+
+    total_mins = tlog_qs_filtered.aggregate(val=Sum('total_mins'))['val'] or 0
+    total_calories = tlog_qs_filtered.aggregate(val=Sum('calories'))['val'] or 0
+    total_sessions = tlog_qs_filtered.count()
+
+    ex_types = tlog_qs_filtered.values('exercise_type').annotate(count=Count('id'))
+    ex_dict = {'slow_jogging': 0, 'squat': 0}
+    for item in ex_types:
+        key = item['exercise_type']
+        if key in ex_dict:
+            ex_dict[key] = item['count']
+
+    scores = list(tlog_qs_filtered.values_list('posture_score', flat=True))
+    avg_posture = round(sum(scores) / len(scores), 1) if scores else 0.0
+
+    good_cnt = tlog_qs_filtered.filter(posture_score__gte=80).count()
+    fair_cnt = tlog_qs_filtered.filter(posture_score__gte=60, posture_score__lt=80).count()
+    needs_work_cnt = tlog_qs_filtered.filter(posture_score__lt=60).count()
+
+    train_trend_qs = tlog_qs.filter(created_at__gte=seven_days_ago)\
+        .annotate(date=TruncDate('created_at'))\
+        .values('date')\
+        .annotate(mins=Sum('total_mins'), sessions=Count('id'))\
+        .order_by('date')
+    train_trend = [{'date': item['date'].strftime('%m/%d'), 'mins': item['mins'] or 0, 'sessions': item['sessions']} for item in train_trend_qs if item.get('date')]
+
+    post_qs = CommunityPost.objects.all()
+    post_qs_filtered = post_qs.filter(created_at__gte=start_date) if start_date else post_qs
+
+    total_posts = post_qs_filtered.count()
+    total_likes = PostLike.objects.filter(created_at__gte=start_date).count() if start_date else PostLike.objects.count()
+    total_comments = PostComment.objects.filter(created_at__gte=start_date).count() if start_date else PostComment.objects.count()
+
+    post_types_raw = post_qs_filtered.values('post_type').annotate(count=Count('id'))
+    post_types_dict = {'journey': 0, 'plan': 0, 'recipe': 0}
+    for item in post_types_raw:
+        pt = item['post_type']
+        if pt in post_types_dict:
+            post_types_dict[pt] = item['count']
+
+    reports_raw = PostReport.objects.values('status').annotate(count=Count('id'))
+    reports_dict = {'pending': 0, 'resolved': 0}
+    for item in reports_raw:
+        st = item['status']
+        if st == 'pending':
+            reports_dict['pending'] += item['count']
+        else:
+            reports_dict['resolved'] += item['count']
+
+    ptran_qs = PointTransaction.objects.filter(status='completed')
+    ptran_qs_filtered = ptran_qs.filter(created_at__gte=start_date) if start_date else ptran_qs
+
+    total_transactions = ptran_qs_filtered.count()
+    total_points_changed = ptran_qs_filtered.aggregate(val=Sum('points_changed'))['val'] or 0
+
+    tran_types_raw = ptran_qs_filtered.values('tran_type').annotate(count=Count('id'))
+    tran_types_dict = {'top_up': 0, 'spend': 0, 'reward': 0}
+    for item in tran_types_raw:
+        tt = item['tran_type']
+        if tt in tran_types_dict:
+            tran_types_dict[tt] = item['count']
+
+    topup_trans = ptran_qs_filtered.filter(tran_type='top_up')
+    total_revenue = 0
+    amount_counts = {'33': 0, '170': 0, '490': 0, '990': 0, '1690': 0, '3290': 0}
+    for t in topup_trans:
+        desc = t.description or ''
+        if 'NT$' in desc:
+            try:
+                amt_str = desc.split('NT$')[1].split(' ')[0]
+                amt = int(amt_str)
+                total_revenue += amt
+                if str(amt) in amount_counts:
+                    amount_counts[str(amt)] += 1
+            except Exception:
+                pass
+
+    return {
+        "timeframe": timeframe,
+        "user_analytics": {
+            "total_users": total_users,
+            "new_users_30d": new_users_30d,
+            "active_users_7d": active_users_7d,
+            "login_providers": provider_dict,
+            "registration_trend": reg_trend,
+        },
+        "exercise_analytics": {
+            "total_mins": total_mins,
+            "total_calories": total_calories,
+            "total_sessions": total_sessions,
+            "exercise_types": ex_dict,
+            "posture_score": {
+                "average": avg_posture,
+                "good": good_cnt,
+                "fair": fair_cnt,
+                "needs_work": needs_work_cnt,
+            },
+            "daily_trend": train_trend,
+        },
+        "community_analytics": {
+            "total_posts": total_posts,
+            "total_likes": total_likes,
+            "total_comments": total_comments,
+            "post_types": post_types_dict,
+            "report_status": reports_dict,
+        },
+        "points_analytics": {
+            "total_ecpay_revenue_twd": total_revenue,
+            "total_points_changed": total_points_changed,
+            "total_transactions": total_transactions,
+            "transaction_types": tran_types_dict,
+            "topup_amounts": amount_counts,
+        }
+    }
 
 
 #  =========================
@@ -3441,11 +3600,11 @@ class PointsViewSet(viewsets.ViewSet):
         is_all = request.query_params.get("all") == "true"
         tran_type = request.query_params.get("type")
 
-        # 如果帶有 all=true 且具有工作人員身份，就查全平台；否則只查自己
+        # 若帶有 all=true 且為管理員/工作人員，查詢全平台；否則只查該使用者自己
         if is_all and (getattr(user, "is_staff", False) or user.is_superuser):
             queryset = PointTransaction.objects.all().select_related("member")
         else:
-            queryset = PointTransaction.objects.filter(member=user)
+            queryset = PointTransaction.objects.filter(member=user).select_related("member")
 
         # 支援類型篩選 (top_up, spend, reward)
         if tran_type and tran_type != "all":
@@ -3453,12 +3612,22 @@ class PointsViewSet(viewsets.ViewSet):
 
         transactions = queryset.order_by("-created_at")[:100]
 
-        serializer = PointTransactionSerializer(
-            transactions,
-            many=True,
-        )
+        # 組裝回傳資料，確保帶有 username 與 member_id
+        data = []
+        for t in transactions:
+            data.append({
+                "id": t.id,
+                "member_id": t.member_id,
+                "username": t.member.username if t.member else "未知用戶",
+                "points_changed": t.points_changed,
+                "tran_type": t.tran_type,
+                "description": t.description,
+                "order_number": t.order_number,
+                "status": t.status,
+                "created_at": t.created_at.strftime("%Y-%m-%d %H:%M") if t.created_at else "",
+            })
 
-        return Response(serializer.data)
+        return Response(data)
 
     @action(detail=False, methods=["post"], url_path="use")
     @transaction.atomic
@@ -3514,12 +3683,20 @@ class PointsViewSet(viewsets.ViewSet):
                 "feature_name": feature_name,
                 "points_used": points_to_use,
                 "remaining_balance": user.points,
-                "transaction": PointTransactionSerializer(
-                    tran
-                ).data,
+                "transaction": {
+                    "id": tran.id,
+                    "member_id": tran.member_id,
+                    "username": user.username,
+                    "points_changed": tran.points_changed,
+                    "tran_type": tran.tran_type,
+                    "description": tran.description,
+                    "order_number": tran.order_number,
+                    "status": tran.status,
+                    "created_at": tran.created_at.strftime("%Y-%m-%d %H:%M") if tran.created_at else "",
+                },
             }
         )
-    
+
     @action(
         detail=False,
         methods=["post"],
@@ -3626,7 +3803,7 @@ class PointsViewSet(viewsets.ViewSet):
 
         now_str = timezone.now().strftime(
             "%Y%m%d%H%M%S"
-            )
+        )
 
         import random
 
@@ -3658,9 +3835,17 @@ class PointsViewSet(viewsets.ViewSet):
                 f"已成功入帳 {points} 點"
             ),
             "new_balance": user.points,
-            "transaction": PointTransactionSerializer(
-                tran
-            ).data,
+            "transaction": {
+                "id": tran.id,
+                "member_id": tran.member_id,
+                "username": user.username,
+                "points_changed": tran.points_changed,
+                "tran_type": tran.tran_type,
+                "description": tran.description,
+                "order_number": tran.order_number,
+                "status": tran.status,
+                "created_at": tran.created_at.strftime("%Y-%m-%d %H:%M") if tran.created_at else "",
+            },
         })
 
     @action(
@@ -3761,187 +3946,7 @@ class PointsViewSet(viewsets.ViewSet):
         ]
 
         return Response(data)
-
-
-
-
-def compute_admin_analytics(timeframe="all"):
-    from datetime import timedelta
-    # pyrefly: ignore [missing-import]
-    from django.db.models.functions import TruncDate
-
-    now = timezone.now()
-    if timeframe == "7d":
-        start_date = now - timedelta(days=7)
-    elif timeframe == "30d":
-        start_date = now - timedelta(days=30)
-    else:
-        start_date = None
-
-    # 1. Member Analytics
-    members_qs = Member.objects.all()
-    total_users = members_qs.count()
     
-    thirty_days_ago = now - timedelta(days=30)
-    seven_days_ago = now - timedelta(days=7)
-    new_users_30d = members_qs.filter(date_joined__gte=thirty_days_ago).count()
-    
-    active_users_7d = members_qs.filter(
-        Q(training_logs__created_at__gte=seven_days_ago) |
-        Q(posts__created_at__gte=seven_days_ago)
-    ).distinct().count()
-
-    providers = members_qs.values('login_provider').annotate(count=Count('id'))
-    provider_dict = {'email': 0, 'google': 0, 'facebook': 0}
-    for item in providers:
-        prov = item['login_provider'] or 'email'
-        if prov in provider_dict:
-            provider_dict[prov] += item['count']
-        else:
-            provider_dict[prov] = item['count']
-
-    # Registration trend (last 14 days)
-    reg_start = now - timedelta(days=14)
-    reg_trend_qs = members_qs.filter(date_joined__gte=reg_start)\
-        .annotate(date=TruncDate('date_joined'))\
-        .values('date')\
-        .annotate(count=Count('id'))\
-        .order_by('date')
-    reg_trend = [{'date': item['date'].strftime('%m/%d'), 'count': item['count']} for item in reg_trend_qs if item.get('date')]
-
-    # 2. Training Analytics
-    tlog_qs = TrainingLog.objects.all()
-    if start_date:
-        tlog_qs_filtered = tlog_qs.filter(created_at__gte=start_date)
-    else:
-        tlog_qs_filtered = tlog_qs
-
-    total_mins = tlog_qs_filtered.aggregate(val=Sum('total_mins'))['val'] or 0
-    total_calories = tlog_qs_filtered.aggregate(val=Sum('calories'))['val'] or 0
-    total_sessions = tlog_qs_filtered.count()
-
-    ex_types = tlog_qs_filtered.values('exercise_type').annotate(count=Count('id'))
-    ex_dict = {'slow_jogging': 0, 'squat': 0}
-    for item in ex_types:
-        key = item['exercise_type']
-        if key in ex_dict:
-            ex_dict[key] = item['count']
-
-    scores = list(tlog_qs_filtered.values_list('posture_score', flat=True))
-    if scores:
-        avg_posture = round(sum(scores) / len(scores), 1)
-    else:
-        avg_posture = 0.0
-
-    good_cnt = tlog_qs_filtered.filter(posture_score__gte=80).count()
-    fair_cnt = tlog_qs_filtered.filter(posture_score__gte=60, posture_score__lt=80).count()
-    needs_work_cnt = tlog_qs_filtered.filter(posture_score__lt=60).count()
-
-    train_trend_qs = tlog_qs.filter(created_at__gte=seven_days_ago)\
-        .annotate(date=TruncDate('created_at'))\
-        .values('date')\
-        .annotate(mins=Sum('total_mins'), sessions=Count('id'))\
-        .order_by('date')
-    train_trend = [{'date': item['date'].strftime('%m/%d'), 'mins': item['mins'] or 0, 'sessions': item['sessions']} for item in train_trend_qs if item.get('date')]
-
-    # 3. Community Analytics
-    post_qs = CommunityPost.objects.all()
-    if start_date:
-        post_qs_filtered = post_qs.filter(created_at__gte=start_date)
-    else:
-        post_qs_filtered = post_qs
-
-    total_posts = post_qs_filtered.count()
-    total_likes = PostLike.objects.filter(created_at__gte=start_date).count() if start_date else PostLike.objects.count()
-    total_comments = PostComment.objects.filter(created_at__gte=start_date).count() if start_date else PostComment.objects.count()
-
-    post_types_raw = post_qs_filtered.values('post_type').annotate(count=Count('id'))
-    post_types_dict = {'journey': 0, 'plan': 0, 'recipe': 0}
-    for item in post_types_raw:
-        pt = item['post_type']
-        if pt in post_types_dict:
-            post_types_dict[pt] = item['count']
-
-    reports_raw = PostReport.objects.values('status').annotate(count=Count('id'))
-    reports_dict = {'pending': 0, 'resolved': 0}
-    for item in reports_raw:
-        st = item['status']
-        if st == 'pending':
-            reports_dict['pending'] += item['count']
-        else:
-            reports_dict['resolved'] += item['count']
-
-    # 4. Financial & Points Analytics
-    ptran_qs = PointTransaction.objects.filter(status='completed')
-    if start_date:
-        ptran_qs_filtered = ptran_qs.filter(created_at__gte=start_date)
-    else:
-        ptran_qs_filtered = ptran_qs
-
-    total_transactions = ptran_qs_filtered.count()
-    total_points_changed = ptran_qs_filtered.aggregate(val=Sum('points_changed'))['val'] or 0
-
-    tran_types_raw = ptran_qs_filtered.values('tran_type').annotate(count=Count('id'))
-    tran_types_dict = {'top_up': 0, 'spend': 0, 'reward': 0}
-    for item in tran_types_raw:
-        tt = item['tran_type']
-        if tt in tran_types_dict:
-            tran_types_dict[tt] = item['count']
-
-    topup_trans = ptran_qs_filtered.filter(tran_type='top_up')
-    total_revenue = 0
-    amount_counts = {'33': 0, '170': 0, '490': 0, '990': 0, '1690': 0, '3290': 0}
-    for t in topup_trans:
-        desc = t.description or ''
-        if 'NT$' in desc:
-            try:
-                amt_str = desc.split('NT$')[1].split(' ')[0]
-                amt = int(amt_str)
-                total_revenue += amt
-                if str(amt) in amount_counts:
-                    amount_counts[str(amt)] += 1
-            except Exception:
-                pass
-
-    return {
-        "timeframe": timeframe,
-        "user_analytics": {
-            "total_users": total_users,
-            "new_users_30d": new_users_30d,
-            "active_users_7d": active_users_7d,
-            "login_providers": provider_dict,
-            "registration_trend": reg_trend,
-        },
-        "exercise_analytics": {
-            "total_mins": total_mins,
-            "total_calories": total_calories,
-            "total_sessions": total_sessions,
-            "exercise_types": ex_dict,
-            "posture_score": {
-                "average": avg_posture,
-                "good": good_cnt,
-                "fair": fair_cnt,
-                "needs_work": needs_work_cnt,
-            },
-            "daily_trend": train_trend,
-        },
-        "community_analytics": {
-            "total_posts": total_posts,
-            "total_likes": total_likes,
-            "total_comments": total_comments,
-            "post_types": post_types_dict,
-            "report_status": reports_dict,
-        },
-        "points_analytics": {
-            "total_ecpay_revenue_twd": total_revenue,
-            "total_points_changed": total_points_changed,
-            "total_transactions": total_transactions,
-            "transaction_types": tran_types_dict,
-            "topup_amounts": amount_counts,
-        }
-    }
-
-
 class AdminAnalyticsView(APIView):
     permission_classes = [AllowAny]
 

@@ -30,6 +30,9 @@ class _AdminPointsScreenState extends State<AdminPointsScreen> {
     try {
       final list =
           await _pointsService.getAdminTransactions(type: _selectedType);
+      if (list.isNotEmpty) {
+        debugPrint('【除錯後端回傳的第一筆】: ${list.first}');
+      }
       setState(() {
         _transactions = list;
         _isLoading = false;
@@ -172,14 +175,11 @@ class _AdminPointsScreenState extends State<AdminPointsScreen> {
           typeLabel = '任務獎勵';
         }
 
-        // 取出會員名稱（相容巢狀物件與扁平欄位）
-        String userName = '會員';
-        if (tx['member'] is Map) {
-          userName =
-              tx['member']['username'] ?? tx['member']['nickname'] ?? '會員';
-        } else if (tx['username'] != null) {
-          userName = tx['username'];
-        }
+        String userName = tx['username']?.toString() ??
+            (tx['member'] is Map
+                ? (tx['member']['username'] ?? tx['member']['nickname'])
+                : null) ??
+            '會員 #${tx['member']}';
 
         return Container(
           padding: const EdgeInsets.all(14),

@@ -307,10 +307,15 @@ class PoseAnalysisSerializer(serializers.ModelSerializer):
         model = PoseAnalysis
         fields = '__all__'
 
+from rest_framework import serializers
+from core.models import PointTransaction
+
 class PointTransactionSerializer(serializers.ModelSerializer):
+    username = serializers.CharField(source='member.username', read_only=True)
+
     class Meta:
         model = PointTransaction
-        fields = '__all__'
+        fields = '__all__'  
 
 class TaskSerializer(serializers.ModelSerializer):
     class Meta:
