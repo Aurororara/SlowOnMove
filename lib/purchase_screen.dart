@@ -143,80 +143,82 @@ class _PurchaseScreenState extends State<PurchaseScreen> {
       backgroundColor: Colors.transparent,
       builder: (sheetContext) {
         return SafeArea(
-          child: Container(
-            margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(28),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 42,
-                    height: 5,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE5E7EB),
-                      borderRadius: BorderRadius.circular(999),
+          child: SingleChildScrollView(
+            child: Container(
+              margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(28),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 42,
+                      height: 5,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE5E7EB),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 18),
-                const Text(
-                  '選擇支付方式',
-                  style: TextStyle(
-                    color: Colors.black,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
+                  const SizedBox(height: 18),
+                  const Text(
+                    '選擇支付方式',
+                    style: TextStyle(
+                      color: Colors.black,
+                      fontSize: 20,
+                      fontWeight: FontWeight.w900,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '充值 $_selectedAmount 元，付款完成後可獲得 $totalPoints 點。',
-                  style: const TextStyle(
-                    color: Color(0xFF6B7280),
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
+                  const SizedBox(height: 6),
+                  Text(
+                    '充值 $_selectedAmount 元，付款完成後可獲得 $totalPoints 點。',
+                    style: const TextStyle(
+                      color: Color(0xFF6B7280),
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 18),
-                // 1. 綠界科技 ECPay 信用卡/全功能金流
-                _buildPaymentOptionTile(
-                  icon: Icons.credit_card_rounded,
-                  title: '綠界科技 (ECPay) 信用卡金流',
-                  subtitle: '支援 Visa、Mastercard、JCB 測試刷卡',
-                  onTap: () {
-                    Navigator.pop(sheetContext);
-                    _processECPayCheckout(_selectedPlan, isSimulated: false);
-                  },
-                ),
-                const SizedBox(height: 10),
-                // 2. 綠界科技沙盒測試模擬 (即時入帳)
-                _buildPaymentOptionTile(
-                  icon: Icons.bolt_rounded,
-                  title: '綠界科技 (ECPay) 測試模擬入帳',
-                  subtitle: '發送測試請求，即時驗證點數與交易紀錄',
-                  iconColor: const Color(0xFF059669),
-                  onTap: () {
-                    Navigator.pop(sheetContext);
-                    _processECPayCheckout(_selectedPlan, isSimulated: true);
-                  },
-                ),
-                const SizedBox(height: 10),
-                // 3. Apple Pay
-                _buildPaymentOptionTile(
-                  icon: Icons.phone_iphone_rounded,
-                  title: 'Apple Pay',
-                  subtitle: '快速完成付款，適合 iPhone / Mac 使用者',
-                  onTap: () {
-                    Navigator.pop(sheetContext);
-                    _processECPayCheckout(_selectedPlan, isSimulated: true);
-                  },
-                ),
-              ],
+                  const SizedBox(height: 18),
+                  // 1. 綠界科技 ECPay 信用卡/全功能金流
+                  _buildPaymentOptionTile(
+                    icon: Icons.credit_card_rounded,
+                    title: '綠界科技 (ECPay) 信用卡金流',
+                    subtitle: '支援 Visa、Mastercard、JCB 測試刷卡',
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      _processECPayCheckout(_selectedPlan, isSimulated: false);
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  // 2. 綠界科技沙盒測試模擬 (即時入帳)
+                  _buildPaymentOptionTile(
+                    icon: Icons.bolt_rounded,
+                    title: '綠界科技 (ECPay) 測試模擬入帳',
+                    subtitle: '發送測試請求，即時驗證點數與交易紀錄',
+                    iconColor: const Color(0xFF059669),
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      _processECPayCheckout(_selectedPlan, isSimulated: true);
+                    },
+                  ),
+                  const SizedBox(height: 10),
+                  // 3. Apple Pay
+                  _buildPaymentOptionTile(
+                    icon: Icons.phone_iphone_rounded,
+                    title: 'Apple Pay',
+                    subtitle: '快速完成付款，適合 iPhone / Mac 使用者',
+                    onTap: () {
+                      Navigator.pop(sheetContext);
+                      _processECPayCheckout(_selectedPlan, isSimulated: true);
+                    },
+                  ),
+                ],
+              ),
             ),
           ),
         );
