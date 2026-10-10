@@ -50,6 +50,7 @@ dependencies:
   flutter_line_sdk: ^2.7.2
   shared_preferences: ^2.5.3
   video_player: ^2.10.1
+  fl_chart: ^1.2.0
 
 
 dev_dependencies:

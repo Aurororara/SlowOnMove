@@ -64,7 +64,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
 
   // 循序流程：先檢查頒獎 -> 關閉後接著跳疼痛回報
   Future<void> _handleInitialFlow() async {
-    // 1. 先送出基礎運動數據
+    // 1. 先送出基礎運動數據 (包含 AI 建議)
     await _saveData();
 
     // 2. 檢查是否有新解鎖的徽章
@@ -79,7 +79,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
     if (!mounted) return;
 
     if (newBadges.isNotEmpty) {
-      // 👉 優先跳出頒獎彈窗！使用者點擊收下後，再跳疼痛回報
+      // 優先跳出頒獎彈窗！使用者點擊收下後，再跳疼痛回報
       await _showBadgeUnlockedDialog(newBadges);
     }
 
@@ -89,11 +89,10 @@ class _ResultsScreenState extends State<ResultsScreen> {
     }
   }
 
-  // 🎖️ 頒發新解鎖徽章的慶祝彈窗（回傳 Future 支援 await 等待關閉）
+  // 頒發新解鎖徽章的慶祝彈窗
   Future<void> _showBadgeUnlockedDialog(List<String> badgeNames) async {
     if (!mounted || badgeNames.isEmpty) return;
 
-    // 再次噴射慶祝彩帶
     _confettiController.play();
 
     await showDialog(
@@ -108,7 +107,6 @@ class _ResultsScreenState extends State<ResultsScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                // 獎牌圖示
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: BoxDecoration(
@@ -136,8 +134,6 @@ class _ResultsScreenState extends State<ResultsScreen> {
                   style: TextStyle(fontSize: 13, color: Colors.grey),
                 ),
                 const SizedBox(height: 16),
-
-                // 列出所有剛解鎖的徽章名稱
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
@@ -170,7 +166,6 @@ class _ResultsScreenState extends State<ResultsScreen> {
                     );
                   }).toList(),
                 ),
-
                 const SizedBox(height: 24),
                 ElevatedButton(
                   style: ElevatedButton.styleFrom(
@@ -225,8 +220,6 @@ class _ResultsScreenState extends State<ResultsScreen> {
                       style: TextStyle(color: Colors.grey, fontSize: 13),
                     ),
                     const SizedBox(height: 16),
-
-                    // 火柴人元件
                     BodyPainPicker(
                       onSelectionChanged: (parts) {
                         setModalState(() {
@@ -234,7 +227,6 @@ class _ResultsScreenState extends State<ResultsScreen> {
                         });
                       },
                     ),
-
                     const SizedBox(height: 12),
                     Text(
                       tempSelected.isEmpty
@@ -250,7 +242,6 @@ class _ResultsScreenState extends State<ResultsScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-
                     ElevatedButton(
                       style: ElevatedButton.styleFrom(
                         minimumSize: const Size.fromHeight(48),
@@ -269,7 +260,6 @@ class _ResultsScreenState extends State<ResultsScreen> {
                         List<String> partLabels =
                             tempSelected.map((p) => p.label).toList();
                         debugPrint('送出部位中文名稱: $partLabels');
-                        // 填寫完畢後更新後端紀錄
                         _saveData();
                       },
                       child: const Text('完成回饋', style: TextStyle(fontSize: 16)),
@@ -345,21 +335,34 @@ class _ResultsScreenState extends State<ResultsScreen> {
     );
   }
 
+  // 根據運動類型與成績產出 AI 建議
+  String generateAiFeedback() {
+    if (widget.exerciseTitle == '深蹲') {
+      if (widget.averageAccuracy >= 80) {
+        return "深蹲姿勢非常標準！核心有收緊，膝蓋與腳尖方向一致，重心掌握得很好。請繼續保持這個好習慣，這對鍛鍊臀腿肌肉非常有幫助！";
+      } else if (widget.averageAccuracy >= 60) {
+        return "做得不錯，但還有進步空間。注意深蹲時重心要放在腳跟，背部保持挺直，不要過度前傾。下蹲時感受臀部向後坐的感覺。";
+      } else {
+        return "深蹲姿勢需要再調整喔。請注意：下蹲時臀部往後坐，膝蓋不要內夾，保持呼吸節奏。建議對著鏡子慢慢練習，感受肌肉發力。";
+      }
+    } else {
+      if (widget.averageAccuracy >= 80) {
+        return "超慢跑節奏掌握得很完美！步伐輕盈，落地姿勢正確。繼續保持這樣的步頻與姿勢，能有效燃燒脂肪並保護膝蓋！";
+      } else if (widget.averageAccuracy >= 60) {
+        return "表現不錯，但要注意落地時盡量使用前腳掌或全腳掌，避免腳跟重落地，以減少膝蓋負擔。保持身體微微前傾會更輕鬆喔。";
+      } else {
+        return "超慢跑姿勢需要微調。請保持身體微微前傾，步伐縮小，提高步頻，並注意手臂自然擺動。不要急，跟著自己的節奏慢慢來。";
+      }
+    }
+  }
+
   Future<void> _saveData() async {
-    final String baseUrl = ApiConfig.baseUrl;
-    final String baseTrainingUrl = baseUrl.endsWith('/')
-        ? '${baseUrl}training-logs/'
-        : '$baseUrl/training-logs/';
-
     final bool isCreating = _trainingLogId == null;
-
-    final String url =
-        isCreating ? baseTrainingUrl : '$baseTrainingUrl$_trainingLogId/';
 
     final bool isSquat = widget.exerciseTitle == '深蹲';
     final int totalMins = widget.timeSeconds ~/ 60;
     final int fixedCalories = caloriesBurned;
-    final int fixedSteps = widget.stepCount; // 讓深蹲的次數也存進資料庫
+    final int fixedSteps = widget.stepCount;
 
     final List<String> painList =
         _recordedPainParts.map((e) => e.label).toList();
@@ -380,6 +383,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
         "calories": fixedCalories,
         "step_count": fixedSteps,
         "pain_parts": painList,
+        "ai_advice": generateAiFeedback(), // 將生成的建議存進後端
       };
 
       final response = isCreating
@@ -403,7 +407,6 @@ class _ResultsScreenState extends State<ResultsScreen> {
           await _checkDeepAnalysisUnlock();
 
           final balance = await _pointsService.getBalance();
-
           UserSession.walletBalanceNotifier.value = balance.toDouble();
 
           if (mounted) {
@@ -423,8 +426,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
       );
     } catch (e) {
       debugPrint(
-        '⚠️ 儲存運動紀錄失敗: '
-        '${_api.getErrorMessage(e)}',
+        '⚠️ 儲存運動紀錄失敗: ${_api.getErrorMessage(e)}',
       );
     }
   }
@@ -434,7 +436,6 @@ class _ResultsScreenState extends State<ResultsScreen> {
 
     try {
       final unlocks = await _pointsService.getUnlocks();
-
       final referenceId = 'training_log:$_trainingLogId';
 
       final unlocked = unlocks.any(
@@ -513,26 +514,8 @@ class _ResultsScreenState extends State<ResultsScreen> {
   }
 
   Future<void> _fetchAiFeedback() async {
-    String feedback = "";
-    if (widget.exerciseTitle == '深蹲') {
-      if (widget.averageAccuracy >= 80) {
-        feedback = "深蹲姿勢非常標準！核心有收緊，膝蓋與腳尖方向一致，重心掌握得很好。請繼續保持這個好習慣，這對鍛鍊臀腿肌肉非常有幫助！";
-      } else if (widget.averageAccuracy >= 60) {
-        feedback = "做得不錯，但還有進步空間。注意深蹲時重心要放在腳跟，背部保持挺直，不要過度前傾。下蹲時感受臀部向後坐的感覺。";
-      } else {
-        feedback = "深蹲姿勢需要再調整喔。請注意：下蹲時臀部往後坐，膝蓋不要內夾，保持呼吸節奏。建議對著鏡子慢慢練習，感受肌肉發力。";
-      }
-    } else {
-      if (widget.averageAccuracy >= 80) {
-        feedback = "超慢跑節奏掌握得很完美！步伐輕盈，落地姿勢正確。繼續保持這樣的步頻與姿勢，能有效燃燒脂肪並保護膝蓋！";
-      } else if (widget.averageAccuracy >= 60) {
-        feedback = "表現不錯，但要注意落地時盡量使用前腳掌或全腳掌，避免腳跟重落地，以減少膝蓋負擔。保持身體微微前傾會更輕鬆喔。";
-      } else {
-        feedback = "超慢跑姿勢需要微調。請保持身體微微前傾，步伐縮小，提高步頻，並注意手臂自然擺動。不要急，跟著自己的節奏慢慢來。";
-      }
-    }
-
-    await Future.delayed(const Duration(seconds: 1));
+    final feedback = generateAiFeedback();
+    await Future.delayed(const Duration(milliseconds: 500));
 
     if (mounted) {
       setState(() {
@@ -638,7 +621,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
 
                   const SizedBox(height: 24),
 
-                  // 疼痛回報卡片（支援二次點選修改）
+                  // 疼痛回報卡片
                   _buildPainStatusCard(),
 
                   const SizedBox(height: 24),

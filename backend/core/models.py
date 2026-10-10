@@ -766,6 +766,7 @@ class TrainingLog(models.Model):
     calories = models.IntegerField()
     step_count = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
+    ai_advice = models.TextField(blank=True, default='')
 
 class PostLike(models.Model):
     member = models.ForeignKey(

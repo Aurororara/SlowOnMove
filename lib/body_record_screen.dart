@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 
 import '../config/api_config.dart';
 import '../services/user_session.dart';
+import 'health_chart_screen.dart';
 import 'health_record_card.dart';
 
 class BodyRecordScreen extends StatefulWidget {
@@ -427,6 +428,20 @@ class _BodyRecordScreenState extends State<BodyRecordScreen>
     return Scaffold(
       appBar: AppBar(
         title: const Text("健康日誌"),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.show_chart),
+            tooltip: "趨勢圖表分析",
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const HealthChartScreen(),
+                ),
+              );
+            },
+          ),
+        ],
         bottom: TabBar(
           controller: _tabController,
           tabs: const [

@@ -1,4 +1,4 @@
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, permissions
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated,AllowAny
 from rest_framework.decorators import action
@@ -476,9 +476,16 @@ class BodyRecordViewSet(viewsets.ModelViewSet):
     permission_classes = [AllowAny]
    # permission_classes = [IsAuthenticated]
 
+from rest_framework.permissions import AllowAny
+
 class BloodPressureRecordViewSet(viewsets.ModelViewSet):
     queryset = BloodPressureRecord.objects.all()
     serializer_class = BloodPressureRecordSerializer
+    permission_classes = [AllowAny]
+
+class BodyRecordViewSet(viewsets.ModelViewSet):
+    queryset = BodyRecord.objects.all()
+    serializer_class = BodyRecordSerializer
     permission_classes = [AllowAny]
 
 
