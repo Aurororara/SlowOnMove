@@ -1,6 +1,6 @@
 from django.contrib import admin
 from .models import (
-    Member, BodyRecord, BoardRanking, CommunityPost, Favorite, TrainingLog,
+    Member, BodyRecord, BloodPressureRecord, BoardRanking, CommunityPost, Favorite, TrainingLog,
     PostLike, PostComment, PostReport, PoseAnalysis, PointTransaction,
     Task, MemberTask, Badge, MemberBadge, WorkoutMenu, WorkoutItem
 )
@@ -12,6 +12,12 @@ class MemberAdmin(admin.ModelAdmin):
 @admin.register(BodyRecord)
 class BodyRecordAdmin(admin.ModelAdmin):
     list_display = ('member', 'record_date', 'height', 'weight')
+
+@admin.register(BloodPressureRecord)
+class BloodPressureRecordAdmin(admin.ModelAdmin):
+    list_display = ('id', 'member', 'systolic', 'diastolic', 'pulse', 'record_date', 'created_at')
+    list_filter = ('record_date', 'member')
+    search_fields = ('member__username',)
 
 @admin.register(BoardRanking)
 class BoardRankingAdmin(admin.ModelAdmin):
@@ -84,3 +90,15 @@ class WorkoutMenuAdmin(admin.ModelAdmin):
 @admin.register(WorkoutItem)
 class WorkoutItemAdmin(admin.ModelAdmin):
     list_display = ('member', 'menu', 'save_at')
+
+# ==========================================
+# 自動註冊剩下尚未註冊的所有資料表
+# ==========================================
+from django.apps import apps
+app = apps.get_app_config('core')
+
+for model_name, model in app.models.items():
+    try:
+        admin.site.register(model)
+    except admin.sites.AlreadyRegistered:
+        pass

@@ -46,7 +46,7 @@ class _BodyRecordScreenState extends State<BodyRecordScreen>
     super.dispose();
   }
 
-  // 取得台灣本地時區的 YYYY-MM-DD
+  // 取得本地時區的 YYYY-MM-DD
   String formatDate(DateTime dt) {
     final local = dt.toLocal();
     final y = local.year.toString().padLeft(4, '0');
@@ -141,24 +141,31 @@ class _BodyRecordScreenState extends State<BodyRecordScreen>
       return;
     }
 
-    final response = await http.post(
-      Uri.parse('${ApiConfig.baseUrl}body-records/'),
-      headers: {"Content-Type": "application/json"},
-      body: json.encode({
-        "member": UserSession.memberId,
-        "height": height,
-        "weight": weight,
-        "record_date": formatDate(_selectedDate),
-      }),
-    );
+    try {
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}body-records/'),
+        headers: {"Content-Type": "application/json"},
+        body: json.encode({
+          "member": UserSession.memberId,
+          "height": height.toInt(),
+          "weight": weight.toInt(),
+          "record_date": formatDate(_selectedDate),
+        }),
+      );
 
-    if (response.statusCode == 201) {
-      Navigator.pop(context);
-      weightController.clear();
-      showMessage("體態紀錄已儲存");
-      fetchRecords();
-    } else {
-      showMessage("新增失敗");
+      print('【體態新增狀態碼】: ${response.statusCode}');
+      print('【體態新增回傳內容】: ${response.body}');
+
+      if (response.statusCode == 201) {
+        Navigator.pop(context);
+        weightController.clear();
+        showMessage("體態紀錄已儲存");
+        fetchRecords();
+      } else {
+        showMessage("新增失敗: ${response.body}");
+      }
+    } catch (e) {
+      showMessage("送出失敗，請檢查網路連線");
     }
   }
 
@@ -172,27 +179,39 @@ class _BodyRecordScreenState extends State<BodyRecordScreen>
       return;
     }
 
-    final response = await http.post(
-      Uri.parse('${ApiConfig.baseUrl}blood-pressure-records/'),
-      headers: {"Content-Type": "application/json"},
-      body: json.encode({
-        "member": UserSession.memberId,
-        "systolic": sys,
-        "diastolic": dia,
-        "pulse": pulse,
-        "record_date": formatDate(_selectedDate),
-      }),
-    );
+    if (UserSession.memberId == null) {
+      showMessage("尚未登入或使用者 ID 不存在");
+      return;
+    }
 
-    if (response.statusCode == 201) {
-      Navigator.pop(context);
-      systolicController.clear();
-      diastolicController.clear();
-      pulseController.clear();
-      showMessage("血壓紀錄已儲存");
-      fetchRecords();
-    } else {
-      showMessage("血壓新增失敗");
+    try {
+      final response = await http.post(
+        Uri.parse('${ApiConfig.baseUrl}blood-pressure-records/'),
+        headers: {"Content-Type": "application/json"},
+        body: json.encode({
+          "member": UserSession.memberId,
+          "systolic": sys,
+          "diastolic": dia,
+          "pulse": pulse,
+          "record_date": formatDate(_selectedDate),
+        }),
+      );
+
+      print('【血壓新增狀態碼】: ${response.statusCode}');
+      print('【血壓新增回傳內容】: ${response.body}');
+
+      if (response.statusCode == 201) {
+        Navigator.pop(context);
+        systolicController.clear();
+        diastolicController.clear();
+        pulseController.clear();
+        showMessage("血壓紀錄已儲存");
+        fetchRecords();
+      } else {
+        showMessage("血壓新增失敗: ${response.body}");
+      }
+    } catch (e) {
+      showMessage("送出失敗，請檢查網路連線");
     }
   }
 
@@ -313,7 +332,7 @@ class _BodyRecordScreenState extends State<BodyRecordScreen>
     );
   }
 
-  // 頂部橫向日期選擇器（週/月簡約月曆條）
+  // 頂部橫向日期選擇器
   Widget _buildCalendarBar() {
     final selectedStr = formatDate(_selectedDate);
     return Container(
@@ -323,8 +342,8 @@ class _BodyRecordScreenState extends State<BodyRecordScreen>
         height: 70,
         child: ListView.builder(
           scrollDirection: Axis.horizontal,
-          itemCount: 30, // 顯示過去 30 天
-          reverse: true, // 最新在右邊
+          itemCount: 30,
+          reverse: true,
           itemBuilder: (context, index) {
             final date = DateTime.now().subtract(Duration(days: index));
             final dateStr = formatDate(date);

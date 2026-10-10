@@ -124,7 +124,6 @@ class _ExerciseHistoryScreenState extends State<ExerciseHistoryScreen> {
   // 歷史紀錄卡片
   Widget _buildRealHistoryCard(dynamic log) {
     String fullStartTime = log['start_time']?.toString() ?? "";
-
     String fullEndTime = log['end_time']?.toString() ?? "";
 
     String dateStr =
@@ -140,8 +139,11 @@ class _ExerciseHistoryScreenState extends State<ExerciseHistoryScreen> {
 
     int accuracy = log['posture_score'] ?? 0;
     final int duration = log['total_mins'] ?? 0;
-
     final int calories = ((log['calories'] as num?)?.toDouble() ?? 0.0).round();
+
+    // 取得運動類型（判斷是超慢跑還是深蹲）
+    final String exerciseType =
+        log['exercise_type']?.toString() ?? 'slow_jogging';
 
     return Card(
       margin: const EdgeInsets.only(bottom: 16),
@@ -165,11 +167,12 @@ class _ExerciseHistoryScreenState extends State<ExerciseHistoryScreen> {
           ),
           title: Row(
             children: [
-              _buildLeadingCircle(),
+              _buildLeadingCircle(exerciseType),
               const SizedBox(width: 12),
               _buildMainInfo(
                 dateStr,
                 startTimeFull,
+                exerciseType,
               ),
             ],
           ),
@@ -286,15 +289,17 @@ class _ExerciseHistoryScreenState extends State<ExerciseHistoryScreen> {
     );
   }
 
-  Widget _buildLeadingCircle() {
+  Widget _buildLeadingCircle(String exerciseType) {
+    final bool isSquat = exerciseType == 'squat';
+
     return Container(
       padding: const EdgeInsets.all(10),
-      decoration: const BoxDecoration(
-        color: Colors.black,
+      decoration: BoxDecoration(
+        color: isSquat ? Colors.orange.shade700 : Colors.black,
         shape: BoxShape.circle,
       ),
-      child: const Icon(
-        Icons.show_chart,
+      child: Icon(
+        isSquat ? Icons.fitness_center : Icons.directions_run,
         color: Colors.white,
         size: 20,
       ),
@@ -304,19 +309,43 @@ class _ExerciseHistoryScreenState extends State<ExerciseHistoryScreen> {
   Widget _buildMainInfo(
     String date,
     String start,
+    String exerciseType,
   ) {
+    final bool isSquat = exerciseType == 'squat';
+    final String title = isSquat ? '深蹲紀錄' : '超慢跑紀錄';
+
     return Expanded(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            '超慢跑紀錄',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-            ),
+          Row(
+            children: [
+              Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: isSquat ? Colors.orange.shade50 : Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  isSquat ? '深蹲' : '超慢跑',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: isSquat ? Colors.orange.shade800 : Colors.black87,
+                  ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 6),
           Row(

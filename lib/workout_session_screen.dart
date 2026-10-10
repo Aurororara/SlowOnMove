@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'services/workout_menu_service.dart';
 import 'pose_detector_view.dart';
+import 'slow_jogging_tutorial_screen.dart';
 
 class WorkoutSessionScreen extends StatefulWidget {
   final Map<String, dynamic> menu;
@@ -143,6 +144,16 @@ class _WorkoutSessionScreenState extends State<WorkoutSessionScreen> {
     setState(() {
       _isStarting = true;
     });
+
+    if (exerciseTitle == '超慢跑') {
+      await SlowJoggingTutorial.playIfNeeded(context);
+
+      if (!mounted) return;
+    } else if (exerciseTitle == '深蹲') {
+      await SquatTutorial.playIfNeeded(context);
+
+      if (!mounted) return;
+    }
 
     final bool? completed = await Navigator.push<bool>(
       context,
