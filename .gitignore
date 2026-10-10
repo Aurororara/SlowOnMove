@@ -48,3 +48,6 @@ __pycache__/g
 htmlcov/
 .vscode
 .env
+*.roro
+**/*.roro
+**/**/*.roro
