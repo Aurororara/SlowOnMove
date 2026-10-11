@@ -346,21 +346,36 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
 
     final format = InputImageFormatValue.fromRawValue(image.format.raw as int);
 
-    // ⭐ 這裡也是：檢查 Platform 前先確定不是 Web
+    // ⭐ 支援 Android 的 NV21, YUV_420_888 與 YV12，以及 iOS 的 BGRA8888, YUV420
     if (format == null ||
         (_supportsPoseDetectionPlatform &&
             Platform.isAndroid &&
-            format != InputImageFormat.nv21) ||
+            format != InputImageFormat.nv21 &&
+            format != InputImageFormat.yuv_420_888 &&
+            format != InputImageFormat.yv12) ||
         (_supportsPoseDetectionPlatform &&
             Platform.isIOS &&
-            format != InputImageFormat.bgra8888)) {
+            format != InputImageFormat.bgra8888 &&
+            format != InputImageFormat.yuv420)) {
       return null;
     }
 
     if (image.planes.isEmpty) return null;
 
+    // ⭐ 核心修復：Android NV21/YUV 必須將所有 planes 合併，不能只傳 plane[0]，否則 ML Kit 原生層會因為 Buffer 長度不足直接回傳 0 隻骨架
+    final Uint8List bytes;
+    if (image.planes.length == 1) {
+      bytes = image.planes[0].bytes;
+    } else {
+      final WriteBuffer allBytes = WriteBuffer();
+      for (final Plane plane in image.planes) {
+        allBytes.putUint8List(plane.bytes);
+      }
+      bytes = allBytes.done().buffer.asUint8List();
+    }
+
     return InputImage.fromBytes(
-      bytes: image.planes[0].bytes,
+      bytes: bytes,
       metadata: InputImageMetadata(
         size: Size(image.width.toDouble(), image.height.toDouble()),
         rotation: rotation,
@@ -374,47 +389,53 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
     if (!_supportsPoseDetectionPlatform || !_canProcess || _isBusy) return;
     _isBusy = true;
 
-    final poses = await _poseDetector.processImage(inputImage);
+    try {
+      final poses = await _poseDetector.processImage(inputImage);
 
-    final analysisResult =
-        _poseAnalyzer.analyze(poses, exerciseType: widget.exerciseTitle);
-    _accuracyRate = analysisResult.accuracy;
+      final analysisResult =
+          _poseAnalyzer.analyze(poses, exerciseType: widget.exerciseTitle);
+      _accuracyRate = analysisResult.accuracy;
 
-    for (var f in analysisResult.feedback) {
-      if (!_feedback.contains(f)) {
-        _feedback.add(f);
+      for (var f in analysisResult.feedback) {
+        if (!_feedback.contains(f)) {
+          _feedback.add(f);
+        }
       }
-    }
-    _stepCount = analysisResult.stepCount;
+      _stepCount = analysisResult.stepCount;
 
-    // 🚨 當姿勢分析回傳錯誤提醒時，觸發 5 秒自動消失的彈跳視窗
-    if (analysisResult.feedback.isNotEmpty) {
-      final postureErrors =
-          analysisResult.feedback.where((msg) => msg != '請站在鏡頭前').toList();
-      if (postureErrors.isNotEmpty) {
-        _showPostureErrorPopup(postureErrors.first);
+      // 🚨 當姿勢分析回傳錯誤提醒時，觸發 5 秒自動消失的彈跳視窗
+      if (analysisResult.feedback.isNotEmpty) {
+        final postureErrors =
+            analysisResult.feedback.where((msg) => msg != '請站在鏡頭前').toList();
+        if (postureErrors.isNotEmpty) {
+          _showPostureErrorPopup(postureErrors.first);
+        }
       }
-    }
 
-    if (poses.isNotEmpty) {
-      _totalAccuracySum += _accuracyRate;
-      _accuracySamples++;
-    }
+      if (poses.isNotEmpty) {
+        _totalAccuracySum += _accuracyRate;
+        _accuracySamples++;
+      }
 
-    if (inputImage.metadata?.size != null &&
-        inputImage.metadata?.rotation != null) {
-      final painter = PosePainter(
-        poses,
-        inputImage.metadata!.size,
-        inputImage.metadata!.rotation,
-        cameras[_cameraIndex].lensDirection,
-      );
-      _customPaint = CustomPaint(painter: painter);
-    } else {
-      _customPaint = null;
+      if (inputImage.metadata?.size != null &&
+          inputImage.metadata?.rotation != null) {
+        final painter = PosePainter(
+          poses,
+          inputImage.metadata!.size,
+          inputImage.metadata!.rotation,
+          cameras[_cameraIndex].lensDirection,
+        );
+        _customPaint = CustomPaint(painter: painter);
+      } else {
+        _customPaint = null;
+      }
+    } catch (e) {
+      debugPrint('Pose detection 處理異常: $e');
+    } finally {
+      // 確保即使中途有任何例外，_isBusy 一定會解鎖，不會永久卡死在 0
+      _isBusy = false;
+      if (mounted) setState(() {});
     }
-    _isBusy = false;
-    if (mounted) setState(() {});
   }
 
   @override

@@ -59,11 +59,14 @@ class PoseAnalyzer {
     final rightKnee = pose.landmarks[PoseLandmarkType.rightKnee];
 
     bool noLegsDetected = false;
-    if (leftKnee == null || rightKnee == null) {
+    if (leftKnee == null && rightKnee == null) {
       noLegsDetected = true;
     } else {
-      double minLikelihood = math.min(leftKnee.likelihood, rightKnee.likelihood);
-      if (minLikelihood < 0.2) {
+      double maxLikelihood = math.max(
+        leftKnee?.likelihood ?? 0.0,
+        rightKnee?.likelihood ?? 0.0,
+      );
+      if (maxLikelihood < 0.2) {
         noLegsDetected = true;
       }
     }

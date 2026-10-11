@@ -46,9 +46,10 @@ class PosePainter extends CustomPainter {
 
       // Connections lines Drawing like MediaPipe
       void paintLine(PoseLandmarkType type1, PoseLandmarkType type2, Paint paintType) {
-        final PoseLandmark joint1 = pose.landmarks[type1]!;
-        final PoseLandmark joint2 = pose.landmarks[type2]!;
-        if (joint1.likelihood < 0.5 || joint2.likelihood < 0.5) return;
+        final PoseLandmark? joint1 = pose.landmarks[type1];
+        final PoseLandmark? joint2 = pose.landmarks[type2];
+        if (joint1 == null || joint2 == null) return;
+        if (joint1.likelihood < 0.25 || joint2.likelihood < 0.25) return;
         canvas.drawLine(
             Offset(translateX(joint1.x, size, imageSize, rotation, cameraLensDirection),
                 translateY(joint1.y, size, imageSize, rotation, cameraLensDirection)),
