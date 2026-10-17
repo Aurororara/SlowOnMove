@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../config/api_config.dart';
@@ -9,6 +10,10 @@ class ApiService {
   static final ApiService _instance = ApiService._internal();
 
   factory ApiService() => _instance;
+
+  late final Dio dio;
+
+  final FlutterSecureStorage storage = const FlutterSecureStorage();
 
   ApiService._internal() {
     dio = Dio(
@@ -35,30 +40,47 @@ class ApiService {
             (path) => options.path.contains(path),
           );
 
+          // 避免沿用前一次請求的 Authorization
+          options.headers.remove('Authorization');
+
           if (!isPublicAuthRequest) {
             final token = await getToken();
 
             if (token != null && token.isNotEmpty) {
               options.headers['Authorization'] = 'Bearer $token';
             }
+
+            if (kDebugMode) {
+              debugPrint(
+                '[API] ${options.method} ${options.path} '
+                'token=${token != null && token.isNotEmpty}',
+              );
+            }
           }
 
           handler.next(options);
         },
-        onError: (DioException e, handler) async {
-          if (e.response?.statusCode == 401) {
-            await clearToken();
+        onError: (error, handler) {
+          if (kDebugMode) {
+            debugPrint(
+              '[API ERROR] ${error.requestOptions.path} '
+              'status=${error.response?.statusCode}',
+            );
+
+            if (error.response?.statusCode == 401) {
+              debugPrint(
+                '[API AUTH ERROR] ${error.response?.data}',
+              );
+            }
           }
 
-          handler.next(e);
+          // 不因單一 API 401 就刪除整個登入狀態
+          // Token 清除應由登出流程統一處理
+          handler.next(error);
         },
       ),
     );
   }
-
-  late final Dio dio;
-
-  final FlutterSecureStorage storage = const FlutterSecureStorage();
 
   Future<void> saveToken(String token) async {
     await storage.write(
@@ -96,11 +118,21 @@ class ApiService {
       final statusCode = error.response?.statusCode;
 
       if (statusCode == 400) {
+        final data = error.response?.data;
+
+        if (data is Map) {
+          final message = data['error'] ?? data['detail'] ?? data['message'];
+
+          if (message != null) {
+            return message.toString();
+          }
+        }
+
         return '請求資料格式錯誤';
       }
 
       if (statusCode == 401) {
-        return '登入已過期，請重新登入';
+        return '登入驗證失敗，請重新登入';
       }
 
       if (statusCode == 403) {

@@ -1182,10 +1182,17 @@ class FavoriteViewSet(viewsets.ModelViewSet):
     serializer_class = FavoriteSerializer
     permission_classes = [IsAuthenticated]
 
+
 class TrainingLogViewSet(viewsets.ModelViewSet):
     queryset = TrainingLog.objects.all()
     serializer_class = TrainingLogSerializer
-    permission_classes = [AllowAny]  
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return TrainingLog.objects.filter(
+            member=self.request.user
+        ).order_by("-id")
+        
     # 個人運動數據加總 API
     @action(detail=False, methods=['get'], url_path='my-stats')
     def my_stats(self, request):
@@ -3636,6 +3643,7 @@ class PointsViewSet(viewsets.ViewSet):
 
         return Response(data)
 
+
     @action(detail=False, methods=["post"], url_path="use")
     @transaction.atomic
     def use_points(self, request):
@@ -3647,11 +3655,43 @@ class PointsViewSet(viewsets.ViewSet):
 
         if not feature:
             return Response(
-                {
-                    "error": "無效的付費功能",
-                },
+                {"error": "無效的付費功能"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        reference_id = str(
+            request.data.get("reference_id") or ""
+        ).strip()
+
+        # 深度運動分析：每一筆運動紀錄獨立解鎖
+        if feature_code == "deep_analysis":
+            prefix = "training_log:"
+
+            if not reference_id.startswith(prefix):
+                return Response(
+                    {"error": "運動紀錄識別碼格式錯誤"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            log_id = reference_id[len(prefix):]
+
+            if not log_id.isascii() or not log_id.isdecimal():
+                return Response(
+                    {"error": "運動紀錄識別碼格式錯誤"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            # 只能解鎖自己的運動紀錄
+            if not TrainingLog.objects.filter(
+                id=int(log_id),
+                member=request.user,
+            ).exists():
+                return Response(
+                    {"error": "找不到這筆運動紀錄"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
+            reference_id = f"training_log:{int(log_id)}"
 
         user = (
             Member.objects
@@ -3661,6 +3701,25 @@ class PointsViewSet(viewsets.ViewSet):
 
         points_to_use = feature["points"]
         feature_name = feature["name"]
+
+        # 先檢查是否已經解鎖，避免重複扣點
+        already_unlocked = FeatureUnlock.objects.filter(
+            member=user,
+            feature_code=feature_code,
+            reference_id=reference_id,
+        ).exists()
+
+        if already_unlocked:
+            return Response({
+                "message": "此功能已解鎖",
+                "feature_code": feature_code,
+                "feature_name": feature_name,
+                "reference_id": reference_id,
+                "already_unlocked": True,
+                "points_used": 0,
+                "remaining_balance": user.points,
+                "transaction": None,
+            })
 
         if user.points < points_to_use:
             return Response(
@@ -3672,37 +3731,50 @@ class PointsViewSet(viewsets.ViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
+        # 扣除 SP
         user.points -= points_to_use
         user.save(update_fields=["points"])
 
+        # 建立永久解鎖紀錄
+        FeatureUnlock.objects.create(
+            member=user,
+            feature_code=feature_code,
+            reference_id=reference_id,
+        )
+
+        # 建立點數交易紀錄
         tran = PointTransaction.objects.create(
             member=user,
             points_changed=-points_to_use,
             tran_type="spend",
             description=f"解鎖：{feature_name}",
+            reference_key=f"unlock:{feature_code}:{reference_id}",
             status="completed",
         )
 
-        return Response(
-            {
-                "message": f"已解鎖{feature_name}",
-                "feature_code": feature_code,
-                "feature_name": feature_name,
-                "points_used": points_to_use,
-                "remaining_balance": user.points,
-                "transaction": {
-                    "id": tran.id,
-                    "member_id": tran.member_id,
-                    "username": user.username,
-                    "points_changed": tran.points_changed,
-                    "tran_type": tran.tran_type,
-                    "description": tran.description,
-                    "order_number": tran.order_number,
-                    "status": tran.status,
-                    "created_at": tran.created_at.strftime("%Y-%m-%d %H:%M") if tran.created_at else "",
-                },
-            }
-        )
+        return Response({
+            "message": f"已解鎖{feature_name}",
+            "feature_code": feature_code,
+            "feature_name": feature_name,
+            "reference_id": reference_id,
+            "already_unlocked": False,
+            "points_used": points_to_use,
+            "remaining_balance": user.points,
+            "transaction": {
+                "id": tran.id,
+                "member_id": tran.member_id,
+                "username": user.username,
+                "points_changed": tran.points_changed,
+                "tran_type": tran.tran_type,
+                "description": tran.description,
+                "order_number": tran.order_number,
+                "status": tran.status,
+                "created_at": (
+                    tran.created_at.strftime("%Y-%m-%d %H:%M")
+                    if tran.created_at else ""
+                ),
+            },
+        })
 
     @action(
         detail=False,
