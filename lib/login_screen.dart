@@ -45,28 +45,34 @@ class _LoginScreenState extends State<LoginScreen> {
   void _showAlert(String message) {
     if (!mounted) return;
 
-    showDialog(
-      context: context,
-      useRootNavigator: true,
-      builder: (dialogContext) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-          ),
-          title: const Text(
-            '提醒',
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-          content: Text(message),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('確定'),
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+
+      showDialog<void>(
+        context: context,
+        useRootNavigator: true,
+        builder: (dialogContext) {
+          return AlertDialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
             ),
-          ],
-        );
-      },
-    );
+            title: const Text(
+              '提醒',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            content: Text(message),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop();
+                },
+                child: const Text('確定'),
+              ),
+            ],
+          );
+        },
+      );
+    });
   }
 
   void _showSuccessMessage(String message) {
@@ -132,13 +138,17 @@ class _LoginScreenState extends State<LoginScreen> {
 
       if (isNewUser != null) {
         if (sheetContext != null && sheetContext.mounted) {
-          Navigator.pop(sheetContext);
+          Navigator.of(sheetContext).pop();
+
+          // 等待 BottomSheet 關閉動畫完成
+          await Future.delayed(const Duration(milliseconds: 350));
         }
+
+        if (!mounted) return;
 
         _showSuccessMessage(_isSignUp ? '註冊成功！' : '登入成功！');
 
-        Navigator.pushReplacement(
-          context,
+        Navigator.of(context).pushReplacement(
           MaterialPageRoute(
             builder: (context) => isNewUser == true
                 ? const OnboardingSetupScreen()
