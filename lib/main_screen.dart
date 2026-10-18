@@ -1,8 +1,6 @@
-import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -178,16 +176,6 @@ class _HomeScreenState extends State<HomeScreen> {
       _fetchHomeData(),
       _fetchExercisePreferences(),
     ]);
-  }
-
-  String _buildUrl(String path) {
-    final String baseUrl = ApiConfig.baseUrl;
-
-    if (baseUrl.endsWith('/')) {
-      return '$baseUrl$path';
-    }
-
-    return '$baseUrl/$path';
   }
 
   // ============================================================
@@ -406,9 +394,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final int currentMemberId = UserSession.memberId;
 
     try {
-      final response = await ApiService().dio.get(
-            'members/$currentMemberId/',
-          );
+      final response = await ApiService().dio.get('members/$currentMemberId/');
 
       debugPrint(
         '取得運動偏好 API 狀態碼：'
@@ -663,9 +649,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     try {
-      final response = await ApiService().dio.get(
-            'training-logs/',
-          );
+      final response = await ApiService().dio.get('training-logs/');
 
       debugPrint(
         'training-logs API 狀態碼: '

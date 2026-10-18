@@ -51,3 +51,6 @@ htmlcov/
 *.roro
 **/*.roro
 **/**/*.roro
+# Local video-service credentials and generated server configuration
+backend/.env.livekit
+backend/.group-video/

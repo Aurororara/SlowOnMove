@@ -11,6 +11,7 @@ from .views import (
 )
 from .auth_views import GoogleLoginView, FacebookLoginView, RegisterView, LoginView
 from .line_views import LineBindView
+from .video_views import GroupRunTokenView
 
 router = DefaultRouter()
 router.register(r'members', MemberViewSet)
@@ -53,6 +54,7 @@ router.register(
 )
 
 urlpatterns = [
+    path('group-runs/token/', GroupRunTokenView.as_view(), name='group-run-token'),
     path('auth/google/', GoogleLoginView.as_view(), name='auth-google'),
     path('auth/facebook/', FacebookLoginView.as_view(), name='auth-facebook'),
     path('auth/register/', RegisterView.as_view(), name='auth-register'),

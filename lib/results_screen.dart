@@ -39,6 +39,8 @@ class _ResultsScreenState extends State<ResultsScreen> {
   final PointsService _pointsService = PointsService();
 
   int? _trainingLogId;
+  bool _isSavingRecord = false;
+  String? _recordSaveError;
 
   bool _isDeepAnalysisUnlocked = false;
   bool _isUnlockingDeepAnalysis = false;
@@ -66,6 +68,7 @@ class _ResultsScreenState extends State<ResultsScreen> {
   Future<void> _handleInitialFlow() async {
     // 1. 先送出基礎運動數據 (包含 AI 建議)
     await _saveData();
+    if (!mounted || _trainingLogId == null) return;
 
     // 2. 檢查是否有新解鎖的徽章
     List<String> newBadges = [];
@@ -357,6 +360,12 @@ class _ResultsScreenState extends State<ResultsScreen> {
   }
 
   Future<void> _saveData() async {
+    if (_isSavingRecord || !mounted) return;
+    setState(() {
+      _isSavingRecord = true;
+      _recordSaveError = null;
+    });
+    bool recordPersisted = false;
     final bool isCreating = _trainingLogId == null;
 
     final bool isSquat = widget.exerciseTitle == '深蹲';
@@ -403,6 +412,10 @@ class _ResultsScreenState extends State<ResultsScreen> {
 
         if (id != null) {
           _trainingLogId = id is int ? id : int.tryParse(id.toString());
+          if (_trainingLogId == null)
+            throw const FormatException('Missing training ID');
+          recordPersisted = true;
+          if (mounted) setState(() {});
 
           await _checkDeepAnalysisUnlock();
 
@@ -419,15 +432,24 @@ class _ResultsScreenState extends State<ResultsScreen> {
         }
       }
 
+      if (isCreating && _trainingLogId == null) {
+        throw const FormatException('Missing training ID');
+      }
+      recordPersisted = true;
       debugPrint(
         isCreating
             ? '✅ 運動紀錄建立成功 (ID: $_trainingLogId)'
             : '✅ 運動紀錄更新成功 (ID: $_trainingLogId)',
       );
     } catch (e) {
-      debugPrint(
-        '⚠️ 儲存運動紀錄失敗: ${_api.getErrorMessage(e)}',
-      );
+      if (!recordPersisted && mounted) {
+        setState(() => _recordSaveError = _api.getErrorMessage(e));
+      }
+      debugPrint(recordPersisted
+          ? '運動紀錄已儲存，後續點數或分析讀取失敗: ${_api.getErrorMessage(e)}'
+          : '⚠️ 儲存運動紀錄失敗: ${_api.getErrorMessage(e)}');
+    } finally {
+      if (mounted) setState(() => _isSavingRecord = false);
     }
   }
 
@@ -560,7 +582,42 @@ class _ResultsScreenState extends State<ResultsScreen> {
                   Text('恭喜你完成了這段時間的${widget.exerciseTitle}',
                       style:
                           const TextStyle(fontSize: 16, color: Colors.black54)),
-                  const SizedBox(height: 40),
+                  const SizedBox(height: 16),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Column(children: [
+                      Text(
+                          _recordSaveError != null
+                              ? '運動紀錄儲存失敗'
+                              : _isSavingRecord && _trainingLogId == null
+                                  ? '正在儲存運動紀錄…'
+                                  : _trainingLogId != null
+                                      ? '運動紀錄已儲存'
+                                      : '準備儲存運動紀錄',
+                          style: TextStyle(
+                              color: _recordSaveError != null
+                                  ? Colors.red.shade700
+                                  : Colors.green.shade700)),
+                      if (_recordSaveError != null) ...[
+                        const SizedBox(height: 8),
+                        Text(_recordSaveError!, textAlign: TextAlign.center),
+                        TextButton(
+                          onPressed: _isSavingRecord
+                              ? null
+                              : _trainingLogId == null
+                                  ? _handleInitialFlow
+                                  : _saveData,
+                          child: const Text('重試儲存'),
+                        ),
+                      ],
+                    ]),
+                  ),
+                  const SizedBox(height: 24),
 
                   // 數據網格
                   Row(
@@ -655,7 +712,9 @@ class _ResultsScreenState extends State<ResultsScreen> {
                         ),
                         const SizedBox(height: 16),
                         if (_trainingLogId == null)
-                          const Center(child: CircularProgressIndicator())
+                          _recordSaveError != null
+                              ? const Text('請先成功儲存運動紀錄，再使用分析功能。')
+                              : const Center(child: CircularProgressIndicator())
                         else if (!_isDeepAnalysisUnlocked)
                           Column(
                             children: [
