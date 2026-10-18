@@ -41,8 +41,32 @@ class _ExerciseTutorial {
     final preferences = await SharedPreferences.getInstance();
     final preferenceKey = '${preferenceKeyPrefix}_${UserSession.memberId}';
 
-    if (preferences.getBool(preferenceKey) == true || !context.mounted) {
-      return;
+    if (!context.mounted) return;
+
+    // 已看過教學：彈出視窗讓使用者決定這次要不要再播放
+    if (preferences.getBool(preferenceKey) == true) {
+      final shouldPlay = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => AlertDialog(
+          title: Text('要觀看$title嗎？'),
+          content: const Text('你之前已經看過教學影片了，這次要再播放一次嗎？'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('直接開始運動'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('播放教學'),
+            ),
+          ],
+        ),
+      );
+
+      if (shouldPlay != true || !context.mounted) {
+        return;
+      }
     }
 
     final didFinish = await Navigator.of(context).push<bool>(
