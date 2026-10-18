@@ -25,9 +25,9 @@ PODS:
   - flutter_facebook_auth (7.1.5):
     - FBSDKLoginKit (= 18.0.2)
     - Flutter
-  - flutter_line_sdk (3.0.0):
+  - flutter_line_sdk (2.7.2):
     - Flutter
-    - LineSDKSwift (~> 5.17)
+    - LineSDKSwift (~> 5.16)
   - flutter_secure_storage (6.0.0):
     - Flutter
   - google_mlkit_commons (0.11.0):
@@ -127,6 +127,9 @@ PODS:
   - shared_preferences_foundation (0.0.1):
     - Flutter
     - FlutterMacOS
+  - video_player_avfoundation (0.0.1):
+    - Flutter
+    - FlutterMacOS
 
 DEPENDENCIES:
   - audioplayers_darwin (from `.symlinks/plugins/audioplayers_darwin/ios`)
@@ -141,6 +144,7 @@ DEPENDENCIES:
   - path_provider_foundation (from `.symlinks/plugins/path_provider_foundation/darwin`)
   - share_plus (from `.symlinks/plugins/share_plus/ios`)
   - shared_preferences_foundation (from `.symlinks/plugins/shared_preferences_foundation/darwin`)
+  - video_player_avfoundation (from `.symlinks/plugins/video_player_avfoundation/darwin`)
 
 SPEC REPOS:
   trunk:
@@ -193,6 +197,8 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/share_plus/ios"
   shared_preferences_foundation:
     :path: ".symlinks/plugins/shared_preferences_foundation/darwin"
+  video_player_avfoundation:
+    :path: ".symlinks/plugins/video_player_avfoundation/darwin"
 
 SPEC CHECKSUMS:
   AppAuth: d4f13a8fe0baf391b2108511793e4b479691fb73
@@ -203,9 +209,9 @@ SPEC CHECKSUMS:
   FBSDKCoreKit: 54f1240567e16862ab71c53c33dc347db5c524c5
   FBSDKCoreKit_Basics: eb530cd6a79030dbb11df460aafb2767bcad9028
   FBSDKLoginKit: 6a70798793e499335a98fab1a758d7da34af196e
-  Flutter: 71a624a5bc0c04062bf19101d501e466baf2fb47
+  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
   flutter_facebook_auth: fa3b69b1df0831d2178fe87a05ee2d7d0156db70
-  flutter_line_sdk: beee91a2a1ca492e82490c258dc20516f42a7741
+  flutter_line_sdk: b79e73a268c35420f28e05d4f059a797964eb707
   flutter_secure_storage: 1ed9476fba7e7a782b22888f956cce43e2c62f13
   google_mlkit_commons: 2abe6a70e1824e431d16a51085cb475b672c8aab
   google_mlkit_pose_detection: 64eea6255886f73e8d80265f0c87ac5fb61fa7f5
@@ -230,6 +236,7 @@ SPEC CHECKSUMS:
   PromisesObjC: f5707f49cb48b9636751c5b2e7d227e43fba9f47
   share_plus: 50da8cb520a8f0f65671c6c6a99b3617ed10a58a
   shared_preferences_foundation: 9e1978ff2562383bd5676f64ec4e9aa8fa06a6f7
+  video_player_avfoundation: 3453f792138786248960ca029747fcd9f318ef52
 
 PODFILE CHECKSUM: c7dc6103aeff355c489c3558772f0aebf2db482b
 

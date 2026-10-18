@@ -11,7 +11,7 @@ class ApiConfig {
     if (Platform.isAndroid) {
       return 'http://10.0.2.2:8000/api/';
     }
-
-    return 'http://192.168.50.58:8000/api/';
+// 192.168.50.58
+    return 'http://172.20.10.2:8000/api/';
   }
 }
