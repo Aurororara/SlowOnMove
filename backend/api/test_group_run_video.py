@@ -51,6 +51,7 @@ class GroupRunVideoTests(APITestCase):
         self.assertEqual(claims['sub'], f'member-{self.member.pk}')
         self.assertEqual(claims['video']['room'], f'group-{self.group.pk}')
         self.assertTrue(claims['video']['roomJoin'])
+        self.assertTrue(claims['video']['canPublishData'])
         self.assertEqual(claims['video']['canPublishSources'], ['camera', 'microphone'])
         self.assertLessEqual(claims['exp'] - time.time(), 600)
         self.assertNotIn('roomAdmin', claims['video'])

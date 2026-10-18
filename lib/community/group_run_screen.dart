@@ -7,6 +7,9 @@ import 'package:livekit_client/livekit_client.dart';
 import '../services/api_service.dart';
 import 'models/community_group.dart';
 import 'models/community_group_activity.dart';
+import 'pose/group_pose_analyzer.dart';
+import 'pose/group_pose_frame.dart';
+import 'pose/group_pose_painter.dart';
 
 class GroupRunScreen extends StatefulWidget {
   final CommunityGroupActivity? activity;
@@ -37,6 +40,144 @@ class _GroupRunScreenState extends State<GroupRunScreen>
   bool _changingMedia = false;
   bool _closing = false;
   bool _isForeground = true;
+  bool _showSkeleton = true;
+  Timer? _poseTimer;
+  GroupPoseAnalyzer? _poseAnalyzer;
+  GroupPoseFrame? _localPose;
+  final Map<String, GroupPoseFrame> _remotePoses = {};
+  final Map<String, int> _remotePoseSequences = {};
+  final Map<String, String> _remotePoseSessions = {};
+  bool _poseTickBusy = false;
+  bool _publishingPose = false;
+  int _poseEpoch = 0;
+  int _poseSequence = 0;
+  DateTime? _lastPosePublish;
+
+  void _startPoseAnalysis(Room room) {
+    if (GroupPoseAnalyzer.isSupported) {
+      _poseAnalyzer = GroupPoseAnalyzer(
+        exerciseTitle: widget.exerciseType == 'squat' ? '深蹲' : '超慢跑',
+      );
+    }
+    _localPose = GroupPoseFrame(status: GroupPoseStatus.waiting);
+    _poseTimer = Timer.periodic(const Duration(milliseconds: 250), (_) {
+      unawaited(_samplePose(room));
+    });
+  }
+
+  Future<void> _samplePose(Room room) async {
+    if (_closing || !identical(room, _room)) {
+      return;
+    }
+    _refresh(); // Also expires remote results when their data stream stops.
+    if (_poseTickBusy) {
+      return;
+    }
+    _poseTickBusy = true;
+    final epoch = _poseEpoch;
+    try {
+      final local = room.localParticipant;
+      if (!_isForeground || local == null || !local.isCameraEnabled()) {
+        if (_localPose?.status != GroupPoseStatus.paused) {
+          _localPose = GroupPoseFrame(status: GroupPoseStatus.paused);
+        }
+      } else if (_poseAnalyzer == null) {
+        _localPose = GroupPoseFrame(status: GroupPoseStatus.unsupported);
+      } else {
+        LocalVideoTrack? track;
+        for (final publication in local.videoTrackPublications) {
+          if (!publication.muted && publication.track is LocalVideoTrack) {
+            track = publication.track;
+            break;
+          }
+        }
+        if (track == null) {
+          return;
+        }
+        final result =
+            await _poseAnalyzer!.sample(track.mediaStreamTrack.captureFrame);
+        if (_closing ||
+            !identical(room, _room) ||
+            epoch != _poseEpoch ||
+            !_isForeground ||
+            !local.isCameraEnabled()) {
+          return;
+        }
+        _localPose = result;
+      }
+      final sample = _localPose;
+      if (sample != null && identical(room, _room) && !_closing) {
+        await _publishPose(room, sample);
+        _refresh();
+      }
+    } finally {
+      _poseTickBusy = false;
+    }
+  }
+
+  Future<void> _publishPose(Room room, GroupPoseFrame frame,
+      {bool force = false}) async {
+    final now = DateTime.now();
+    if (_publishingPose ||
+        !identical(room, _room) ||
+        _closing ||
+        room.connectionState != ConnectionState.connected ||
+        (!force &&
+            _lastPosePublish != null &&
+            now.difference(_lastPosePublish!).inMilliseconds < 450)) {
+      return;
+    }
+    final payload = frame.encode(++_poseSequence, now);
+    if (payload.length > 1200) {
+      return;
+    }
+    _publishingPose = true;
+    _lastPosePublish = now;
+    try {
+      await room.localParticipant
+          ?.publishData(payload, topic: groupPoseTopic, reliable: false)
+          .timeout(const Duration(seconds: 2));
+    } catch (_) {
+      // A lost metrics packet must not disconnect the video call.
+    } finally {
+      _publishingPose = false;
+    }
+  }
+
+  void _receivePose(Room room, DataReceivedEvent event) {
+    final sender = event.participant;
+    if (!identical(room, _room) ||
+        _closing ||
+        sender == null ||
+        event.topic != groupPoseTopic ||
+        !room.remoteParticipants.containsKey(sender.identity)) {
+      return;
+    }
+    if (_remotePoseSessions[sender.identity] != sender.sid) {
+      _remotePoseSessions[sender.identity] = sender.sid;
+      _remotePoseSequences.remove(sender.identity);
+    }
+    final packet = GroupPoseFrame.decode(event.data, DateTime.now());
+    if (packet == null ||
+        packet.sequence <= (_remotePoseSequences[sender.identity] ?? -1)) {
+      return;
+    }
+    _remotePoseSequences[sender.identity] = packet.sequence;
+    _remotePoses[sender.identity] = packet.frame;
+    _refresh();
+  }
+
+  void _pausePose() {
+    _poseEpoch++;
+    _localPose = GroupPoseFrame(status: GroupPoseStatus.paused);
+    final room = _room;
+    if (room != null) unawaited(_publishPose(room, _localPose!, force: true));
+  }
+
+  GroupPoseFrame? _poseFor(Participant participant) =>
+      participant.identity == _room?.localParticipant?.identity
+          ? _localPose
+          : _remotePoses[participant.identity];
 
   @override
   void initState() {
@@ -60,7 +201,9 @@ class _GroupRunScreenState extends State<GroupRunScreen>
   }
 
   Future<void> _join() async {
-    if (_joining || _closing) return;
+    if (_joining || _closing) {
+      return;
+    }
     setState(() {
       _joining = true;
       _error = null;
@@ -79,7 +222,9 @@ class _GroupRunScreenState extends State<GroupRunScreen>
                 ? {'activity_id': activityId}
                 : {'group_id': groupId},
           );
-      if (!mounted || _closing) return;
+      if (!mounted || _closing) {
+        return;
+      }
       final data = response.data!;
       final room = Room(
         roomOptions: const RoomOptions(adaptiveStream: true, dynacast: true),
@@ -87,13 +232,22 @@ class _GroupRunScreenState extends State<GroupRunScreen>
       _room = room;
       room.addListener(_refresh);
       _events = room.createListener()
+        ..on<DataReceivedEvent>((event) => _receivePose(room, event))
+        ..on<ParticipantDisconnectedEvent>((event) {
+          _remotePoses.remove(event.participant.identity);
+          _remotePoseSequences.remove(event.participant.identity);
+          _remotePoseSessions.remove(event.participant.identity);
+          _refresh();
+        })
         ..on<RoomDisconnectedEvent>((event) {
           if (mounted && !_closing && identical(_room, room)) {
             setState(() => _error = '視訊已中斷，請重新加入。');
           }
         });
       await room.connect(data['url'] as String, data['token'] as String);
-      if (!mounted || _closing) return;
+      if (!mounted || _closing) {
+        return;
+      }
       _featuredIdentity = room.localParticipant?.identity;
       // Joining explicitly consents to camera sharing; microphone stays muted.
       try {
@@ -106,6 +260,9 @@ class _GroupRunScreenState extends State<GroupRunScreen>
       } catch (_) {
         _cameraNotice = '相機未開啟，請確認相機權限，再按下方相機按鈕重試。';
       }
+      if (mounted && !_closing && identical(_room, room)) {
+        _startPoseAnalysis(room);
+      }
     } catch (error) {
       await _releaseRoom();
       if (mounted && !_closing) _error = _joinError(error);
@@ -117,6 +274,21 @@ class _GroupRunScreenState extends State<GroupRunScreen>
   Future<void> _releaseRoom() async {
     final room = _room;
     _room = null;
+    _poseTimer?.cancel();
+    _poseTimer = null;
+    _poseEpoch++;
+    final analyzer = _poseAnalyzer;
+    _poseAnalyzer = null;
+    _localPose = null;
+    _remotePoses.clear();
+    _remotePoseSequences.clear();
+    _remotePoseSessions.clear();
+    _lastPosePublish = null;
+    try {
+      await analyzer?.close();
+    } catch (_) {
+      debugPrint('[GroupPose] 姿勢分析資源清理異常，仍繼續離開視訊。');
+    }
     final events = _events;
     _events = null;
     await events?.dispose();
@@ -132,10 +304,13 @@ class _GroupRunScreenState extends State<GroupRunScreen>
 
   Future<void> _toggleMedia({required bool camera}) async {
     final local = _room?.localParticipant;
-    if (local == null || _changingMedia || _joining || !_isForeground) return;
+    if (local == null || _changingMedia || _joining || !_isForeground) {
+      return;
+    }
     setState(() => _changingMedia = true);
     try {
       if (camera) {
+        _pausePose();
         await local.setCameraEnabled(!local.isCameraEnabled());
       } else {
         await local.setMicrophoneEnabled(!local.isMicrophoneEnabled());
@@ -165,8 +340,11 @@ class _GroupRunScreenState extends State<GroupRunScreen>
 
   Future<void> _pauseMedia() async {
     final local = _room?.localParticipant;
-    if (local == null) return;
+    if (local == null) {
+      return;
+    }
     try {
+      _pausePose();
       await local.setCameraEnabled(false);
       await local.setMicrophoneEnabled(false);
       if (mounted && !_closing) {
@@ -202,7 +380,7 @@ class _GroupRunScreenState extends State<GroupRunScreen>
                 style: const TextStyle(color: Colors.white, fontSize: 20)),
             const SizedBox(height: 16),
             const Text(
-              '加入後會分享你的相機畫面給房內成員。\n麥克風預設關閉，可隨時切換或離開。',
+              '加入後會分享相機畫面、骨架與姿勢分數。\n姿勢由自己的手機分析，麥克風預設關閉。',
               textAlign: TextAlign.center,
               style: TextStyle(color: Colors.white70, height: 1.6),
             ),
@@ -239,6 +417,14 @@ class _GroupRunScreenState extends State<GroupRunScreen>
     return Scaffold(
       backgroundColor: const Color(0xFF111318),
       appBar: AppBar(
+        actions: [
+          IconButton(
+            tooltip: _showSkeleton ? '隱藏骨架' : '顯示骨架',
+            onPressed: () => setState(() => _showSkeleton = !_showSkeleton),
+            icon: Icon(
+                _showSkeleton ? Icons.accessibility_new : Icons.person_outline),
+          ),
+        ],
         backgroundColor: const Color(0xFF16181F),
         foregroundColor: Colors.white,
         title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -272,6 +458,8 @@ class _GroupRunScreenState extends State<GroupRunScreen>
                         key: ValueKey('featured-${featured.identity}'),
                         participant: featured,
                         isMe: identical(featured, local),
+                        pose: _poseFor(featured),
+                        showSkeleton: _showSkeleton,
                       ),
                     )),
                 if (participants.length == 1)
@@ -301,6 +489,8 @@ class _GroupRunScreenState extends State<GroupRunScreen>
                             key: ValueKey(p.identity),
                             participant: p,
                             isMe: identical(p, local),
+                            pose: _poseFor(p),
+                            showSkeleton: _showSkeleton,
                           ),
                         );
                       },
@@ -351,9 +541,15 @@ class _GroupRunScreenState extends State<GroupRunScreen>
 class _ParticipantVideo extends StatelessWidget {
   final Participant participant;
   final bool isMe;
+  final GroupPoseFrame? pose;
+  final bool showSkeleton;
 
   const _ParticipantVideo(
-      {super.key, required this.participant, required this.isMe});
+      {super.key,
+      required this.participant,
+      required this.isMe,
+      this.pose,
+      this.showSkeleton = true});
 
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
@@ -381,7 +577,9 @@ class _ParticipantVideo extends StatelessWidget {
             ),
             child: Stack(fit: StackFit.expand, children: [
               if (video != null)
-                VideoTrackRenderer(video, key: ValueKey(video.sid))
+                VideoTrackRenderer(video,
+                    key: ValueKey(video.sid),
+                    mirrorMode: VideoViewMirrorMode.off)
               else
                 Center(
                     child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -391,6 +589,21 @@ class _ParticipantVideo extends StatelessWidget {
                   Text(participant.isCameraEnabled() ? '影像連線中…' : '相機已關閉',
                       style: const TextStyle(color: Colors.white70)),
                 ])),
+              if (video != null &&
+                  showSkeleton &&
+                  pose?.canDisplayScore(DateTime.now()) == true)
+                Positioned.fill(
+                    child: IgnorePointer(
+                        child: CustomPaint(
+                  painter: GroupPosePainter(pose!),
+                ))),
+              if (video != null)
+                Positioned(
+                  top: 8,
+                  left: 8,
+                  right: 8,
+                  child: _PoseBadge(frame: pose, isMe: isMe),
+                ),
               Positioned(
                 left: 8,
                 right: 8,
@@ -411,4 +624,50 @@ class _ParticipantVideo extends StatelessWidget {
           );
         },
       );
+}
+
+class _PoseBadge extends StatelessWidget {
+  final GroupPoseFrame? frame;
+  final bool isMe;
+  const _PoseBadge({required this.frame, required this.isMe});
+
+  @override
+  Widget build(BuildContext context) {
+    final data = frame;
+    final fresh = data?.isFresh(DateTime.now()) ?? false;
+    final valid = data?.canDisplayScore(DateTime.now()) ?? false;
+    String text;
+    if (valid) {
+      text = '姿勢分數 ${data!.score!.toStringAsFixed(0)}/100';
+    } else if (data == null || data.status == GroupPoseStatus.waiting) {
+      text = isMe ? '正在辨識姿勢…' : '等待跑友姿勢資料';
+    } else if (data.status == GroupPoseStatus.paused) {
+      text = '姿勢分析已暫停';
+    } else if (!fresh) {
+      text = '姿勢資料已過期';
+    } else {
+      text = switch (data.status) {
+        GroupPoseStatus.noPose => '請讓全身入鏡',
+        GroupPoseStatus.unsupported => '此裝置不支援姿勢分析',
+        _ => '姿勢分析暫時無法使用',
+      };
+    }
+    return Align(
+      alignment: Alignment.topLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+        decoration: BoxDecoration(
+            color: Colors.black87, borderRadius: BorderRadius.circular(8)),
+        child: Text(
+            valid && data!.feedback.isNotEmpty
+                ? '$text\n${data.feedback}'
+                : text,
+            maxLines: 3,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+                fontSize: 11,
+                color: valid ? Colors.greenAccent : Colors.amberAccent)),
+      ),
+    );
+  }
 }

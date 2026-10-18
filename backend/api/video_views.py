@@ -80,7 +80,7 @@ class GroupRunTokenView(APIView):
             'video': {
                 'roomJoin': True, 'room': room_name,
                 'canPublish': True, 'canSubscribe': True,
-                'canPublishData': False,
+                'canPublishData': True,
                 'canPublishSources': ['camera', 'microphone'],
             },
         }
