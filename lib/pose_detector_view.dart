@@ -1125,7 +1125,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
     final tipInfo = _getImprovementTip(_currentErrorPopupMessage!);
 
     return Positioned(
-      top: 135,
+      top: 185,
       left: 16,
       right: 16,
       child: AnimatedOpacity(
