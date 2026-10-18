@@ -13,6 +13,7 @@ class MonthlyRecapScreen extends StatefulWidget {
 
 class _MonthlyRecapScreenState extends State<MonthlyRecapScreen> {
   bool _isLoading = true;
+  String? _loadError;
   DateTime _selectedMonth = DateTime(DateTime.now().year, DateTime.now().month);
   List<dynamic> _allLogs = [];
   List<dynamic> _monthLogs = [];
@@ -28,7 +29,10 @@ class _MonthlyRecapScreenState extends State<MonthlyRecapScreen> {
   }
 
   Future<void> _fetchMonthlyLogs() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _loadError = null;
+    });
 
     try {
       final response = await _api.dio.get('training-logs/');
@@ -53,6 +57,7 @@ class _MonthlyRecapScreenState extends State<MonthlyRecapScreen> {
 
       setState(() {
         _isLoading = false;
+        _loadError = _api.getErrorMessage(e);
       });
     }
   }
@@ -193,28 +198,48 @@ class _MonthlyRecapScreenState extends State<MonthlyRecapScreen> {
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
-                : _monthLogs.isEmpty
-                    ? _buildEmptyState()
-                    : GestureDetector(
-                        onTap: _goNextPage,
-                        child: PageView(
-                          controller: _pageController,
-                          physics: const NeverScrollableScrollPhysics(),
-                          onPageChanged: (index) {
-                            setState(() {
-                              _currentPage = index;
-                            });
-                          },
-                          children: [
-                            _buildCoverPage(),
-                            _buildStatsPage(),
-                            _buildBestMomentPage(),
-                            _buildChartPage(),
-                            _buildBadgePage(),
-                            _buildSummaryPage(),
-                          ],
+                : _loadError != null
+                    ? Center(
+                        child: Padding(
+                          padding: const EdgeInsets.all(24),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Text('月度紀錄讀取失敗',
+                                  style: TextStyle(fontSize: 18)),
+                              const SizedBox(height: 12),
+                              Text(_loadError!, textAlign: TextAlign.center),
+                              const SizedBox(height: 16),
+                              FilledButton(
+                                onPressed: _fetchMonthlyLogs,
+                                child: const Text('重新讀取'),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
+                      )
+                    : _monthLogs.isEmpty
+                        ? _buildEmptyState()
+                        : GestureDetector(
+                            onTap: _goNextPage,
+                            child: PageView(
+                              controller: _pageController,
+                              physics: const NeverScrollableScrollPhysics(),
+                              onPageChanged: (index) {
+                                setState(() {
+                                  _currentPage = index;
+                                });
+                              },
+                              children: [
+                                _buildCoverPage(),
+                                _buildStatsPage(),
+                                _buildBestMomentPage(),
+                                _buildChartPage(),
+                                _buildBadgePage(),
+                                _buildSummaryPage(),
+                              ],
+                            ),
+                          ),
           ),
           if (!_isLoading && _monthLogs.isNotEmpty) _buildPageHint(),
         ],
