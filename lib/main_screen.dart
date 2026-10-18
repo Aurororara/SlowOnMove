@@ -10,6 +10,7 @@ import 'bottom_nav_bar.dart';
 import 'community/community_store.dart';
 import 'community_screen.dart';
 import 'config/api_config.dart';
+import 'services/api_service.dart';
 import 'exercise_selection_screen.dart';
 import 'leaderboard_page.dart';
 import 'profile.dart';
@@ -405,13 +406,9 @@ class _HomeScreenState extends State<HomeScreen> {
     final int currentMemberId = UserSession.memberId;
 
     try {
-      final response = await http.get(
-        Uri.parse(
-          _buildUrl(
+      final response = await ApiService().dio.get(
             'members/$currentMemberId/',
-          ),
-        ),
-      );
+          );
 
       debugPrint(
         '取得運動偏好 API 狀態碼：'
@@ -419,7 +416,7 @@ class _HomeScreenState extends State<HomeScreen> {
       );
 
       if (response.statusCode == 200) {
-        final dynamic decoded = json.decode(response.body);
+        final dynamic decoded = response.data;
 
         if (decoded is Map) {
           if (!mounted) {
@@ -438,7 +435,7 @@ class _HomeScreenState extends State<HomeScreen> {
       } else {
         debugPrint(
           '取得運動偏好失敗：'
-          '${response.body}',
+          '${response.data}',
         );
       }
     } catch (e) {
@@ -666,11 +663,9 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     try {
-      final response = await http.get(
-        Uri.parse(
-          _buildUrl('training-logs/'),
-        ),
-      );
+      final response = await ApiService().dio.get(
+            'training-logs/',
+          );
 
       debugPrint(
         'training-logs API 狀態碼: '
@@ -682,7 +677,7 @@ class _HomeScreenState extends State<HomeScreen> {
         '${response.statusCode}',
       );
       if (response.statusCode == 200) {
-        final List allLogs = json.decode(response.body);
+        final List allLogs = response.data as List;
 
         final DateTime now = DateTime.now();
 
@@ -877,7 +872,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
         debugPrint(
           '首頁 API 回傳內容：'
-          '${response.body}',
+          '${response.data}',
         );
 
         if (mounted) {

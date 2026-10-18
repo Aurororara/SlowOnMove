@@ -1186,7 +1186,7 @@ class FavoriteViewSet(viewsets.ModelViewSet):
 class TrainingLogViewSet(viewsets.ModelViewSet):
     queryset = TrainingLog.objects.all()
     serializer_class = TrainingLogSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
 
     def get_queryset(self):
         return TrainingLog.objects.filter(
