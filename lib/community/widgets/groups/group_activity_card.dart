@@ -265,7 +265,7 @@ class BackendGroupActivityCard extends StatelessWidget {
               ),
               icon: const Icon(Icons.videocam_outlined, size: 18, color: Colors.greenAccent),
               label: const Text(
-                '進入 30人揪團跑連線房 (Google Meet 分屏)',
+                '進入揪團運動視訊房',
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
               ),
             ),

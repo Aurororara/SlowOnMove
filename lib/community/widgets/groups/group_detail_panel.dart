@@ -892,7 +892,7 @@ class GroupDetailPanelState extends State<GroupDetailPanel> {
                       MaterialPageRoute(
                         builder: (_) => GroupRunScreen(
                           group: group,
-                          title: '${group.name} 30人揪團即時房',
+                          title: '${group.name} 揪團視訊房',
                           exerciseType: group.exerciseType,
                         ),
                       ),
@@ -900,7 +900,7 @@ class GroupDetailPanelState extends State<GroupDetailPanel> {
                   },
                   icon: const Icon(Icons.videocam_rounded, size: 20, color: Colors.white),
                   label: const Text(
-                    '🏃 進入 30人揪團跑即時連線房 (Google Meet 分屏)',
+                    '🏃 進入揪團運動視訊房',
                     style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Colors.white),
                   ),
                   style: ElevatedButton.styleFrom(

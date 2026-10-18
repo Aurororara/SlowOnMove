@@ -3,6 +3,11 @@ import 'package:flutter/foundation.dart';
 
 class ApiConfig {
   static String get baseUrl {
+    const configuredUrl = String.fromEnvironment('API_BASE_URL');
+    if (configuredUrl.isNotEmpty) {
+      return configuredUrl.endsWith('/') ? configuredUrl : '$configuredUrl/';
+    }
+
     if (kIsWeb) {
       return 'http://localhost:8000/api/';
     }

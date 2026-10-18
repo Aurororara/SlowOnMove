@@ -76,9 +76,9 @@
 	<key>NSCameraUsageDescription</key>
 	<string>This app needs camera access to track your running pose.</string>
 	<key>NSLocalNetworkUsageDescription</key>
-	<string>This app needs local network access to debug and connect with the Flutter tools.</string>
+	<string>需要連線至同一 Wi-Fi 的伺服器，進行揪團視訊與資料同步。</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>This app needs microphone access for video recording.</string>
+	<string>麥克風用於揪團視訊通話，預設關閉，可由你自行開啟。</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>This app needs photo library access to upload profile pictures or community posts.</string>
 	<key>UIApplicationSceneManifest</key>
