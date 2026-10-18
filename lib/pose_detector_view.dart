@@ -44,6 +44,19 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
   bool _canProcess = true;
   bool _isBusy = false;
   CustomPaint? _customPaint;
+
+  // 🔍 骨架偵測狀態 (用來判斷為什麼沒有骨架)
+  int _framesReceived = 0; // 相機傳來的影格數
+  int _inputImageFailures = 0; // 影像轉換失敗 (回傳 null) 的次數
+  int _framesProcessed = 0; // 成功交給 ML Kit 處理的影格數
+  int _framesWithPose = 0; // ML Kit 有偵測到人的影格數
+  int _currentPoseCount = 0; // 最近一個影格偵測到的人數
+  String? _lastDetectorError; // 最近一次 ML Kit 錯誤
+
+  // 🦴 ML Kit 偶爾會掉幀，短暫保留上一次骨架避免閃爍消失
+  List<Pose>? _lastPoses;
+  DateTime? _lastPoseTime;
+  static const Duration _poseHoldDuration = Duration(milliseconds: 800);
   CameraController? _cameraController;
   int _cameraIndex = -1;
   bool _isDisposingCamera = false;
@@ -305,8 +318,16 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
     }
     _lastImageProcessTime = currentTime;
 
+    _framesReceived++;
     final inputImage = _inputImageFromCameraImage(image);
-    if (inputImage == null) return;
+    if (inputImage == null) {
+      _inputImageFailures++;
+      if (_inputImageFailures % 30 == 1) {
+        debugPrint(
+            '[Pose] 影像轉換失敗 (rotation/format/planes 不符) 累計 $_inputImageFailures 次');
+      }
+      return;
+    }
     _processImage(inputImage);
   }
 
@@ -392,6 +413,28 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
     try {
       final poses = await _poseDetector.processImage(inputImage);
 
+      _framesProcessed++;
+      _currentPoseCount = poses.length;
+      _lastDetectorError = null;
+
+      // 掉幀時沿用上一次骨架 (最多 800ms)，有偵測到就更新
+      List<Pose> displayPoses = poses;
+      final nowForHold = DateTime.now();
+      if (poses.isNotEmpty) {
+        _framesWithPose++;
+        _lastPoses = poses;
+        _lastPoseTime = nowForHold;
+      } else if (_lastPoses != null &&
+          _lastPoseTime != null &&
+          nowForHold.difference(_lastPoseTime!) < _poseHoldDuration) {
+        displayPoses = _lastPoses!;
+      }
+
+      if (_framesProcessed % 30 == 0) {
+        debugPrint(
+            '[Pose] 收到 $_framesReceived 幀 / 轉換失敗 $_inputImageFailures / 處理 $_framesProcessed / 有偵測到人 $_framesWithPose / 目前 ${poses.length} 人');
+      }
+
       // 分析若拋出例外，不可影響骨架繪製
       try {
         final analysisResult =
@@ -425,7 +468,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
       if (inputImage.metadata?.size != null &&
           inputImage.metadata?.rotation != null) {
         final painter = PosePainter(
-          poses,
+          displayPoses,
           inputImage.metadata!.size,
           inputImage.metadata!.rotation,
           cameras[_cameraIndex].lensDirection,
@@ -435,6 +478,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
         _customPaint = null;
       }
     } catch (e) {
+      _lastDetectorError = e.toString();
       debugPrint('Pose detection 處理異常: $e');
     } finally {
       // 確保即使中途有任何例外，_isBusy 一定會解鎖，不會永久卡死在 0
@@ -537,6 +581,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
           ),
           if (_customPaint != null) _customPaint!,
           _buildDetectionOverlay(),
+          _buildPoseStatusChip(),
           _buildPostureErrorPopup(),
         ],
       ),
@@ -743,6 +788,51 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
         'Camera dispose 略過: $e',
       );
     }
+  }
+
+  /// 顯示骨架偵測目前卡在哪個階段 (除錯用，確認後可移除)
+  Widget _buildPoseStatusChip() {
+    String text;
+    Color color;
+
+    if (_lastDetectorError != null) {
+      text = 'ML Kit 錯誤：$_lastDetectorError';
+      color = Colors.redAccent;
+    } else if (_framesReceived == 0) {
+      text = '尚未收到相機影像';
+      color = Colors.orangeAccent;
+    } else if (_framesProcessed == 0) {
+      text = '影像轉換失敗 ($_inputImageFailures 次)，無法交給 ML Kit';
+      color = Colors.redAccent;
+    } else if (_currentPoseCount == 0) {
+      text = 'ML Kit 未偵測到人 (請讓全身入鏡、光線充足)';
+      color = Colors.orangeAccent;
+    } else {
+      text = '已偵測到人';
+      color = Colors.greenAccent;
+    }
+
+    return Positioned(
+      bottom: 24,
+      left: 16,
+      right: 16,
+      child: IgnorePointer(
+        child: Center(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.black54,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              text,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: color, fontSize: 12),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Widget _buildDetectionOverlay() {
