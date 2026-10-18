@@ -110,7 +110,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
     _frameWatchdog?.cancel();
     final baseline = _rawCameraFrames;
     debugPrint('[Camera] 開始監測影格');
-    _frameWatchdog = Timer(const Duration(seconds: 5), () {
+    _frameWatchdog = Timer(const Duration(seconds: 1), () {
       if (!_cameraShouldRun || !identical(controller, _cameraController)) {
         return;
       }

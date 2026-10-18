@@ -86,7 +86,7 @@ void main() {
     await tester.pump();
     expect(camera.created, 1);
     for (var i = 0; i < 2; i++) {
-      await tester.pump(const Duration(seconds: 5));
+      await tester.pump(const Duration(seconds: 1));
       await tester.runAsync(() async {
         await Future<void>.delayed(Duration.zero);
       });
@@ -95,7 +95,7 @@ void main() {
     expect(camera.created, 3);
     expect(camera.stopped, [1, 2]);
     expect(camera.disposed, [1, 2]);
-    await tester.pump(const Duration(seconds: 5));
+    await tester.pump(const Duration(seconds: 1));
     expect(find.textContaining('相機持續未傳入影格'), findsOneWidget);
     await tester.pump(const Duration(seconds: 10));
     expect(camera.created, 3);
@@ -121,14 +121,14 @@ void main() {
           height: 480,
           width: 640));
       await tester.pump();
-      await tester.pump(const Duration(seconds: 5));
+      await tester.pump(const Duration(seconds: 1));
       await tester.runAsync(() async {
         await Future<void>.delayed(Duration.zero);
       });
       await tester.pump();
       expect(camera.created, 1);
     }
-    await tester.pump(const Duration(seconds: 5));
+    await tester.pump(const Duration(seconds: 1));
     await tester.runAsync(() async {
       await Future<void>.delayed(Duration.zero);
     });
