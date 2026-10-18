@@ -70,6 +70,73 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
   CameraController? _cameraController;
   int _cameraIndex = -1;
   bool _isDisposingCamera = false;
+  Future<void> _cameraOperations = Future<void>.value();
+  Timer? _frameWatchdog;
+  bool _cameraInForeground = true;
+  int _cameraRecoveries = 0;
+
+  // All native camera operations share one queue, including lifecycle changes.
+  Future<void> _queueCameraOperation(Future<void> Function() operation) {
+    _cameraOperations = _cameraOperations.then((_) async {
+      await operation();
+    }).catchError((Object error) {
+      debugPrint('[Camera] 相機操作失敗：$error');
+      if (mounted && !_isDisposingCamera) {
+        setState(() => _cameraStreamError = error.toString());
+      }
+    });
+    return _cameraOperations;
+  }
+
+  Future<void> _releaseCamera(CameraController controller) async {
+    try {
+      if (controller.value.isInitialized &&
+          controller.value.isStreamingImages) {
+        debugPrint('[Camera] 停止舊影格串流');
+        await controller.stopImageStream();
+        debugPrint('[Camera] 舊影格串流已停止');
+      }
+    } finally {
+      debugPrint('[Camera] 釋放舊相機');
+      await controller.dispose();
+      debugPrint('[Camera] 舊相機已釋放');
+    }
+  }
+
+  bool get _cameraShouldRun =>
+      mounted && !_isDisposingCamera && _cameraInForeground;
+
+  void _watchCameraFrames(CameraController controller) {
+    _frameWatchdog?.cancel();
+    final baseline = _rawCameraFrames;
+    debugPrint('[Camera] 開始監測影格');
+    _frameWatchdog = Timer(const Duration(seconds: 5), () {
+      if (!_cameraShouldRun || !identical(controller, _cameraController)) {
+        return;
+      }
+      if (_rawCameraFrames > baseline) {
+        _watchCameraFrames(controller);
+        return;
+      }
+      if (_cameraRecoveries >= 2) {
+        setState(() => _cameraStreamError = '相機持續未傳入影格，請關閉運動頁後重試');
+        return;
+      }
+      _cameraRecoveries++;
+      _queueCameraOperation(() async {
+        if (!_cameraShouldRun || !identical(controller, _cameraController)) {
+          return;
+        }
+        setState(() {
+          _cameraStreamStage = '未收到影格，正在重新建立相機 ($_cameraRecoveries/2)';
+          _cameraController = null;
+          _customPaint = null;
+        });
+        await _releaseCamera(controller);
+        if (_cameraShouldRun) await _initializeCamera();
+      });
+    });
+  }
 
   Timer? _timer;
   int _elapsedSeconds = 0;
@@ -214,10 +281,12 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
     if (_supportsPoseDetectionPlatform) {
       _poseDetector.close();
     }
-    final controller = _cameraController;
-    _cameraController = null;
-
-    controller?.dispose();
+    _frameWatchdog?.cancel();
+    _queueCameraOperation(() async {
+      final controller = _cameraController;
+      _cameraController = null;
+      if (controller != null) await _releaseCamera(controller);
+    });
     super.dispose();
   }
 
@@ -235,121 +304,95 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
       return;
     }
 
-    final controller = _cameraController;
-
-    if (controller == null || !controller.value.isInitialized) {
-      return;
-    }
-
     if (state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.paused) {
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      _cameraInForeground = false;
       _canProcess = false;
+      _frameWatchdog?.cancel();
       _timer?.cancel();
       _pauseOrStopBpmSound();
-
-      if (controller.value.isStreamingImages) {
-        debugPrint('[Camera] 準備停止串流：${state.name}');
-        controller.stopImageStream().then((_) {
-          debugPrint('[Camera] 停止串流完成：${state.name}');
-        }).catchError((Object e) {
-          debugPrint('[Camera] 停止串流失敗：$e');
-          if (mounted && identical(_cameraController, controller)) {
-            setState(() => _cameraStreamError = '停止串流失敗：$e');
-          }
-        });
-      }
+      _queueCameraOperation(() async {
+        final controller = _cameraController;
+        if (mounted) {
+          setState(() {
+            _cameraController = null;
+            _customPaint = null;
+          });
+        } else {
+          _cameraController = null;
+        }
+        if (controller != null) await _releaseCamera(controller);
+      });
     } else if (state == AppLifecycleState.resumed) {
-      if (_isDisposingCamera) {
-        return;
-      }
-
+      _cameraInForeground = true;
       _canProcess = true;
-
-      if (!controller.value.isStreamingImages) {
-        _startImageStreamWithDiagnostics(controller, '回到前景');
-      }
-
-      _startTimer();
-      _startOrResumeBpmSound();
+      _queueCameraOperation(() async {
+        if (!_cameraShouldRun) return;
+        if (_cameraController == null) await _initializeCamera();
+        if (!_cameraShouldRun) return;
+        _startTimer();
+        _startOrResumeBpmSound();
+      });
     }
   }
 
-  Future _startLiveFeed() async {
-    if (!_supportsPoseDetectionPlatform) return;
-    if (_cameraIndex == -1 || cameras.isEmpty) return;
-    final camera = cameras[_cameraIndex];
+  Future<void> _startLiveFeed() => _queueCameraOperation(() async {
+        await _initializeCamera();
+        if (_cameraShouldRun) _startOrResumeBpmSound();
+      });
 
-    // ⭐ 這裡改動了：Platform 檢查前先加上 !kIsWeb
-    _cameraController = CameraController(
-      camera,
-      ResolutionPreset.medium, // 降低相機解析度至中等 (480p/720p)，大幅降低 ISP 傳輸與影像轉換發熱耗電
+  Future<void> _initializeCamera() async {
+    if (!_supportsPoseDetectionPlatform || !_cameraShouldRun) return;
+    if (_cameraIndex == -1 || cameras.isEmpty) return;
+    debugPrint('[Camera] 建立相機');
+    final controller = CameraController(
+      cameras[_cameraIndex],
+      ResolutionPreset.medium,
       enableAudio: false,
-      imageFormatGroup: (!kIsWeb && Platform.isAndroid)
+      imageFormatGroup: Platform.isAndroid
           ? ImageFormatGroup.nv21
           : ImageFormatGroup.bgra8888,
     );
-
-    debugPrint('[Camera] 準備初始化相機，鏡頭=$_cameraIndex，'
-        '方向=${camera.lensDirection.name}，sensor=${camera.sensorOrientation}');
-    _cameraController?.initialize().then((_) {
-      if (!mounted || _isDisposingCamera || _cameraController == null) {
-        return;
+    _cameraController = controller;
+    _cameraStreamError = null;
+    _cameraStreamStage = '正在初始化相機';
+    try {
+      await controller.initialize();
+      if (!_cameraShouldRun) return;
+      await _startImageStreamWithDiagnostics(controller);
+      if (!_cameraShouldRun) return;
+      setState(() {});
+    } catch (error) {
+      if (identical(_cameraController, controller)) {
+        _cameraController = null;
       }
-      debugPrint('[Camera] 相機初始化完成，'
-          'preview=${_cameraController!.value.previewSize}，'
-          'device=${_cameraController!.value.deviceOrientation.name}');
-      // ⭐ 只有非網頁版才去跑影像串流偵測，因為網頁版跑不動 ML Kit
-      if (!kIsWeb && !_cameraController!.value.isStreamingImages) {
-        _startImageStreamWithDiagnostics(_cameraController!, '初始化完成');
-      }
-      _startOrResumeBpmSound();
-      if (mounted) {
-        setState(() {});
-      }
-    }).catchError((e) {
-      debugPrint(
-        'Camera initialize 失敗: $e',
-      );
-      if (mounted && !_isDisposingCamera) {
-        setState(() {
-          _cameraStreamStage = '相機初始化失敗';
-          _cameraStreamError = e.toString();
-        });
-      }
-    });
+      await _releaseCamera(controller);
+      rethrow;
+    }
   }
 
-  void _startImageStreamWithDiagnostics(
-      CameraController controller, String reason) {
+  Future<void> _startImageStreamWithDiagnostics(
+      CameraController controller) async {
     final attempt = ++_streamStartAttempt;
     final framesAtStart = _rawCameraFrames;
     _framesAtStreamStart = framesAtStart;
     _cameraStreamStage = '啟動影格串流中';
     _cameraStreamError = null;
-    debugPrint('[Camera] #$attempt 準備啟動串流：$reason');
-    controller.startImageStream(_processCameraImage).then((_) {
-      debugPrint('[Camera] #$attempt 啟動呼叫完成，'
-          '本次回呼=${_rawCameraFrames - framesAtStart}');
-      if (mounted && !_isDisposingCamera &&
-          identical(_cameraController, controller) &&
-          attempt == _streamStartAttempt) {
-        setState(() {
-          _cameraStreamStage = _rawCameraFrames == framesAtStart
-              ? '串流啟動呼叫完成，等待第一幀'
-              : '相機影格已送入';
-        });
+    debugPrint('[Camera] #$attempt 準備啟動串流');
+    await controller.startImageStream((image) {
+      if (!_cameraShouldRun || !identical(_cameraController, controller)) {
+        return;
       }
-    }).catchError((Object error) {
-      debugPrint('[Camera] #$attempt 啟動串流失敗：$error');
-      if (mounted && !_isDisposingCamera &&
-          identical(_cameraController, controller) &&
-          attempt == _streamStartAttempt) {
-        setState(() {
-          _cameraStreamStage = '影格串流啟動失敗';
-          _cameraStreamError = error.toString();
-        });
-      }
+      _processCameraImage(image);
     });
+    if (!_cameraShouldRun) return;
+    setState(() {
+      _cameraStreamStage =
+          _rawCameraFrames == framesAtStart ? '串流啟動呼叫完成，等待第一幀' : '相機影格已送入';
+    });
+    _watchCameraFrames(controller);
   }
 
   DateTime? _lastImageProcessTime;
@@ -362,7 +405,8 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
     _lastCameraFrameAt = receivedAt;
     final isFirstFrame = _rawCameraFrames == _framesAtStreamStart + 1;
     _cameraStreamStage = '相機影格已送入';
-    if (isFirstFrame || _lastCameraFrameLogAt == null ||
+    if (isFirstFrame ||
+        _lastCameraFrameLogAt == null ||
         receivedAt.difference(_lastCameraFrameLogAt!).inSeconds >= 5) {
       _lastCameraFrameLogAt = receivedAt;
       debugPrint('[Camera] ${isFirstFrame ? "第一幀" : "影格回呼"}：'
@@ -820,40 +864,16 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
     _isDisposingCamera = true;
     _canProcess = false;
 
-    final controller = _cameraController;
-
-    // 很重要：
-    // 先讓 UI 不再使用這個 controller
-    if (mounted) {
-      setState(() {
+    _frameWatchdog?.cancel();
+    await _queueCameraOperation(() async {
+      final controller = _cameraController;
+      if (mounted) {
+        setState(() => _cameraController = null);
+      } else {
         _cameraController = null;
-      });
-    } else {
-      _cameraController = null;
-    }
-
-    if (controller == null) {
-      return;
-    }
-
-    try {
-      if (controller.value.isInitialized &&
-          controller.value.isStreamingImages) {
-        await controller.stopImageStream();
       }
-    } catch (e) {
-      debugPrint(
-        '停止 Camera stream 略過: $e',
-      );
-    }
-
-    try {
-      await controller.dispose();
-    } catch (e) {
-      debugPrint(
-        'Camera dispose 略過: $e',
-      );
-    }
+      if (controller != null) await _releaseCamera(controller);
+    });
   }
 
   /// 顯示骨架偵測目前卡在哪個階段 (除錯用，確認後可移除)
@@ -871,9 +891,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
       text = '影像分析已暫停';
       color = Colors.orangeAccent;
     } else if (_framesReceived == 0) {
-      text = _rawCameraFrames == 0
-          ? _cameraStreamStage
-          : '相機已有回呼，但尚未進入影像轉換';
+      text = _rawCameraFrames == 0 ? _cameraStreamStage : '相機已有回呼，但尚未進入影像轉換';
       color = Colors.orangeAccent;
     } else if (_framesProcessed == 0) {
       if (_inputImageFailures == _framesReceived) {
