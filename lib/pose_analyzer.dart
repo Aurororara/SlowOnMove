@@ -58,18 +58,8 @@ class PoseAnalyzer {
     final leftKnee = pose.landmarks[PoseLandmarkType.leftKnee];
     final rightKnee = pose.landmarks[PoseLandmarkType.rightKnee];
 
-    bool noLegsDetected = false;
-    if (leftKnee == null && rightKnee == null) {
-      noLegsDetected = true;
-    } else {
-      double maxLikelihood = math.max(
-        leftKnee?.likelihood ?? 0.0,
-        rightKnee?.likelihood ?? 0.0,
-      );
-      if (maxLikelihood < 0.2) {
-        noLegsDetected = true;
-      }
-    }
+    // 不再依賴信任度 (likelihood)：只要 ML Kit 有回傳膝蓋座標就直接交給演算法計算
+    bool noLegsDetected = (leftKnee == null && rightKnee == null);
 
     if (noLegsDetected) {
       _lastResult = PoseAnalysisResult(
@@ -262,15 +252,15 @@ class PoseAnalyzer {
             : (leftTorsoAngle + rightTorsoAngle) / 2;
 
         double torsoScore = 20.0;
-        double maxTorso = isSideFacing ? 15.0 : 20.0; // 正面視覺前傾容錯度較高
+        double maxTorso = isSideFacing ? 25.0 : 30.0; // 放寬：正面視覺前傾容錯度較高
         if (activeTorsoAngle > maxTorso) {
-          torsoScore -= (activeTorsoAngle - maxTorso) * 1.5;
+          torsoScore -= (activeTorsoAngle - maxTorso) * 0.8;
         }
         currentAccuracy += math.max(0.0, torsoScore);
 
-        if (activeTorsoAngle > 25) {
+        if (activeTorsoAngle > 40) {
           _leanForwardFrames++;
-          if (_leanForwardFrames > 15) _currentFeedback.add('身體太前傾了，請挺直腰桿！');
+          if (_leanForwardFrames > 30) _currentFeedback.add('身體太前傾了，請挺直腰桿！');
         } else {
           _leanForwardFrames = 0;
         }
@@ -282,14 +272,14 @@ class PoseAnalyzer {
         if (isSideFacing) {
           // 🏃 跑步時手臂擺動，側面視角角度會從 60度(前擺) 到 140度(後擺) 劇烈變化
           // 因此只要不是完全下垂(>155)或夾死(<45)，都應視為合理擺動
-          if (angle < 45) {
-            score -= (45 - angle) * 0.5;
-          } else if (angle > 155) score -= (angle - 155) * 0.8;
+          if (angle < 30) {
+            score -= (30 - angle) * 0.3;
+          } else if (angle > 165) score -= (angle - 165) * 0.5;
         } else {
-          // 正面投影容錯放寬 20~140 (不允許手完全伸直，例如T字或立正)
-          if (angle < 20) {
-            score -= (20 - angle) * 0.5;
-          } else if (angle > 140) score -= (angle - 140) * 0.8;
+          // 正面投影容錯放寬 10~160
+          if (angle < 10) {
+            score -= (10 - angle) * 0.3;
+          } else if (angle > 160) score -= (angle - 160) * 0.5;
         }
         return math.max(0.0, score);
       }
@@ -312,12 +302,11 @@ class PoseAnalyzer {
         double score = 20.0;
         // 🏃 跑步的動態週期中，腳踩地的「支撐腳」角度會非常接近 170~175度
         // 所以絕不能看到膝蓋直就扣分！只要不是立正鎖死(180)即可。
-        double maxIdeal = 175.0; 
-        if (k != null && k.likelihood < 0.7) maxIdeal = 179.0; // 長褲或模糊補償
+        double maxIdeal = 179.0; // 放寬：不再依信任度判斷，膝蓋幾乎可伸直
 
-        if (angle < 90) {
-          score -= (90 - angle) * 0.5;
-        } else if (angle > maxIdeal) score -= (angle - maxIdeal) * 2.0;
+        if (angle < 70) {
+          score -= (70 - angle) * 0.3;
+        } else if (angle > maxIdeal) score -= (angle - maxIdeal) * 1.0;
         return math.max(0.0, score);
       }
       
@@ -336,8 +325,8 @@ class PoseAnalyzer {
         if (leftShoulder != null && rightShoulder != null && leftHip != null && rightHip != null && leftAnkle != null && rightAnkle != null) {
           double torsoHeight = ((leftShoulder.y + rightShoulder.y) / 2 - (leftHip.y + rightHip.y) / 2).abs();
           double ankleWidth = (leftAnkle.x - rightAnkle.x).abs();
-          if (torsoHeight > 0 && ankleWidth > torsoHeight * 0.8) {
-            currentAccuracy -= 40.0;
+          if (torsoHeight > 0 && ankleWidth > torsoHeight * 1.3) {
+            currentAccuracy -= 15.0;
             _currentFeedback.add('雙腳太開囉！超慢跑的步伐應該與肩同寬。');
           }
         }
@@ -346,28 +335,29 @@ class PoseAnalyzer {
         if (leftShoulder != null && rightShoulder != null && leftHip != null && rightHip != null && leftWrist != null && rightWrist != null) {
           double torsoHeight = ((leftShoulder.y + rightShoulder.y) / 2 - (leftHip.y + rightHip.y) / 2).abs();
           double wristWidth = (leftWrist.x - rightWrist.x).abs();
-          if (torsoHeight > 0 && wristWidth > torsoHeight * 1.5) {
-            currentAccuracy -= 40.0;
+          if (torsoHeight > 0 && wristWidth > torsoHeight * 2.2) {
+            currentAccuracy -= 15.0;
             _currentFeedback.add('手臂張太開囉！超慢跑請將雙臂自然擺放在身體兩側。');
           }
         }
       }
       
       // 🚨 防作弊：過濾掉「高抬腿」或「激烈快跑」
-      if (leftHip != null && rightHip != null && leftShoulder != null && rightShoulder != null) {
+      if (leftHip != null && rightHip != null && leftShoulder != null && rightShoulder != null && leftKnee != null && rightKnee != null) {
         double torsoHeight = ((leftShoulder.y + rightShoulder.y) / 2 - (leftHip.y + rightHip.y) / 2).abs();
         double hipY = (leftHip.y + rightHip.y) / 2;
-        double minKneeY = math.min(leftKnee!.y, rightKnee!.y);
+        double minKneeY = math.min(leftKnee.y, rightKnee.y);
         
-        // 🌟 修正：只有當膝蓋非常接近臀部 (距離小於軀幹 20%) 才視為高抬腿
-        if (torsoHeight > 0 && (minKneeY - hipY) < torsoHeight * 0.2) {
-          currentAccuracy -= 30.0;
+        // 放寬：只有當膝蓋極度接近臀部 (距離小於軀幹 8%) 才視為高抬腿
+        if (torsoHeight > 0 && (minKneeY - hipY) < torsoHeight * 0.08) {
+          currentAccuracy -= 15.0;
           _currentFeedback.add('膝蓋抬太高了！超慢跑只需微微抬腳，不要變成高抬腿喔。');
         }
       }
 
       // 4. 超慢跑計步與腳步判定 (改用「腳踝」判斷步伐，因為慢跑時腳踝的高低差遠大於膝蓋！)
-      double yDiff = leftAnkle!.y - rightAnkle!.y;
+      // 腳踝缺失時 yDiff 視為 0，不再因 null 拋例外中斷分析
+      double yDiff = (leftAnkle != null && rightAnkle != null) ? leftAnkle.y - rightAnkle.y : 0.0;
       
       // 🎥 動態步伐門檻：腳踝高低差大於軀幹的 3% 就視為踏步 (超慢跑步伐較小，調降門檻避免漏判)
       double torsoHeight = 100.0;
@@ -391,7 +381,7 @@ class PoseAnalyzer {
       }
       
       // 5. 🦶 腳掌落地判定 (Forefoot vs Heel Strike) - 僅側面能精準判定
-      if (isSideFacing) {
+      if (isSideFacing && leftAnkle != null && rightAnkle != null) {
         final leftHeel = pose.landmarks[PoseLandmarkType.leftHeel];
         final leftToe = pose.landmarks[PoseLandmarkType.leftFootIndex];
         final rightHeel = pose.landmarks[PoseLandmarkType.rightHeel];
@@ -406,9 +396,9 @@ class PoseAnalyzer {
           // 如果腳跟的 Y 座標「明顯大於」腳尖 (腳跟比腳尖低)，代表是「腳跟重落地 (Heel Strike)」
           // 正常的超慢跑應該是前腳掌/全腳掌著地，腳尖高度會低於或等於腳跟
           // 這裡加上一個寬容值避免誤判，同時檢查 likelihood，因為腳部端點非常容易模糊誤判
-          if (activeHeel.likelihood > 0.5 && activeToe.likelihood > 0.5) {
-            if (activeHeel.y > activeToe.y + (torsoHeight * 0.08)) {
-              currentAccuracy -= 15.0; 
+          {
+            if (activeHeel.y > activeToe.y + (torsoHeight * 0.2)) {
+              currentAccuracy -= 8.0; 
               _currentFeedback.add('請以前腳掌或全腳掌輕觸地面，腳跟再自然跟上，避免腳跟重落地！');
             }
           }
@@ -421,9 +411,9 @@ class PoseAnalyzer {
         _standingStillFrames = 0;
       } else {
         DateTime referenceTime = _lastStepTime ?? _firstFrameTime!;
-        if (DateTime.now().difference(referenceTime).inMilliseconds > 2500) {
+        if (DateTime.now().difference(referenceTime).inMilliseconds > 4000) {
           _standingStillFrames++;
-          currentAccuracy -= 20.0; // 降低怠速的單次扣分，避免斷崖式掉分
+          currentAccuracy -= 10.0; // 降低怠速的單次扣分，避免斷崖式掉分
           if (_standingStillFrames > 10) _currentFeedback.add('請保持動作，不要停下來喔！');
         }
       }

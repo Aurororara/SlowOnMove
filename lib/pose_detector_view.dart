@@ -392,29 +392,34 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
     try {
       final poses = await _poseDetector.processImage(inputImage);
 
-      final analysisResult =
-          _poseAnalyzer.analyze(poses, exerciseType: widget.exerciseTitle);
-      _accuracyRate = analysisResult.accuracy;
+      // 分析若拋出例外，不可影響骨架繪製
+      try {
+        final analysisResult =
+            _poseAnalyzer.analyze(poses, exerciseType: widget.exerciseTitle);
+        _accuracyRate = analysisResult.accuracy;
 
-      for (var f in analysisResult.feedback) {
-        if (!_feedback.contains(f)) {
-          _feedback.add(f);
+        for (var f in analysisResult.feedback) {
+          if (!_feedback.contains(f)) {
+            _feedback.add(f);
+          }
         }
-      }
-      _stepCount = analysisResult.stepCount;
+        _stepCount = analysisResult.stepCount;
 
-      // 🚨 當姿勢分析回傳錯誤提醒時，觸發 5 秒自動消失的彈跳視窗
-      if (analysisResult.feedback.isNotEmpty) {
-        final postureErrors =
-            analysisResult.feedback.where((msg) => msg != '請站在鏡頭前').toList();
-        if (postureErrors.isNotEmpty) {
-          _showPostureErrorPopup(postureErrors.first);
+        // 🚨 當姿勢分析回傳錯誤提醒時，觸發 5 秒自動消失的彈跳視窗
+        if (analysisResult.feedback.isNotEmpty) {
+          final postureErrors =
+              analysisResult.feedback.where((msg) => msg != '請站在鏡頭前').toList();
+          if (postureErrors.isNotEmpty) {
+            _showPostureErrorPopup(postureErrors.first);
+          }
         }
-      }
 
-      if (poses.isNotEmpty) {
-        _totalAccuracySum += _accuracyRate;
-        _accuracySamples++;
+        if (poses.isNotEmpty) {
+          _totalAccuracySum += _accuracyRate;
+          _accuracySamples++;
+        }
+      } catch (e) {
+        debugPrint('姿勢分析異常 (已略過，仍繪製骨架): $e');
       }
 
       if (inputImage.metadata?.size != null &&
