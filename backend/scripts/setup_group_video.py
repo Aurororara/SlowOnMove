@@ -17,6 +17,16 @@ ENV_FILE = BACKEND / '.env.livekit'
 RUNTIME = BACKEND / '.group-video'
 
 
+def find_docker():
+    executable = shutil.which('docker')
+    if executable:
+        return executable
+    desktop_cli = Path('/Applications/Docker.app/Contents/Resources/bin/docker')
+    if desktop_cli.is_file() and os.access(desktop_cli, os.X_OK):
+        return str(desktop_cli)
+    raise RuntimeError('找不到 Docker，請先安裝 Docker Desktop。')
+
+
 def configure(host):
     # Explicit IP avoids accidentally advertising a Docker-only address to phones.
     address = ipaddress.IPv4Address(host)
@@ -66,17 +76,29 @@ def main():
     try:
         # Fail before writing if Docker cannot start the companion service.
         if not args.configure_only:
-            if shutil.which('docker') is None:
-                raise RuntimeError('請先安裝並啟動 Docker Desktop。')
-            subprocess.run(['docker', 'info'], check=True, capture_output=True)
-            subprocess.run(['docker', 'compose', 'version'], check=True, capture_output=True)
+            docker = find_docker()
+            print('正在確認 Docker 服務是否就緒…', flush=True)
+            try:
+                subprocess.run([docker, 'info'], check=True, capture_output=True,
+                               timeout=30)
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                raise RuntimeError(
+                    'Docker 已安裝但目前無法連線，請開啟 Docker Desktop，'
+                    '等引擎啟動完成後再試。'
+                ) from None
+            try:
+                subprocess.run([docker, 'compose', 'version'], check=True,
+                               capture_output=True, timeout=30)
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired):
+                raise RuntimeError('找不到可用的 Docker Compose，請確認 Docker Desktop 已完成安裝。') from None
         configure(args.host)
         if args.configure_only:
             print('Django 與視訊服務設定已產生；尚未啟動視訊服務。')
             return
         env = dict(os.environ)
+        env['PATH'] = str(Path(docker).parent) + os.pathsep + env.get('PATH', '')
         env['VIDEO_BIND_ADDRESS'] = '127.0.0.1' if args.host.startswith('127.') else '0.0.0.0'
-        subprocess.run(['docker', 'compose', '-f', str(COMPOSE), 'up', '-d'],
+        subprocess.run([docker, 'compose', '-f', str(COMPOSE), 'up', '-d'],
                        env=env, check=True)
         for _ in range(30):
             try:
