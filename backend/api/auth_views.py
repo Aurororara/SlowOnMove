@@ -56,6 +56,7 @@ def create_jwt_response(user, created, message):
 
 class GoogleLoginView(APIView):
     permission_classes = [AllowAny]
+    authentication_classes = []
 
     def post(self, request):
         id_token_value = request.data.get("id_token")
@@ -198,6 +199,7 @@ class GoogleLoginView(APIView):
 
 class FacebookLoginView(APIView):
     permission_classes = [AllowAny]
+    authentication_classes = []
 
     def post(self, request):
         access_token = request.data.get("access_token")
@@ -316,6 +318,7 @@ class FacebookLoginView(APIView):
 
 class RegisterView(APIView):
     permission_classes = [AllowAny]
+    authentication_classes = []
 
     def post(self, request):
         username = request.data.get("username")
@@ -328,6 +331,12 @@ class RegisterView(APIView):
                 {"error": "請填寫所有必要欄位 (用戶帳號、信箱、密碼)"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        if (len(password) < 8
+            or not any(c.isupper() for c in password)
+            or not any(c.islower() for c in password)
+            or not any(c.isdigit() for c in password)):
+            raise ValueError("密碼不符合規定")
 
         if Member.objects.filter(username=username).exists():
             return Response(
@@ -363,6 +372,7 @@ class RegisterView(APIView):
 
 class LoginView(APIView):
     permission_classes = [AllowAny]
+    authentication_classes = []
 
     def post(self, request):
         username_or_email = request.data.get("username", "").strip()

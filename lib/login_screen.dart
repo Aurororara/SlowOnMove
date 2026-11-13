@@ -110,8 +110,23 @@ class _LoginScreenState extends State<LoginScreen> {
         return;
       }
 
-      if (password.length < 6) {
-        _showAlert('密碼長度必須至少為 6 個字元');
+      if (password.length < 8) {
+        _showAlert('密碼長度必須至少為 8 個字元');
+        return;
+      }
+
+      if (!RegExp(r'[A-Z]').hasMatch(password)) {
+        _showAlert('密碼必須包含大寫英文字母');
+        return;
+      }
+
+      if (!RegExp(r'[a-z]').hasMatch(password)) {
+        _showAlert('密碼必須包含小寫英文字母');
+        return;
+      }
+
+      if (!RegExp(r'[0-9]').hasMatch(password)) {
+        _showAlert('密碼必須包含數字');
         return;
       }
     }
