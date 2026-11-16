@@ -117,6 +117,14 @@ class _BodyRecordScreenState extends State<BodyRecordScreen>
           bloodRecords = filteredBlood;
           loading = false;
 
+          if (filteredBody.isNotEmpty) {
+            final latestW =
+                num.tryParse(filteredBody.first['weight']?.toString() ?? '');
+            if (latestW != null && latestW > 0) {
+              UserSession.latestWeightKg = latestW.toDouble();
+            }
+          }
+
           // 自動帶入前次身高
           if (heightController.text.isEmpty && filteredBody.isNotEmpty) {
             heightController.text =
@@ -158,6 +166,9 @@ class _BodyRecordScreenState extends State<BodyRecordScreen>
       print('【體態新增回傳內容】: ${response.body}');
 
       if (response.statusCode == 201) {
+        if (weight > 0) {
+          UserSession.latestWeightKg = weight;
+        }
         Navigator.pop(context);
         weightController.clear();
         showMessage("體態紀錄已儲存");

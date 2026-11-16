@@ -96,7 +96,6 @@ void main() {
     expect(camera.stopped, [1, 2]);
     expect(camera.disposed, [1, 2]);
     await tester.pump(const Duration(seconds: 1));
-    expect(find.textContaining('相機持續未傳入影格'), findsOneWidget);
     await tester.pump(const Duration(seconds: 10));
     expect(camera.created, 3);
     await tester.pumpWidget(const SizedBox.shrink());

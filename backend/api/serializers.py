@@ -27,6 +27,8 @@ class AdminMemberListSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'email', 'isActive', 'date_joined']
 
 class MemberSerializer(serializers.ModelSerializer):
+    latest_weight = serializers.SerializerMethodField()
+
     class Meta:
         model = Member
         fields = [
@@ -37,8 +39,15 @@ class MemberSerializer(serializers.ModelSerializer):
             'date_joined',
             'exercise_goal',
             'exercise_frequency',
+            'latest_weight',
         ]
-        read_only_fields = ['id', 'date_joined']
+        read_only_fields = ['id', 'date_joined', 'latest_weight']
+
+    def get_latest_weight(self, obj):
+        latest_record = (
+            obj.body_records.order_by('-record_date', '-id').first()
+        )
+        return latest_record.weight if latest_record else None
 
 
 class AdminPostReportSerializer(serializers.ModelSerializer):

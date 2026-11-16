@@ -150,4 +150,53 @@ void main() {
     expect(rewards, 1);
     await tester.pumpWidget(const SizedBox.shrink());
   });
+
+  test('Calorie calculation scales with weight, exercise type, steps, and accuracy', () {
+    expect(
+      ResultsScreen.calculateCalories(
+        exerciseTitle: '超慢跑',
+        timeSeconds: 300,
+        stepCount: 0,
+        averageAccuracy: 90,
+        weightKg: 60,
+      ),
+      0,
+    );
+
+    final slowJog50kg = ResultsScreen.calculateCalories(
+      exerciseTitle: '超慢跑',
+      timeSeconds: 600,
+      stepCount: 1800,
+      averageAccuracy: 90,
+      weightKg: 50,
+    );
+    final slowJog75kg = ResultsScreen.calculateCalories(
+      exerciseTitle: '超慢跑',
+      timeSeconds: 600,
+      stepCount: 1800,
+      averageAccuracy: 90,
+      weightKg: 75,
+    );
+    expect(slowJog75kg, greaterThan(slowJog50kg));
+    expect(slowJog50kg, 54);
+    expect(slowJog75kg, 81);
+
+    final squat60kg = ResultsScreen.calculateCalories(
+      exerciseTitle: '深蹲',
+      timeSeconds: 180,
+      stepCount: 30,
+      averageAccuracy: 90,
+      weightKg: 60,
+    );
+    final squat80kg = ResultsScreen.calculateCalories(
+      exerciseTitle: '深蹲',
+      timeSeconds: 180,
+      stepCount: 30,
+      averageAccuracy: 90,
+      weightKg: 80,
+    );
+    expect(squat80kg, greaterThan(squat60kg));
+    expect(squat60kg, 11);
+    expect(squat80kg, 15);
+  });
 }

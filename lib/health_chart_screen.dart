@@ -80,6 +80,13 @@ class _HealthChartScreenState extends State<HealthChartScreen>
         rawBody = rawBody.sublist(rawBody.length - 20);
       }
 
+      if (rawBody.isNotEmpty) {
+        final latestW = (rawBody.last['weight'] as num?)?.toDouble();
+        if (latestW != null && latestW > 0) {
+          UserSession.latestWeightKg = latestW;
+        }
+      }
+
       if (!mounted) return;
 
       setState(() {

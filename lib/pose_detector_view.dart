@@ -51,17 +51,11 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
   int _rawCameraFrames = 0;
   int _framesAtStreamStart = 0;
   int _streamStartAttempt = 0;
-  DateTime? _lastCameraFrameAt;
   DateTime? _lastCameraFrameLogAt;
-  String _cameraStreamStage = '等待相機初始化';
-  String _cameraLifecycle = '啟動中';
-  String? _cameraStreamError;
   int _framesReceived = 0; // 相機傳來的影格數
   int _inputImageFailures = 0; // 影像轉換失敗 (回傳 null) 的次數
   int _framesProcessed = 0; // 成功交給 ML Kit 處理的影格數
   int _framesWithPose = 0; // ML Kit 有偵測到人的影格數
-  int _currentPoseCount = 0; // 最近一個影格偵測到的人數
-  String? _lastDetectorError; // 最近一次 ML Kit 錯誤
 
   // 🦴 ML Kit 偶爾會掉幀，短暫保留上一次骨架避免閃爍消失
   List<Pose>? _lastPoses;
@@ -81,9 +75,6 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
       await operation();
     }).catchError((Object error) {
       debugPrint('[Camera] 相機操作失敗：$error');
-      if (mounted && !_isDisposingCamera) {
-        setState(() => _cameraStreamError = error.toString());
-      }
     });
     return _cameraOperations;
   }
@@ -119,7 +110,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
         return;
       }
       if (_cameraRecoveries >= 2) {
-        setState(() => _cameraStreamError = '相機持續未傳入影格，請關閉運動頁後重試');
+        debugPrint('[Camera] 相機持續未傳入影格，已停止自動重建');
         return;
       }
       _cameraRecoveries++;
@@ -128,7 +119,6 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
           return;
         }
         setState(() {
-          _cameraStreamStage = '未收到影格，正在重新建立相機 ($_cameraRecoveries/2)';
           _cameraController = null;
           _customPaint = null;
         });
@@ -148,7 +138,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
   double _totalAccuracySum = 0.0;
   int _accuracySamples = 0;
 
-  final AudioPlayer _audioPlayer = AudioPlayer();
+  AudioPlayer? _audioPlayer;
   bool _isBpmSoundEnabled = true;
 
   // ⚠️ 姿勢錯誤彈跳視窗相關狀態
@@ -160,8 +150,9 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
   void _startOrResumeBpmSound() async {
     if (widget.exerciseTitle != '超慢跑' || !_isBpmSoundEnabled) return;
     try {
-      await _audioPlayer.setReleaseMode(ReleaseMode.loop);
-      await _audioPlayer.play(AssetSource('audio/180_bpm_metronome.wav'));
+      final player = _audioPlayer ??= AudioPlayer();
+      await player.setReleaseMode(ReleaseMode.loop);
+      await player.play(AssetSource('audio/180_bpm_metronome.wav'));
     } catch (e) {
       debugPrint('Error playing BPM sound: $e');
     }
@@ -169,7 +160,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
 
   void _pauseOrStopBpmSound() async {
     try {
-      await _audioPlayer.pause();
+      await _audioPlayer?.pause();
     } catch (e) {
       debugPrint('Error pausing BPM sound: $e');
     }
@@ -276,8 +267,8 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
     _canProcess = false;
     _isDisposingCamera = true;
 
-    _audioPlayer.stop();
-    _audioPlayer.dispose();
+    _audioPlayer?.stop();
+    _audioPlayer?.dispose();
     if (_supportsPoseDetectionPlatform) {
       _poseDetector.close();
     }
@@ -295,7 +286,6 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
     AppLifecycleState state,
   ) {
     super.didChangeAppLifecycleState(state);
-    _cameraLifecycle = state.name;
     debugPrint('[Camera] 生命週期=${state.name}，'
         '串流=${_cameraController?.value.isStreamingImages}，'
         'canProcess=$_canProcess，busy=$_isBusy');
@@ -356,8 +346,6 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
           : ImageFormatGroup.bgra8888,
     );
     _cameraController = controller;
-    _cameraStreamError = null;
-    _cameraStreamStage = '正在初始化相機';
     try {
       await controller.initialize();
       if (!_cameraShouldRun) return;
@@ -378,8 +366,6 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
     final attempt = ++_streamStartAttempt;
     final framesAtStart = _rawCameraFrames;
     _framesAtStreamStart = framesAtStart;
-    _cameraStreamStage = '啟動影格串流中';
-    _cameraStreamError = null;
     debugPrint('[Camera] #$attempt 準備啟動串流');
     await controller.startImageStream((image) {
       if (!_cameraShouldRun || !identical(_cameraController, controller)) {
@@ -388,10 +374,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
       _processCameraImage(image);
     });
     if (!_cameraShouldRun) return;
-    setState(() {
-      _cameraStreamStage =
-          _rawCameraFrames == framesAtStart ? '串流啟動呼叫完成，等待第一幀' : '相機影格已送入';
-    });
+    setState(() {});
     _watchCameraFrames(controller);
   }
 
@@ -402,9 +385,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
     // the analysis callback has received a frame.
     final receivedAt = DateTime.now();
     _rawCameraFrames++;
-    _lastCameraFrameAt = receivedAt;
     final isFirstFrame = _rawCameraFrames == _framesAtStreamStart + 1;
-    _cameraStreamStage = '相機影格已送入';
     if (isFirstFrame ||
         _lastCameraFrameLogAt == null ||
         receivedAt.difference(_lastCameraFrameLogAt!).inSeconds >= 5) {
@@ -523,8 +504,6 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
       final poses = await _poseDetector.processImage(inputImage);
 
       _framesProcessed++;
-      _currentPoseCount = poses.length;
-      _lastDetectorError = null;
 
       // 掉幀時沿用上一次骨架 (最多 800ms)，有偵測到就更新
       List<Pose> displayPoses = poses;
@@ -587,7 +566,6 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
         _customPaint = null;
       }
     } catch (e) {
-      _lastDetectorError = e.toString();
       debugPrint('Pose detection 處理異常: $e');
     } finally {
       // 確保即使中途有任何例外，_isBusy 一定會解鎖，不會永久卡死在 0
@@ -649,6 +627,8 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
                       setState(() {
                         _elapsedSeconds = 300; // 5 minutes mock
                         _accuracyRate = 92.5;
+                        _totalAccuracySum = 92.5;
+                        _accuracySamples = 1;
                         _stepCount = 1200;
                         _feedback.add("模擬運動數據生成成功！這是一次超慢跑測試。");
                       });
@@ -668,7 +648,6 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
               ),
             ),
             _buildDetectionOverlay(),
-            _buildPoseStatusChip(),
             _buildPostureErrorPopup(),
           ],
         ),
@@ -691,7 +670,6 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
           ),
           if (_customPaint != null) _customPaint!,
           _buildDetectionOverlay(),
-          _buildPoseStatusChip(),
           _buildPostureErrorPopup(),
         ],
       ),
@@ -803,7 +781,7 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
   Future<void> _finishExercise() async {
     _timer?.cancel();
 
-    await _audioPlayer.stop();
+    await _audioPlayer?.stop();
 
     await _disposeCameraSafely();
 
@@ -874,65 +852,6 @@ class _PoseDetectorViewState extends State<PoseDetectorView>
       }
       if (controller != null) await _releaseCamera(controller);
     });
-  }
-
-  /// 顯示骨架偵測目前卡在哪個階段 (除錯用，確認後可移除)
-  Widget _buildPoseStatusChip() {
-    String text;
-    Color color;
-
-    if (_cameraStreamError != null) {
-      text = '最近串流錯誤：$_cameraStreamError';
-      color = Colors.redAccent;
-    } else if (_lastDetectorError != null) {
-      text = 'ML Kit 錯誤：$_lastDetectorError';
-      color = Colors.redAccent;
-    } else if (!_canProcess) {
-      text = '影像分析已暫停';
-      color = Colors.orangeAccent;
-    } else if (_framesReceived == 0) {
-      text = _rawCameraFrames == 0 ? _cameraStreamStage : '相機已有回呼，但尚未進入影像轉換';
-      color = Colors.orangeAccent;
-    } else if (_framesProcessed == 0) {
-      if (_inputImageFailures == _framesReceived) {
-        text = '影像轉換失敗 ($_inputImageFailures 次)，無法交給 ML Kit';
-        color = Colors.redAccent;
-      } else {
-        text = _isBusy ? 'ML Kit 首次處理中' : '等待 ML Kit 處理影格';
-        color = Colors.orangeAccent;
-      }
-    } else if (_currentPoseCount == 0) {
-      text = 'ML Kit 未偵測到人 (請讓全身入鏡、光線充足)';
-      color = Colors.orangeAccent;
-    } else {
-      text = '已偵測到人';
-      color = Colors.greenAccent;
-    }
-
-    return Positioned(
-      bottom: 24,
-      left: 16,
-      right: 16,
-      child: IgnorePointer(
-        child: Center(
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            decoration: BoxDecoration(
-              color: Colors.black54,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Text(
-              '$text\n原始回呼 $_rawCameraFrames｜分析取樣 $_framesReceived｜'
-              '處理 $_framesProcessed｜轉換失敗 $_inputImageFailures｜'
-              '最近影格 ${_lastCameraFrameAt == null ? "尚無" : "${DateTime.now().difference(_lastCameraFrameAt!).inSeconds} 秒前"}'
-              '｜$_cameraLifecycle',
-              textAlign: TextAlign.center,
-              style: TextStyle(color: color, fontSize: 12),
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   Widget _buildDetectionOverlay() {

@@ -8,6 +8,9 @@ class UserSession {
   // 新增：角色標記 (0: 一般使用者, 1: 管理員)
   static int role = 0;
 
+  // 使用者最新體重 (kg)，未設定時為 null（計算熱量時預設以 60 kg 計算）
+  static double? latestWeightKg;
+
   // 判斷是否為管理員
   static bool get isAdmin => role == 1;
 
@@ -21,12 +24,16 @@ class UserSession {
     required String newEmail,
     String newAvatar = '',
     int newRole = 0, // 支援傳入 role
+    double? newLatestWeightKg,
   }) {
     memberId = newMemberId;
     displayName = newName;
     email = newEmail;
     avatar = newAvatar;
     role = newRole;
+    if (newLatestWeightKg != null && newLatestWeightKg > 0) {
+      latestWeightKg = newLatestWeightKg;
+    }
   }
 
   static void clearSession() {
@@ -35,6 +42,7 @@ class UserSession {
     email = '';
     avatar = '';
     role = 0;
+    latestWeightKg = null;
     walletBalanceNotifier.value = 1200.0;
     _dailyRewardClaimedDates.clear();
   }

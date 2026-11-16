@@ -9,12 +9,15 @@ import 'services/points_service.dart';
 import 'services/api_service.dart';
 
 class ResultsScreen extends StatefulWidget {
+  static const double defaultWeightKg = 60.0;
+
   final int timeSeconds;
   final double averageAccuracy;
   final int stepCount;
   final List<String> finalFeedback;
   final String exerciseTitle;
   final bool fromWorkoutMenu;
+  final double? userWeightKg;
 
   const ResultsScreen({
     super.key,
@@ -24,7 +27,39 @@ class ResultsScreen extends StatefulWidget {
     required this.finalFeedback,
     this.exerciseTitle = '超慢跑',
     this.fromWorkoutMenu = false,
+    this.userWeightKg,
   });
+
+  /// 結合使用者體重 (kg)、AI 步數/深蹲次數、運動秒數與姿勢準確率計算消耗熱量 (kcal)
+  static int calculateCalories({
+    required String exerciseTitle,
+    required int timeSeconds,
+    required int stepCount,
+    required double averageAccuracy,
+    double? weightKg,
+  }) {
+    final double weight =
+        (weightKg != null && weightKg > 0) ? weightKg : defaultWeightKg;
+    final double accuracyFactor =
+        0.85 + 0.2 * (averageAccuracy.clamp(0.0, 100.0) / 100.0);
+
+    if (exerciseTitle == '深蹲') {
+      if (stepCount <= 0) return 0;
+      // 生物力學做功公式：每完成 1 下標準深蹲約消耗 0.006 * 體重(kg) kcal，再乘上姿勢完整度係數
+      final double kcal = stepCount * 0.006 * weight * accuracyFactor;
+      return kcal.round();
+    }
+
+    // 超慢跑：ACSM 標準代謝當量 (MET) 公式 + AI 實際步頻 (SPM) 動態內插
+    if (timeSeconds <= 0 || stepCount <= 0) return 0;
+    final double minutes = timeSeconds / 60.0;
+    final double spm = stepCount / minutes;
+    // 依據實際步頻線性內插 MET (2.5 ~ 6.5 METs，180 BPM 標準超慢跑為 6.0 METs)
+    final double met = (2.0 + 4.0 * (spm / 180.0)).clamp(2.5, 6.5);
+    final double kcal =
+        ((met * 3.5 * weight) / 200.0) * minutes * accuracyFactor;
+    return kcal.round();
+  }
 
   @override
   State<ResultsScreen> createState() => _ResultsScreenState();
@@ -554,8 +589,13 @@ class _ResultsScreenState extends State<ResultsScreen> {
   }
 
   int get caloriesBurned {
-    double minutes = widget.timeSeconds / 60.0;
-    return (minutes * 8.0).round();
+    return ResultsScreen.calculateCalories(
+      exerciseTitle: widget.exerciseTitle,
+      timeSeconds: widget.timeSeconds,
+      stepCount: widget.stepCount,
+      averageAccuracy: widget.averageAccuracy,
+      weightKg: widget.userWeightKg ?? UserSession.latestWeightKg,
+    );
   }
 
   @override

@@ -409,6 +409,11 @@ class _HomeScreenState extends State<HomeScreen> {
             return;
           }
 
+          final dynamic rawWeight = decoded['latest_weight'];
+          if (rawWeight is num && rawWeight > 0) {
+            UserSession.latestWeightKg = rawWeight.toDouble();
+          }
+
           setState(() {
             _exerciseGoal = decoded['exercise_goal']?.toString() ?? 'health';
 
